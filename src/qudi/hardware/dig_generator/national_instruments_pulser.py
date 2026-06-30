@@ -234,9 +234,8 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         self.constraints = constraints
 
     def configure_pulser_task(self):
-        """ Clear pulser task and set to current settings.
-
-        @return:
+        """
+        Clear pulser task and set to current settings.
         """
         a_channels = [self.channel_map[k] for k in self.a_names]
         d_channels = [self.channel_map[k] for k in self.d_names]
@@ -274,8 +273,13 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         # write assets
 
     def close_pulser_task(self):
-        """ Clear tasks.
-        @return int: error code (0:OK, -1:error)
+        """
+        Clear tasks.
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         retval = 0
         try:
@@ -293,16 +297,26 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return retval
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Pulsing device.
-
-        @return dict: dict with constraints for the sequence generation and GUI
+        """
+        Retrieve the hardware constrains from the Pulsing device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the sequence generation and GUI
         """
         return self.constraints
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             daq.DAQmxStartTask(self.pulser_task)
@@ -312,9 +326,14 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return 0
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device off.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             daq.DAQmxStopTask(self.pulser_task)
@@ -324,14 +343,22 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return 0
 
     def upload_asset(self, asset_name=None):
-        """ Upload an already hardware conform file to the device mass memory.
+        """
+        Upload an already hardware conform file to the device mass memory.
             Also loads these files into the device workspace if present.
             Does NOT load waveforms/sequences/patterns into channels.
-
-        @param asset_name: string, name of the ensemble/sequence to be uploaded
-
-        @return int: error code (0:OK, -1:error)
-
+        
+        Parameters
+        ----------
+        asset_name : string
+            name of the ensemble/sequence to be uploaded
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         If nothing is passed, method will be skipped.
 
         This method has no effect when using pulser hardware without own mass memory
@@ -341,24 +368,33 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return 0
 
     def load_asset(self, asset_name, load_dict=None):
-        """ Loads a sequence or waveform to the specified channel of the pulsing device.
+        """
+        Loads a sequence or waveform to the specified channel of the pulsing device.
         For devices that have a workspace (i.e. AWG) this will load the asset from the device
         workspace into the channel.
         For a device without mass memory this will transfer the waveform/sequence/pattern data
         directly to the device so that it is ready to play.
-
-        @param str asset_name: The name of the asset to be loaded
-
-        @param dict load_dict:  a dictionary with keys being one of the available channel numbers
-                                and items being the name of the already sampled waveform/sequence
-                                files.
-                                Examples:   {1: rabi_Ch1, 2: rabi_Ch2}
-                                            {1: rabi_Ch2, 2: rabi_Ch1}
-                                This parameter is optional. If none is given then the channel
-                                association is invoked from the file name, i.e. the appendix
-                                (_ch1, _ch2 etc.)
-
-        @return int: error code (0:OK, -1:error)
+        
+        Parameters
+        ----------
+        asset_name : str
+            The name of the asset to be loaded
+        
+        load_dict : dict
+            a dictionary with keys being one of the available channel numbers
+            and items being the name of the already sampled waveform/sequence
+            files.
+            Examples:   {1: rabi_Ch1, 2: rabi_Ch2}
+            {1: rabi_Ch2, 2: rabi_Ch1}
+            This parameter is optional. If none is given then the channel
+            association is invoked from the file name, i.e. the appendix
+            (_ch1, _ch2 etc.)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         # ignore if no asset_name is given
         if asset_name is None:
@@ -380,25 +416,40 @@ class NationalInstrumentsPulser(Base, PulserInterface):
 
 
     def get_loaded_asset(self):
-        """ Retrieve the currently loaded asset name of the device.
-
-        @return str: Name of the current asset ready to play. (no filename)
+        """
+        Retrieve the currently loaded asset name of the device.
+        
+        
+        Returns
+        -------
+        str
+            Name of the current asset ready to play. (no filename)
         """
         return self.current_loaded_asset
 
     def clear_all(self):
-        """ Clears all loaded waveforms from the pulse generators RAM/workspace.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Clears all loaded waveforms from the pulse generators RAM/workspace.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         pass
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware
-
-        @return (int, dict): tuple with an interger value of the current status and a corresponding
-                             dictionary containing status description for all the possible status
-                             variables of the pulse generator hardware.
+        """
+        Retrieves the status of the pulsing hardware
+        
+        
+        Returns
+        -------
+        (int, dict)
+            tuple with an interger value of the current status and a corresponding
+            dictionary containing status description for all the possible status
+            variables of the pulse generator hardware.
         """
         status_dict = {
             -1: 'Failed Request or Communication',
@@ -415,10 +466,15 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return current_status, status_dict
 
     def get_sample_rate(self):
-        """ Get the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
-
+        """
+        Get the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
+        
         Do not return a saved sample rate from an attribute, but instead retrieve the current
         sample rate directly from the device.
         """
@@ -427,12 +483,20 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return rate.value
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware.
-
-        @param float sample_rate: The sampling rate to be set (in Hz)
-
-        @return float: the sample rate returned from the device (in Hz).
-
+        """
+        Set the sample rate of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sampling rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        float
+            the sample rate returned from the device (in Hz).
+        
         Note: After setting the sampling rate of the device, use the actually set return value for
               further processing.
         """
@@ -447,17 +511,26 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return self.sample_rate
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
-
-        @param list amplitude: optional, if the amplitude value (in Volt peak to peak, i.e. the
-                               full amplitude) of a specific channel is desired.
-        @param list offset: optional, if the offset value (in Volt) of a specific channel is
-                            desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor string
-                               (i.e. 'a_ch1') and items being the values for those channels.
-                               Amplitude is always denoted in Volt-peak-to-peak and Offset in volts.
-
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if the amplitude value (in Volt peak to peak, i.e. the
+            full amplitude) of a specific channel is desired.
+        offset : list
+            optional, if the offset value (in Volt) of a specific channel is
+            desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel descriptor string
+            (i.e. 'a_ch1') and items being the values for those channels.
+            Amplitude is always denoted in Volt-peak-to-peak and Offset in volts.
+        
         Note: Do not return a saved amplitude and/or offset value but instead retrieve the current
               amplitude and/or offset directly from the device.
 
@@ -484,19 +557,28 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return amp_dict, off_dict
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel(s).
-
-        @param dict amplitude: dictionary, with key being the channel descriptor string
-                               (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
-                               (in Volt peak to peak, i.e. the full amplitude) for the desired
-                               channel.
-        @param dict offset: dictionary, with key being the channel descriptor string
-                            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
-                            (in absolute volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for amplitude and
-                              offset for ALL channels.
-
+        """
+        Set amplitude and/or offset value of the provided analog channel(s).
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
+            (in Volt peak to peak, i.e. the full amplitude) for the desired
+            channel.
+        offset : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
+            (in absolute volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for amplitude and
+            offset for ALL channels.
+        
         If nothing is passed then the command will return the current amplitudes/offsets.
 
         Note: After setting the amplitude and/or offset values of the device, use the actual set
@@ -514,15 +596,24 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return self.get_analog_level(amplitude, offset)
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided/all channels.
-
-        @param list low: optional, if the low value (in Volt) of a specific channel is desired.
-        @param list high: optional, if the high value (in Volt) of a specific channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor strings
-                               (i.e. 'd_ch1', 'd_ch2') and items being the values for those
-                               channels. Both low and high value of a channel is denoted in volts.
-
+        """
+        Retrieve the digital low and high level of the provided/all channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if the low value (in Volt) of a specific channel is desired.
+        high : list
+            optional, if the high value (in Volt) of a specific channel is desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel descriptor strings
+            (i.e. 'd_ch1', 'd_ch2') and items being the values for those
+            channels. Both low and high value of a channel is denoted in volts.
+        
         Note: Do not return a saved low and/or high value but instead retrieve
               the current low and/or high value directly from the device.
 
@@ -560,19 +651,28 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return low_dict, high_dict
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel descriptor string
-                         (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
-                         desired channel.
-        @param dict high: dictionary, with key being the channel descriptor string
-                          (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
-                          desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the current low value and
-                              the second dict the high value for ALL digital channels.
-                              Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
-
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
+            desired channel.
+        high : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
+            desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the current low value and
+            the second dict the high value for ALL digital channels.
+            Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
+        
         If nothing is passed then the command will return the current voltage levels.
 
         Note: After setting the high and/or low values of the device, use the actual set return
@@ -590,14 +690,22 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return self.get_digital_level(low, high)
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are needed to be asked
-                        without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel string and items boolean expressions whether
-                       channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are needed to be asked
+            without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel string and items boolean expressions whether
+            channel are active or not.
+        
         Example for an possible input (order is not important):
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
         then the output might look like
@@ -626,13 +734,20 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         activation_config must still be valid according to the constraints.
         If the resulting set of active channels can not be found in the available
         activation_configs, the channel states must remain unchanged.
-
-        @param dict ch: dictionary with keys being the analog or digital string generic names for
-                        the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
-                        True: Activate channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and digital channels
-
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string generic names for
+            the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
+            True: Activate channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and digital channels
+        
         If nothing is passed then the command will simply return the unchanged current state.
 
         Note: After setting the active channels of the device, use the returned dict for further
@@ -655,22 +770,32 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return self.get_active_channels()
 
     def get_uploaded_asset_names(self):
-        """ Retrieve the names of all uploaded assets on the device.
-
-        @return list: List of all uploaded asset name strings in the current device directory.
-                      This is no list of the file names.
-
+        """
+        Retrieve the names of all uploaded assets on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded asset name strings in the current device directory.
+            This is no list of the file names.
+        
         Unused for pulse generators without sequence storage capability (PulseBlaster, FPGA).
         """
         # no storage
         return []
 
     def get_saved_asset_names(self):
-        """ Retrieve the names of all sampled and saved assets on the host PC. This is no list of
+        """
+        Retrieve the names of all sampled and saved assets on the host PC. This is no list of
             the file names.
-
-        @return list: List of all saved asset name strings in the current
-                      directory of the host PC.
+        
+        
+        Returns
+        -------
+        list
+            List of all saved asset name strings in the current
+            directory of the host PC.
         """
         file_list = self._get_filenames_on_host()
         saved_assets = []
@@ -682,58 +807,92 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return saved_assets
 
     def delete_asset(self, asset_name):
-        """ Delete all files associated with an asset with the passed asset_name from the device
+        """
+        Delete all files associated with an asset with the passed asset_name from the device
             memory (mass storage as well as i.e. awg workspace/channels).
-
-        @param str asset_name: The name of the asset to be deleted
-                               Optionally a list of asset names can be passed.
-
-        @return list: a list with strings of the files which were deleted.
-
+        
+        Parameters
+        ----------
+        asset_name : str
+            The name of the asset to be deleted
+            Optionally a list of asset names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list with strings of the files which were deleted.
+        
         Unused for pulse generators without sequence storage capability (PulseBlaster, FPGA).
         """
         # no storage
         return 0
 
     def set_asset_dir_on_device(self, dir_path):
-        """ Change the directory where the assets are stored on the device.
-
-        @param str dir_path: The target directory
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Change the directory where the assets are stored on the device.
+        
+        Parameters
+        ----------
+        dir_path : str
+            The target directory
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         Unused for pulse generators without changeable file structure (PulseBlaster, FPGA).
         """
         # no storage
         return 0
 
     def get_asset_dir_on_device(self):
-        """ Ask for the directory where the hardware conform files are stored on the device.
-
-        @return str: The current file directory
-
+        """
+        Ask for the directory where the hardware conform files are stored on the device.
+        
+        
+        Returns
+        -------
+        str
+            The current file directory
+        
         Unused for pulse generators without changeable file structure (i.e. PulseBlaster, FPGA).
         """
         # no storage
         return ''
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Will always return False for pulse generator hardware without interleave.
         """
         return False
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
-
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
+        
         Note: After setting the interleave of the device, retrieve the
               interleave again and use that information for further processing.
 
@@ -742,26 +901,47 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return False
 
     def tell(self, command):
-        """ Sends a command string to the device.
-
-        @param string command: string containing the command
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return 0
 
     def ask(self, question):
-        """ Asks the device a 'question' and receive and return an answer from it.
-        @param string question: string containing the command
-
-        @return string: the answer of the device to the 'question' in a string
+        """
+        Asks the device a 'question' and receive and return an answer from it.
+        Parameters
+        ----------
+        question : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        string
+            the answer of the device to the 'question' in a string
         """
         return ''
 
     def reset(self):
-        """ Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             daq.DAQmxResetDevice(self.device)
@@ -771,17 +951,30 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return 0
 
     def has_sequence_mode(self):
-        """ Asks the pulse generator whether sequence mode exists.
-
-        @return: bool, True for yes, False for no.
+        """
+        Asks the pulse generator whether sequence mode exists.
+        
+        
+        Returns
+        -------
+        bool
+            True for yes, False for no.
         """
         return False
 
     def _get_dir_for_name(self, name):
-        """ Get the path to the pulsed sub-directory 'name'.
-
-        @param name: string, name of the folder
-        @return: string, absolute path to the directory with folder 'name'.
+        """
+        Get the path to the pulsed sub-directory 'name'.
+        
+        Parameters
+        ----------
+        name : string
+            name of the folder
+        
+        Returns
+        -------
+        string
+            absolute path to the directory with folder 'name'.
         """
         path = os.path.join(self.pulsed_file_dir, name)
         if not os.path.exists(path):
@@ -789,9 +982,14 @@ class NationalInstrumentsPulser(Base, PulserInterface):
         return os.path.abspath(path)
 
     def _get_filenames_on_host(self):
-        """ Get the full filenames of all assets saved on the host PC.
-
-        @return: list, The full filenames of all assets saved on the host PC.
+        """
+        Get the full filenames of all assets saved on the host PC.
+        
+        
+        Returns
+        -------
+        list
+            The full filenames of all assets saved on the host PC.
         """
         filename_list = [f for f in os.listdir(self.host_waveform_directory) if f.endswith('.npz')]
         return filename_list

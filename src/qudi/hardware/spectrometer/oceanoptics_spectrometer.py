@@ -63,9 +63,14 @@ class OceanOptics(SpectrometerInterface):
         self._spectrometer.close()
 
     def record_spectrum(self):
-        """ Record spectrum from Ocean Optics spectrometer.
-
-            @return []: spectrum data
+        """
+        Record spectrum from Ocean Optics spectrometer.
+        
+        
+        Returns
+        -------
+        []
+            spectrum data
         """
         wavelengths = self._spectrometer.wavelengths()
         specdata = np.empty((2, len(wavelengths)), dtype=np.double)
@@ -75,16 +80,25 @@ class OceanOptics(SpectrometerInterface):
 
     @property
     def exposure_time(self):
-        """ Get exposure.
-            @return float: exposure time
-            Not implemented.
+        """
+        Get exposure.
+        
+        Returns
+        -------
+        float
+            exposure time
+        Not implemented.
         """
         return self._integration_time
 
     @exposure_time.setter
     def exposure_time(self, value):
-        """ Set exposure.
-            @param float value: exposure time in seconds
+        """
+        Set exposure.
+        Parameters
+        ----------
+        value : float
+            exposure time in seconds
         """
         assert isinstance(value, (float, int)), f'exposure_time needs to be a float in seconds, but was {value}'
         self._integration_time = float(value)

@@ -78,81 +78,120 @@ class MicrowaveDummy(MicrowaveInterface):
 
     @property
     def constraints(self):
-        """The microwave constraints object for this device.
-
-        @return MicrowaveConstraints:
+        """
+        The microwave constraints object for this device.
+        
+        
+        Returns
+        -------
+        MicrowaveConstraints
         """
         return self._constraints
 
     @property
     def is_scanning(self):
-        """Read-Only boolean flag indicating if a scan is running at the moment. Can be used
+        """
+        Read-Only boolean flag indicating if a scan is running at the moment. Can be used
         together with module_state() to determine if the currently running microwave output is a
         scan or CW.
         Should return False if module_state() is 'idle'.
-
-        @return bool: Flag indicating if a scan is running (True) or not (False)
+        
+        
+        Returns
+        -------
+        bool
+            Flag indicating if a scan is running (True) or not (False)
         """
         with self._thread_lock:
             return self._is_scanning
 
     @property
     def cw_power(self):
-        """Read-only property returning the currently configured CW microwave power in dBm.
-
-        @return float: The currently set CW microwave power in dBm.
+        """
+        Read-only property returning the currently configured CW microwave power in dBm.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave power in dBm.
         """
         with self._thread_lock:
             return self._cw_power
 
     @property
     def cw_frequency(self):
-        """Read-only property returning the currently set CW microwave frequency in Hz.
-
-        @return float: The currently set CW microwave frequency in Hz.
+        """
+        Read-only property returning the currently set CW microwave frequency in Hz.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave frequency in Hz.
         """
         with self._thread_lock:
             return self._cw_frequency
 
     @property
     def scan_power(self):
-        """Read-only property returning the currently configured microwave power in dBm used for
+        """
+        Read-only property returning the currently configured microwave power in dBm used for
         scanning.
-
-        @return float: The currently set scanning microwave power in dBm
+        
+        
+        Returns
+        -------
+        float
+            The currently set scanning microwave power in dBm
         """
         with self._thread_lock:
             return self._scan_power
 
     @property
     def scan_frequencies(self):
-        """Read-only property returning the currently configured microwave frequencies used for
+        """
+        Read-only property returning the currently configured microwave frequencies used for
         scanning.
-
+        
         In case of self.scan_mode == SamplingOutputMode.JUMP_LIST, this will be a 1D numpy array.
         In case of self.scan_mode == SamplingOutputMode.EQUIDISTANT_SWEEP, this will be a tuple
         containing 3 values (freq_begin, freq_end, number_of_samples).
         If no frequency scan has been configured, return None.
-
-        @return float[]: The currently set scanning frequencies. None if not set.
+        
+        
+        Returns
+        -------
+        float[]
+            The currently set scanning frequencies. None if not set.
         """
         with self._thread_lock:
             return self._scan_frequencies
 
     @property
     def scan_mode(self):
-        """Read-only property returning the currently configured scan mode Enum.
-
-        @return SamplingOutputMode: The currently set scan mode Enum
+        """
+        Read-only property returning the currently configured scan mode Enum.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            The currently set scan mode Enum
         """
         with self._thread_lock:
             return self._scan_mode
 
     @property
     def scan_sample_rate(self):
-        """Read-only property returning the currently configured scan sample rate in Hz.
-
-        @return float: The currently set scan sample rate in Hz
+        """
+        Read-only property returning the currently configured scan sample rate in Hz.
+        
+        
+        Returns
+        -------
+        float
+            The currently set scan sample rate in Hz
         """
         with self._thread_lock:
             return self._scan_sample_rate
@@ -171,11 +210,16 @@ class MicrowaveDummy(MicrowaveInterface):
             self.module_state.unlock()
 
     def set_cw(self, frequency, power):
-        """Configure the CW microwave output. Does not start physical signal output, see also
+        """
+        Configure the CW microwave output. Does not start physical signal output, see also
         "cw_on".
-
-        @param float frequency: frequency to set in Hz
-        @param float power: power to set in dBm
+        
+        Parameters
+        ----------
+        frequency : float
+            frequency to set in Hz
+        power : float
+            power to set in dBm
         """
         with self._thread_lock:
             # Check if CW parameters can be set.

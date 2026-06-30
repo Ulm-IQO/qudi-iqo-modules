@@ -118,8 +118,12 @@ class MotorStagePI(MotorInterface):
 
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        @return: error code
+        """
+        Initialisation performed during activation of the module.
+        
+        Returns
+        -------
+        error code
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
@@ -139,8 +143,12 @@ class MotorStagePI(MotorInterface):
 
 
     def on_deactivate(self):
-        """ Deinitialisation performed during deactivation of the module.
-        @return: error code
+        """
+        Deinitialisation performed during deactivation of the module.
+        
+        Returns
+        -------
+        error code
         """
         self._serial_connection_xyz.close()
         self.rm.close()
@@ -148,10 +156,15 @@ class MotorStagePI(MotorInterface):
 
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the sequence generation and GUI
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the sequence generation and GUI
+        
         Provides all the constraints for the xyz stage  and rot stage (like total
         movement, velocity, ...)
         Each constraint is a tuple of the form
@@ -209,16 +222,24 @@ class MotorStagePI(MotorInterface):
         return constraints
 
     def move_rel(self, param_dict):
-        """Moves stage in given direction (relative movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
-
-        @return dict pos: dictionary with the current magnet position
+        """
+        Moves stage in given direction (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
+        
+        
+        Returns
+        -------
+        dict pos
+            dictionary with the current magnet position
         """
 
         # There are sometimes connections problems therefore up to 3 attempts are started
@@ -258,17 +279,25 @@ class MotorStagePI(MotorInterface):
 
 
     def move_abs(self, param_dict):
-        """Moves stage to absolute position
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-                                The values for the axes are in millimeter,
-                                the value for the rotation is in degrees.
-
-        @return dict pos: dictionary with the current axis position
+        """
+        Moves stage to absolute position
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+            The values for the axes are in millimeter,
+            the value for the rotation is in degrees.
+        
+        
+        Returns
+        -------
+        dict pos
+            dictionary with the current axis position
         """
         # There are sometimes connections problems therefore up to 3 attempts are started
         for attept in range(3):
@@ -295,9 +324,14 @@ class MotorStagePI(MotorInterface):
 
 
     def abort(self):
-        """Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops movement of the stage
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         constraints = self.get_constraints()
         try:
@@ -311,17 +345,25 @@ class MotorStagePI(MotorInterface):
             return -1
 
     def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list: optional, if a specific position of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                position is asked.
-
-        @return dict: with keys being the axis labels and item the current
-                      position.        """
-
+        """
+        Gets current position of the stage arms
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific position of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            position is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with keys being the axis labels and item the current
+            position.        """
+        
         constraints = self.get_constraints()
         param_dict = {}
         # unfortunately, probably due to connection problems this specific command sometimes failing
@@ -361,17 +403,19 @@ class MotorStagePI(MotorInterface):
 
     def get_status(self, param_list=None):
         """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict: with the axis label as key and the status number as item.
-        The meaning of the return value is:
-        Bit 0: Ready Bit 1: On target Bit 2: Reference drive active Bit 3: Joystick ON
-        Bit 4: Macro running Bit 5: Motor OFF Bit 6: Brake ON Bit 7: Drive current active
+        
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
+        
+        dict
+            with the axis label as key and the status number as item.
+            The meaning of the return value is:
+            Bit 0: Ready Bit 1: On target Bit 2: Reference drive active Bit 3: Joystick ON
+            Bit 4: Macro running Bit 5: Motor OFF Bit 6: Brake ON Bit 7: Drive current active
         """
         constraints = self.get_constraints()
         param_dict = {}
@@ -397,22 +441,31 @@ class MotorStagePI(MotorInterface):
             return -1
 
     def calibrate(self, param_list=None, direction=1):
-        """ Calibrates the stage.
-
-        @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
-                                needed axis should be passed in the param_list.
-                                If nothing is passed, then all connected axis
-                                will be calibrated.
-        @param int direction:   0: positive
-                                1: negative
-                                2: auto (standard stages)
-                                3: negative auto
-
+        """
+        Calibrates the stage.
+        
+        Parameters
+        ----------
+        param_list : dict
+            param_list: optional, if a specific calibration
+            of an axis is desired, then the labels of the
+            needed axis should be passed in the param_list.
+            If nothing is passed, then all connected axis
+            will be calibrated.
+        direction : int
+            0: positive
+            1: negative
+            2: auto (standard stages)
+            3: negative auto
+        
         After calibration the stage moves to home position which will be the
         zero point for the passed axis.
-
-        @return dict pos: dictionary with the current position of the ac#xis
+        
+        
+        Returns
+        -------
+        dict pos
+            dictionary with the current position of the ac#xis
         """
 
         if direction not in [0,1,2,3]:
@@ -438,8 +491,10 @@ class MotorStagePI(MotorInterface):
         """
         Sets the current position as zero. Should be called after the motors
         have stopped after calibrate().
-        :param param_list:
-        :return:
+        Parameters
+        ----------
+        param_list :
+        
         """
 
         if not self._motor_stopped():
@@ -455,16 +510,24 @@ class MotorStagePI(MotorInterface):
 
 
     def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes in m/s.
-
-        @param list param_list: optional, if a specific velocity of an axis
-                                    is desired, then the labels of the needed
-                                    axis should be passed as the param_list.
-                                    If nothing is passed, then from each axis the
-                                    velocity is asked.
-
-        @return dict : with the axis label as key and the velocity as item.
-            """
+        """
+        Gets the current velocity for all connected axes in m/s.
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the velocity as item.
+        """
         constraints = self.get_constraints()
         param_dict = {}
         try:
@@ -482,15 +545,23 @@ class MotorStagePI(MotorInterface):
             return -1
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity in m/s.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                    parameters, which should be changed. Usage:
-                                     {'axis_label': <the-velocity-value>}.
-                                     'axis_label' must correspond to a label given
-                                     to one of the axis.
-
-        @return dict param_dict2: dictionary with the updated axis velocity
+        """
+        Write new value for velocity in m/s.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-velocity-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
+        
+        Returns
+        -------
+        dict param_dict2
+            dictionary with the updated axis velocity
         """
         #constraints = self.get_constraints()
         try:
@@ -512,12 +583,20 @@ class MotorStagePI(MotorInterface):
 ########################## internal methods ##################################
 
     def _write_xyz(self, axis, command):
-        """this method just sends a command to the motor! DOES NOT RETURN AN ANSWER!
-        @param axis string: name of the axis that should be asked
-
-        @param command string: command
-
-        @return error code (0:OK, -1:error)
+        """
+        this method just sends a command to the motor! DOES NOT RETURN AN ANSWER!
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be asked
+        
+        string : command
+            command
+        
+        
+        Returns
+        -------
+        error code (0:OK, -1:error)
         """
         constraints = self.get_constraints()
         try:
@@ -532,10 +611,15 @@ class MotorStagePI(MotorInterface):
             return -1
 
     def _read_answer_xyz(self):
-        """ Read answer if number of chunks is not known ahead of call.
+        """
+        Read answer if number of chunks is not known ahead of call.
         Try to avoid, may cause instability.
         For a certain command n_chunks should be constant. -> Use ._aks_xyz()
-        @return answer string: answer of motor
+        
+        Returns
+        -------
+        answer string
+            answer of motor
         """
 
         finished_reading = False
@@ -584,14 +668,24 @@ class MotorStagePI(MotorInterface):
         return str_ret
 
     def _do_move_rel(self, axis, step):
-        """internal method for the relative move
-
-        @param axis string: name of the axis that should be moved
-
-        @param float step: step in meter
-
-        @return str axis: axis which is moved
-                move float: absolute position to move to
+        """
+        internal method for the relative move
+        
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be moved
+        
+        step : float
+            step in meter
+        
+        
+        Returns
+        -------
+        str axis
+            axis which is moved
+        move float
+            absolute position to move to
         """
         constraints = self.get_constraints()
         if not(abs(constraints[axis]['pos_step']) < abs(step)):
@@ -604,14 +698,24 @@ class MotorStagePI(MotorInterface):
         return axis, move
 
     def _do_move_abs(self, axis, move):
-        """internal method for the absolute move in meter
-
-        @param axis string: name of the axis that should be moved
-
-        @param float move: desired position in meter
-
-        @return str axis: axis which is moved
-                move float: absolute position to move to
+        """
+        internal method for the absolute move in meter
+        
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be moved
+        
+        move : float
+            desired position in meter
+        
+        
+        Returns
+        -------
+        str axis
+            axis which is moved
+        move float
+            absolute position to move to
         """
         constraints = self.get_constraints()
         #self.log.info(axis + 'MA{0}'.format(int(move*1e8)))
@@ -627,11 +731,16 @@ class MotorStagePI(MotorInterface):
 
 
     def _in_movement_xyz(self):
-        """this method checks if the magnet is still moving and returns
+        """
+        this method checks if the magnet is still moving and returns
         a dictionary which of the axis are moving.
-
-        @return: dict param_dict: Dictionary displaying if axis are moving:
-        0 for immobile and 1 for moving
+        
+        
+        Returns
+        -------
+        dict
+            param_dict: Dictionary displaying if axis are moving:
+            0 for immobile and 1 for moving
         """
         constraints=self.get_constraints()
         param_dict = {}
@@ -647,11 +756,16 @@ class MotorStagePI(MotorInterface):
         return param_dict
 
     def _motor_stopped(self):
-        """this method checks if the magnet is still moving and returns
+        """
+        this method checks if the magnet is still moving and returns
             False if it is moving and True of it is immobile
-
-            @return: bool stopped: False for immobile and True for moving
-                """
+        
+        
+        Returns
+        -------
+        bool
+            stopped: False for immobile and True for moving
+        """
         param_dict=self._in_movement_xyz()
         stopped=True
         for axis_label in param_dict:

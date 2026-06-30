@@ -170,9 +170,14 @@ class M3202A(PulserInterface):
         self.awg.close()
 
     def reset(self):
-        """ Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         activation_dict = self.get_active_channels()
         active_channels = {chnl for chnl in activation_dict if activation_dict[chnl]}
@@ -206,15 +211,24 @@ class M3202A(PulserInterface):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
         """
         return self._constraints
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         if self.last_sequence is None:
             self.log.error('This AWG only supports sequences. Please put the waveform in a sequence and then load it.')
@@ -224,19 +238,31 @@ class M3202A(PulserInterface):
             return 0
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device off.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.log.debug('StopMultiple {}'.format(self.awg.AWGstopMultiple(0b1111)))
         return 0
 
     def load_waveform(self, load_dict):
-        """ Loads a waveform to the specified channel of the pulsing device.
+        """
+        Loads a waveform to the specified channel of the pulsing device.
+        
+        Parameters
+        ----------
+        load_dict : dict|list
+            a dictionary with keys being one of the available channel
 
-        @param load_dict:  dict|list, a dictionary with keys being one of the available channel
-
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per channel.
         """
         if isinstance(load_dict, list):
             new_dict = dict()
@@ -258,38 +284,61 @@ class M3202A(PulserInterface):
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device in order to be ready for playback.
-        @param sequence_name:  dict|list, a dictionary with keys being one of the available channel
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
+        """
+        Loads a sequence to the channels of the device in order to be ready for playback.
+
+        Parameters
+        ----------
+        sequence_name :  dict|list
+            a dictionary with keys being one of the available channel
+
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per channel.
         """
         return self.get_loaded_assets()[0]
 
     def get_loaded_assets(self):
         """
         Retrieve the currently loaded asset names for each active channel of the device.
-
-        @return (dict, str): Dictionary with keys being the channel number and values being the
-                             respective asset loaded into the channel,
-                             string describing the asset type ('waveform' or 'sequence')
+        
+        
+        Returns
+        -------
+        (dict, str)
+            Dictionary with keys being the channel number and values being the
+            respective asset loaded into the channel,
+            string describing the asset type ('waveform' or 'sequence')
         """
         if self.last_sequence is None:
             return self.loaded_waveforms, 'waveform'
         return self.loaded_waveforms, 'sequence'
 
     def clear_all(self):
-        """ Clears all loaded waveforms from the pulse generators RAM/workspace.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Clears all loaded waveforms from the pulse generators RAM/workspace.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.reset()
         return 0
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware
-
-        @return (int, dict): tuple with an interger value of the current status and a corresponding
-                             dictionary containing status description for all the possible status
-                             variables of the pulse generator hardware.
+        """
+        Retrieves the status of the pulsing hardware
+        
+        
+        Returns
+        -------
+        (int, dict)
+            tuple with an interger value of the current status and a corresponding
+            dictionary containing status description for all the possible status
+            variables of the pulse generator hardware.
         """
         status_dic = {
             -1: 'Failed Request or Communication',
@@ -308,33 +357,54 @@ class M3202A(PulserInterface):
         return current_status, status_dic
 
     def get_sample_rate(self):
-        """ Get the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
-
+        """
+        Get the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
+        
         Do not return a saved sample rate from an attribute, but instead retrieve the current
         sample rate directly from the device.
         """
         return self.awg.clockGetFrequency()
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware.
-
-        @param float sample_rate: The sampling rate to be set (in Hz)
-
-        @return float: the sample rate returned from the device (in Hz).
+        """
+        Set the sample rate of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sampling rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        float
+            the sample rate returned from the device (in Hz).
         """
         return self.awg.clockSetFrequency(sample_rate)
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if the amplitude value (in Volt peak to peak, i.e. the
+            full amplitude) of a specific channel is desired.
+        offset : list
+            optional, if the offset value (in Volt) of a specific channel is
+            desired.
 
-        @param list amplitude: optional, if the amplitude value (in Volt peak to peak, i.e. the
-                               full amplitude) of a specific channel is desired.
-        @param list offset: optional, if the offset value (in Volt) of a specific channel is
-                            desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor string
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel descriptor string
         """
         if amplitude is None:
             amplitude = ['a_ch1', 'a_ch2', 'a_ch3', 'a_ch4']
@@ -348,18 +418,27 @@ class M3202A(PulserInterface):
         return ret_amp, ret_off
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel(s).
-
-        @param dict amplitude: dictionary, with key being the channel descriptor string
-                               (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
-                               (in Volt peak to peak, i.e. the full amplitude) for the desired
-                               channel.
-        @param dict offset: dictionary, with key being the channel descriptor string
-                            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
-                            (in absolute volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for amplitude and
-                              offset for ALL channels.
+        """
+        Set amplitude and/or offset value of the provided analog channel(s).
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
+            (in Volt peak to peak, i.e. the full amplitude) for the desired
+            channel.
+        offset : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
+            (in absolute volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for amplitude and
+            offset for ALL channels.
         """
         for ch, ampl in amplitude.items():
             self.awg.channelAmplitude(self.__ch_map[ch], ampl)
@@ -374,55 +453,88 @@ class M3202A(PulserInterface):
         return self.analog_amplitudes, self.analog_offsets
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided/all channels.
-
-        @param list low: optional, if the low value (in Volt) of a specific channel is desired.
-        @param list high: optional, if the high value (in Volt) of a specific channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor strings
-                               (i.e. 'd_ch1', 'd_ch2') and items being the values for those
-                               channels. Both low and high value of a channel is denoted in volts.
+        """
+        Retrieve the digital low and high level of the provided/all channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if the low value (in Volt) of a specific channel is desired.
+        high : list
+            optional, if the high value (in Volt) of a specific channel is desired.
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel descriptor strings
+            (i.e. 'd_ch1', 'd_ch2') and items being the values for those
+            channels. Both low and high value of a channel is denoted in volts.
         """
         return {}, {}
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel descriptor string
-                         (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
-                         desired channel.
-        @param dict high: dictionary, with key being the channel descriptor string
-                          (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
-                          desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the current low value and
-                              the second dict the high value for ALL digital channels.
-                              Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
+            desired channel.
+        high : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
+            desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the current low value and
+            the second dict the high value for ALL digital channels.
+            Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
         """
         self.log.warning('no digital levels set')
         return {}, {}
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are needed to be asked
-                        without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel string and items boolean expressions whether
-                       channel are active or not.
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are needed to be asked
+            without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel string and items boolean expressions whether
+            channel are active or not.
         """
         if ch is None:
             ch = ['a_ch1', 'a_ch2', 'a_ch3', 'a_ch4']
         return {k: True for k in ch}
 
     def set_active_channels(self, ch=None):
-        """ Set the active channels for the pulse generator hardware.
-
-        @param dict ch: dictionary with keys being the analog or digital string generic names for
-                        the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
-                        True: Activate channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and digital channels
+        """
+        Set the active channels for the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string generic names for
+            the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
+            True: Activate channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and digital channels
         """
         ch = ['a_ch1', 'a_ch2', 'a_ch3', 'a_ch4']
         return {k: True for k in ch}
@@ -431,22 +543,33 @@ class M3202A(PulserInterface):
                        total_number_of_samples):
         """
         Write a new waveform or append samples to an already existing waveform on the device memory.
-
-        @param name: str, waveform name, human readabla
-        @param analog_samples: numpy.ndarray of type float32 containing the voltage samples
-        @param digital_samples: numpy.ndarray of type bool containing the marker states
-                                (if analog channels are active, this must be the same length as
-                                analog_samples)
-        @param is_first_chunk: bool, flag indicating if it is the first chunk to write.
-                                     If True this method will create a new empty wavveform.
-                                     If False the samples are appended to the existing waveform.
-        @param is_last_chunk: bool, flag indicating if it is the last chunk to write.
-                                    Some devices may need to know when to close the appending wfm.
-        @param total_number_of_samples: int, The number of sample points for the entire waveform
-                                        (not only the currently written chunk)
-
-        @return: (int, list) number of samples written (-1 indicates failed process) and list of
-                             created waveform names
+        
+        Parameters
+        ----------
+        name : str
+            waveform name, human readabla
+        analog_samples : numpy.ndarray
+            numpy.ndarray of type float32 containing the voltage samples
+        digital_samples : numpy.ndarray
+            numpy.ndarray of type bool containing the marker states
+            (if analog channels are active, this must be the same length as
+            analog_samples)
+        is_first_chunk : bool
+            flag indicating if it is the first chunk to write.
+            If True this method will create a new empty wavveform.
+            If False the samples are appended to the existing waveform.
+        is_last_chunk : bool
+            flag indicating if it is the last chunk to write.
+            Some devices may need to know when to close the appending wfm.
+        total_number_of_samples : int
+            The number of sample points for the entire waveform
+            (not only the currently written chunk)
+        
+        Returns
+        -------
+        (int, list)
+            number of samples written (-1 indicates failed process) and list of
+            created waveform names
         """
         tstart = datetime.datetime.now()
         self.log.debug('@{} write wfm: {} first: {} last: {} {}'.format(
@@ -523,11 +646,19 @@ class M3202A(PulserInterface):
     def write_sequence(self, name, sequence_parameter_list):
         """
         Write a new sequence on the device memory.
-
-        @param name: str, the name of the waveform to be created/append to
-        @param sequence_parameter_list:  list, contains the parameters for each sequence step and
-                                        the according waveform names.
-        @return: int, number of sequence steps written (-1 indicates failed process)
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        sequence_parameter_list : list
+            list, contains the parameters for each sequence step and
+            the according waveform names.
+        
+        Returns
+        -------
+        int
+            number of sequence steps written (-1 indicates failed process)
         """
         steps_written = 0
         wfms_added = {}
@@ -609,82 +740,141 @@ class M3202A(PulserInterface):
         return steps_written
 
     def get_waveform_names(self):
-        """ Retrieve the names of all uploaded waveforms on the device.
-
-        @return list: List of all uploaded waveform name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded waveforms on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded waveform name strings in the device workspace.
         """
         return list(self.written_waveforms.keys())
 
     def get_sequence_names(self):
-        """ Retrieve the names of all uploaded sequence on the device.
-
-        @return list: List of all uploaded sequence name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded sequence on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded sequence name strings in the device workspace.
         """
         return [self.last_sequence]
 
     def delete_waveform(self, waveform_name):
-        """ Delete the waveform with name "waveform_name" from the device memory.
-
-        @param str waveform_name: The name of the waveform to be deleted
-                                  Optionally a list of waveform names can be passed.
-
-        @return list: a list of deleted waveform names.
+        """
+        Delete the waveform with name "waveform_name" from the device memory.
+        
+        Parameters
+        ----------
+        waveform_name : str
+            The name of the waveform to be deleted
+            Optionally a list of waveform names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted waveform names.
         """
         return []
 
     def delete_sequence(self, sequence_name):
-        """ Delete the sequence with name "sequence_name" from the device memory.
-
-        @param str sequence_name: The name of the sequence to be deleted
-                                  Optionally a list of sequence names can be passed.
-
-        @return list: a list of deleted sequence names.
+        """
+        Delete the sequence with name "sequence_name" from the device memory.
+        
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the sequence to be deleted
+            Optionally a list of sequence names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted sequence names.
         """
         return []
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Will always return False for pulse generator hardware without interleave.
         """
         return False
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
         """
         return False
 
     def write(self, command):
-        """ Sends a command string to the device.
-
-        @param string command: string containing the command
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return -1
 
     def query(self, question):
-        """ Asks the device a 'question' and receive and return an answer from it.
-
-        @param string question: string containing the command
-
-        @return string: the answer of the device to the 'question' in a string
+        """
+        Asks the device a 'question' and receive and return an answer from it.
+        
+        Parameters
+        ----------
+        question : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        string
+            the answer of the device to the 'question' in a string
         """
         return ''
 
     def set_channel_triggers(self, active_channels, sequence_parameter_list):
-        """ Set up triggers and markers according to configuration
-
-        @param list active_channels: active aeg channels
-        @param list sequence_parameter_list: liust with all sequence elements
-
+        """
+        Set up triggers and markers according to configuration
+        
+        Parameters
+        ----------
+        active_channels : list
+            active aeg channels
+        sequence_parameter_list : list
+            liust with all sequence elements
         """
         # ignore triggers while a sequence part is played back
         self.awg.setTriggerBehaviourMode(1)

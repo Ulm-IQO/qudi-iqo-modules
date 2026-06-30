@@ -61,11 +61,19 @@ class CTC100(Base):
         self.disconnect()
 
     def connect(self, interface):
-        """ Connect to Instrument.
-
-            @param str interface: visa interface identifier
-
-            @return bool: connection success
+        """
+        Connect to Instrument.
+        
+        Parameters
+        ----------
+        interface : str
+            visa interface identifier
+        
+        
+        Returns
+        -------
+        bool
+            connection success
         """
         try:
             self.rm = visa.ResourceManager()
@@ -83,40 +91,68 @@ class CTC100(Base):
         self.rm.close()
 
     def get_channel_names(self):
-        """ Get a list of channel names.
-
-            @return list(str): list of channel names
+        """
+        Get a list of channel names.
+        
+        
+        Returns
+        -------
+        list(str)
+            list of channel names
         """
         return self.inst.ask('getOutputNames?').split(', ')
 
     def is_channel_selected(self, channel):
-        """ Check if a channel is selectes
-
-            @param str channel: channel name
-
-            @return bool: whether channel is selected
+        """
+        Check if a channel is selectes
+        
+        Parameters
+        ----------
+        channel : str
+            channel name
+        
+        
+        Returns
+        -------
+        bool
+            whether channel is selected
         """
         return self.inst.ask(channel.replace(" ", "") + '.selected?' ).split(' = ')[-1] == 'On'
 
     def is_output_on(self):
-        """ Check if device outputs are enabled.
-
-            @return bool: wheter device outputs are enabled
+        """
+        Check if device outputs are enabled.
+        
+        
+        Returns
+        -------
+        bool
+            wheter device outputs are enabled
         """
         result = self.inst.ask('OutputEnable?').split()[2]
         return result == 'On'
 
     def get_temp_by_name(self, name):
-        """ Get temperature by name.
-
-            @return float: temperature value
+        """
+        Get temperature by name.
+        
+        
+        Returns
+        -------
+        float
+            temperature value
         """
         return self.inst.ask_for_values('{}.value?'.format(name))[0]
 
     def get_all_outputs(self):
-        """ Get a list of all output names
-
-            @return list(str): output names
+        """
+        Get a list of all output names
+        
+        
+        Returns
+        -------
+        list(str)
+            output names
         """
         names = self.get_channel_names()
         raw = self.inst.ask('getOutputs?').split(', ')
@@ -126,9 +162,14 @@ class CTC100(Base):
         return dict(zip(names, values))
 
     def get_selected_channels(self):
-        """ Get all selected channels.
-
-            @return dict: dict of channel_name: bool indicating selected channels
+        """
+        Get all selected channels.
+        
+        
+        Returns
+        -------
+        dict
+            dict of channel_name: bool indicating selected channels
         """
         names = self.get_channel_names()
         values = []
@@ -137,16 +178,25 @@ class CTC100(Base):
         return dict(zip(names, values))
 
     def channel_off(self, channel):
-        """ Turn off channel.
-
-            @param channel str: name of channel to turn off
+        """
+        Turn off channel.
+        
+        Parameters
+        ----------
+        str : channel
+            name of channel to turn off
         """
         return self.inst.ask('{}.Off'.format(channel)).split(' = ')[1]
 
     def enable_output(self):
-        """ Turn on all outputs.
-
-            @return bool: whether turning on was successful
+        """
+        Turn on all outputs.
+        
+        
+        Returns
+        -------
+        bool
+            whether turning on was successful
         """
         if self.is_output_on():
             return True
@@ -155,9 +205,14 @@ class CTC100(Base):
             return result == 'On'
 
     def disable_output(self):
-        """ Turn off all outputs.
-
-            @return bool: whether turning off was successful
+        """
+        Turn off all outputs.
+        
+        
+        Returns
+        -------
+        bool
+            whether turning off was successful
         """
         if self.is_output_on():
             result = self.inst.ask('OutputEnable = Off').split()[2]

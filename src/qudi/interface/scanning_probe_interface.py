@@ -85,14 +85,22 @@ class ScannerAxis:
 class ScanSettings:
     """
     Data class representing all settings specifying a scanning probe measurement.
-
-    @param str[] channels: names of scanner channels involved in this scan
-    @param str[] axes: names of scanner axes involved in this scan
-    @param float[][2] range: inclusive range for each scan axis
-    @param int[] resolution: planned number of points for each scan axis
-    @param float frequency: Scan pixel frequency of the fast axis
-    @param str[] position_feedback_axes: optional, names of axes for which to acquire position
-                                         feedback during the scan.
+    
+    Parameters
+    ----------
+    channels : str[]
+        names of scanner channels involved in this scan
+    axes : str[]
+        names of scanner axes involved in this scan
+    range : float[][2]
+        inclusive range for each scan axis
+    resolution : int[]
+        planned number of points for each scan axis
+    frequency : float
+        Scan pixel frequency of the fast axis
+    position_feedback_axes : str[]
+        optional, names of axes for which to acquire position
+        feedback during the scan.
     """
 
     channels: Tuple[str, ...]
@@ -372,7 +380,6 @@ class ScanData:
     def new_scan(self, timestamp=None):
         """
         Reset data and position data and update the timestamp.
-        @param timestamp:
         """
         if timestamp is None:
             self.timestamp = datetime.datetime.now()
@@ -508,74 +515,112 @@ class ScanningProbeInterface(Base):
 
     @abstractmethod
     def configure_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        """
+        Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
         Will reset back scan configuration if back scan is available.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        
+        Parameters
+        ----------
+        settings : ScanSettings
+            ScanSettings instance holding all parameters
         """
         pass
 
     @abstractmethod
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters of the backwards scan.
+        """
+        Configure the hardware with all parameters of the backwards scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
         If a back scan is not explicitly configured, hardware-specific default settings will be used.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
+        
+        Parameters
+        ----------
+        settings : ScanSettings
+            ScanSettings instance holding all parameters for the back scan
         """
         pass
 
     @abstractmethod
     def move_absolute(self, position: Dict[str, float],
                       velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
+        """
+        Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
-
+        
         Log error and return current target position if something fails or a scan is in progress.
-
-        @param dict position: absolute positions for all axes to move to, axis names as keys
-        @param float velocity: movement velocity
-        @param bool blocking: If True this call returns only after the final position is reached.
-
-        @return dict: new position of all axes
+        
+        Parameters
+        ----------
+        position : dict
+            absolute positions for all axes to move to, axis names as keys
+        velocity : float
+            movement velocity
+        blocking : bool
+            If True this call returns only after the final position is reached.
+        
+        
+        Returns
+        -------
+        dict
+            new position of all axes
         """
         pass
 
     @abstractmethod
     def move_relative(self, distance: Dict[str, float],
                       velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
-        """ Move the scanning probe by a relative distance from the current target position as fast
+        """
+        Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
-
+        
         Log error if something fails or a 1D/2D scan is in progress.
-
-        @param dict distance: relative distance for all axes to move by, axis names as keys
-        @param float velocity: movement velocity
-        @param bool blocking: If True this call returns only after the final position is reached.
-
-        @return dict: new position of all axes
+        
+        Parameters
+        ----------
+        distance : dict
+            relative distance for all axes to move by, axis names as keys
+        velocity : float
+            movement velocity
+        blocking : bool
+            If True this call returns only after the final position is reached.
+        
+        
+        Returns
+        -------
+        dict
+            new position of all axes
         """
         pass
 
     @abstractmethod
     def get_target(self) -> Dict[str, float]:
-        """ Get the current target position of the scanner hardware
+        """
+        Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
-
-        @return dict: current target position per axis.
+        
+        
+        Returns
+        -------
+        dict
+            current target position per axis.
         """
         pass
 
     @abstractmethod
     def get_position(self) -> Dict[str, float]:
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        """
+        Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
         For the same target this value can fluctuate according to the scanners positioning accuracy.
 
         For scanning devices that do not have position feedback sensors, simply return the target
         position (see also: ScanningProbeInterface.get_target).
-
-        @return dict: current position per axis.
+        
+        
+        Returns
+        -------
+        dict
+            current position per axis.
         """
         pass
 

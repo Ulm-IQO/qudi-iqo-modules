@@ -277,13 +277,21 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # =========================================================================
 
     def check(self, func_val):
-        """ Check routine for the received error codes.
-
-        @param int func_val: return error code of the called function.
-
-        @return int: pass the error code further so that other functions have
-                     the possibility to use it.
-
+        """
+        Check routine for the received error codes.
+        
+        Parameters
+        ----------
+        func_val : int
+            return error code of the called function.
+        
+        
+        Returns
+        -------
+        int
+            pass the error code further so that other functions have
+            the possibility to use it.
+        
         Each called function in the dll has an 32-bit return integer, which
         indicates, whether the function was called and finished successfully
         (then func_val = 0) or if any error has occurred (func_val < 0).
@@ -308,12 +316,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return func_val
 
     def get_error_string(self):
-        """ Return the most recent error string.
-
-        @return str: A string describing the last error is returned. A string
-                     containing "No Error" is returned if the last function call
-                     was successful.
-
+        """
+        Return the most recent error string.
+        
+        
+        Returns
+        -------
+        str
+            A string describing the last error is returned. A string
+            containing "No Error" is returned if the last function call
+            was successful.
+        
         Anytime a function (such as pb_init(), pb_start_programming(), etc.)
         encounters an error, this function will return a description of what
         went wrong.
@@ -328,11 +341,16 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_get_error().decode('utf8')
 
     def count_boards(self):
-        """ Return the number of SpinCore boards present in your system.
-
-        @return int: The number of boards present is returned. -1 is returned
-                     on error, and spinerr is set to a description of the
-                     error.
+        """
+        Return the number of SpinCore boards present in your system.
+        
+        
+        Returns
+        -------
+        int
+            The number of boards present is returned. -1 is returned
+            on error, and spinerr is set to a description of the
+            error.
         """
 
         self._lib.pb_count_boards.restype = ctypes.c_int
@@ -340,13 +358,21 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_count_boards()
 
     def select_board(self, board_num=0):
-        """ Select the proper SpinCore card, if multiple are present.
-
-        @param int board_num: Specifies which board to select. Counting starts
-                              at 0.
-
-        @return int: the selected board number or -1 for an error.
-
+        """
+        Select the proper SpinCore card, if multiple are present.
+        
+        Parameters
+        ----------
+        board_num : int
+            Specifies which board to select. Counting starts
+            at 0.
+        
+        
+        Returns
+        -------
+        int
+            the selected board number or -1 for an error.
+        
         If multiple boards from SpinCore Technologies are present in your
         system, this function allows you to select which board to talk to. Once
         this function is called, all subsequent commands (such as pb_init(),
@@ -365,11 +391,19 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self.check(self._lib.pb_select_board(board_num))
 
     def set_debug_mode(self, value):
-        """ Set the debug mode.
-
-        @param bool value: State to set the debug mode to.
-
-        @return: the current debug mode.
+        """
+        Set the debug mode.
+        
+        Parameters
+        ----------
+        value : bool
+            State to set the debug mode to.
+        
+        
+        Returns
+        -------
+        bool
+            the current debug mode.
         """
 
         self._debug_mode = value
@@ -377,17 +411,27 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._debug_mode
 
     def get_debug_mode(self):
-        """ Retrieve whether debug mode is set.
-
-        @return bool: the current debug mode
+        """
+        Retrieve whether debug mode is set.
+        
+        
+        Returns
+        -------
+        bool
+            the current debug mode
         """
         return self._debug_mode
 
     def get_version(self):
-        """Get the version date of this library.
-
-        @return string: A string indicating the version of this library is
-                        returned. The version is a string in the form YYYYMMDD.
+        """
+        Get the version date of this library.
+        
+        
+        Returns
+        -------
+        string
+            A string indicating the version of this library is
+            returned. The version is a string in the form YYYYMMDD.
         """
 
         # .decode converts char into string:
@@ -395,9 +439,14 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_get_version().decode('utf-8')
 
     def get_firmware_id(self):
-        """Gets the current version of the SpinPTS API being used.
-
-        @return int: Returns the firmware id containing the version string.
+        """
+        Gets the current version of the SpinPTS API being used.
+        
+        
+        Returns
+        -------
+        int
+            Returns the firmware id containing the version string.
         """
         self._lib.pb_get_firmware_id.restype = ctypes.c_uint
 
@@ -410,12 +459,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return firmware_id
 
     def start(self):
-        """ Send a software trigger to the board.
-
-        @return int: A negative number is returned on failure, and spinerr is
-                     set to a description of the error. 0 is returned on
-                     success.
-
+        """
+        Send a software trigger to the board.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error. 0 is returned on
+            success.
+        
         This will start execution of a pulse program.It will also trigger a
         program which is currently paused due to a WAIT instruction. Triggering
         can also be accomplished through hardware, please see your board's
@@ -424,12 +478,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_start())
 
     def stop(self):
-        """Stops output of board.
-
-        @return int: A negative number is returned on failure, and spinerr is
-                     set to a description of the error. 0 is returned on
-                     success.
-
+        """
+        Stops output of board.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error. 0 is returned on
+            success.
+        
         Analog output will return to ground, and TTL outputs will either remain
         in the same state they were in when the reset command was received or
         return to ground. This also resets the PulseBlaster so that the
@@ -440,12 +499,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_stop())
 
     def reset_device(self):
-        """ Stops the output of board and resets the PulseBlaster Core.
-
-        @return int: A negative number is returned on failure, and spinerr is
-                     set to a description of the error.
-                     0 is returned on success.
-
+        """
+        Stops the output of board and resets the PulseBlaster Core.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error.
+            0 is returned on success.
+        
         This also resets the PulseBlaster Core so that the board can be run
         again using self.start() or a hardware trigger.
         """
@@ -453,12 +517,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_reset())
 
     def open_connection(self):
-        """Initializes the board.
-
-        @return int: A negative number is returned on failure, and spinerr is
-                     set to a description of the error. 0 is returned on
-                     success.
-
+        """
+        Initializes the board.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error. 0 is returned on
+            success.
+        
         This must be called before any other functions are used which
         communicate with the board. If you have multiple boards installed in
         your system, pb_select_board() may be called first to select which
@@ -470,11 +539,16 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return ret_val
 
     def close_connection(self):
-        """End communication with the board.
-
-        @return: A negative number is returned on failure, and spinerr is set
-                 to a description of the error. 0 is returned on success.
-
+        """
+        End communication with the board.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is set
+            to a description of the error. 0 is returned on success.
+        
         This is generally called as the last line in a program. Once this is
         called, no further communication can take place with the board unless
         the board is reinitialized with pb_init(). However, any pulse program
@@ -485,18 +559,23 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_close())
 
     def start_programming(self):
-        """ Tell the board to start programming one of the onboard devices.
-
-        @ return int: A negative number is returned on failure, and spinerr is
-                      set to a description of the error. 0 is returned on
-                      success.
-
+        """
+        Tell the board to start programming one of the onboard devices.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error. 0 is returned on
+            success.
+        
         For all the devices, the method of programming follows the following
         form:
             a call to pb_start_programming(), a call to one or more functions
             which transfer the actual data, and a call to
             pb_stop_programming(). Only one device can be programmed at a time.
-
+        
         There are actually several programming methods possible, but since this
         card has only pulsing outputs, without DDS (Direct Digital Synthesis)
         or RadioProcessor output, the programming will be set by default to
@@ -506,27 +585,36 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_start_programming(self.PULSE_PROGRAM))
 
     def stop_programming(self):
-        """ Finishes the programming for a specific onboard devices.
-
-        @return int: A negative number is returned on failure, and spinerr is
-                     set to a description of the error. 0 is returned on
-                     success.
+        """
+        Finishes the programming for a specific onboard devices.
+        
+        
+        Returns
+        -------
+        int
+            A negative number is returned on failure, and spinerr is
+            set to a description of the error. 0 is returned on
+            success.
         """
 
         return self.check(self._lib.pb_stop_programming())
 
     def _set_core_clock(self, clock_freq):
-        """ Tell the library what clock frequency the board uses.
-
-        @param float clock_freq: Frequency of the clock in Hz.
-
+        """
+        Tell the library what clock frequency the board uses.
+        
+        Parameters
+        ----------
+        clock_freq : float
+            Frequency of the clock in Hz.
+        
         This should be called at the beginning of each program, right after you
         initialize the board with pb_init().
-
+        
         NOTE: This does not actually set the clock frequency!
               It simply tells the driver what frequency the board is using,
               since this cannot (currently) be autodetected.
-
+        
         Also note that this frequency refers to the speed at which the
         PulseBlaster core itself runs. On many boards, this is different than
         the value printed on the oscillator. On RadioProcessor devices, the A/D
@@ -541,28 +629,33 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_core_clock(clock)
 
     def _write_pulse(self, flags, inst, inst_data, length):
-        """Instruction programming function for boards without a DDS.
-
-        @param unsigned int flags: It is essentialy an integer number
-                                   corresponding to a bit representation of the
-                                   channel settings. Set every bit to one for
-                                   each flag you want to set high. If 8 channels
-                                   are addressable then their bit representation
-                                   would be
-                                       0b00000000   (in python).
-                                       => int(0b00000000)= 0 is the number you
-                                          would specify
-                                   where the most right corresponds to ch1 and
-                                   the most left to ch8. If you want to set
-                                   channel 1,2,3 and 7 to be on, then the bit
-                                   word must be
-                                       0b01000111
-                                       => int(0b01000111) = 71
-                                    so the flags=71 will perform the job above.
-                                   Valid values are from 0x0 (=0) to 0xFFFFFF
-                                   (=)
-        @param int inst: Specify the instruction you want. Valid instructions
-                         are:
+        """
+        Instruction programming function for boards without a DDS.
+        
+        Parameters
+        ----------
+        flags : unsigned int
+            It is essentialy an integer number
+            corresponding to a bit representation of the
+            channel settings. Set every bit to one for
+            each flag you want to set high. If 8 channels
+            are addressable then their bit representation
+            would be
+                0b00000000   (in python).
+                => int(0b00000000)= 0 is the number you
+                would specify
+            where the most right corresponds to ch1 and
+            the most left to ch8. If you want to set
+            channel 1,2,3 and 7 to be on, then the bit
+            word must be
+                0b01000111
+                => int(0b01000111) = 71
+            so the flags=71 will perform the job above.
+            Valid values are from 0x0 (=0) to 0xFFFFFF
+            (=)
+        inst : int
+            Specify the instruction you want. Valid instructions
+            are:
         Opcode# 	Instruction  Inst_data          Meaning of inst_data field
              0      CONTINUE     Ignored                      Program execution continues to next
                                                               instruction
@@ -591,21 +684,27 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                         a meaning in the inst_data (like e.g. 2 = LOOP) you can
                         specify in the inst_data how the loop should look like,
                         i.e. how many loops have to be done.
-
-        @param int inst_data: Instruction specific data. Internally this is a
-                              20 bit unsigned number, so the largest value that
-                              can be passed is 2^20-1 (the largest value
-                              possible for a 20 bit number). See above table
-                              to find out what this means for each instruction.
-                              Pass None if the inst_data should be ignored.
-        @param double length: Length of this instruction in seconds.
-
-        @return int: a positive number represents the address of the created
-                     instruction. This can be used as the branch address for any
-                     branch instructions. Other instructions should yield 0 as
-                     output. A negative number is returned on failure,
-                     and spinerr is set to a description of the error.
-
+        
+        inst_data : int
+            Instruction specific data. Internally this is a
+            20 bit unsigned number, so the largest value that
+            can be passed is 2^20-1 (the largest value
+            possible for a 20 bit number). See above table
+            to find out what this means for each instruction.
+            Pass None if the inst_data should be ignored.
+        length : double
+            Length of this instruction in seconds.
+        
+        
+        Returns
+        -------
+        int
+            a positive number represents the address of the created
+            instruction. This can be used as the branch address for any
+            branch instructions. Other instructions should yield 0 as
+            output. A negative number is returned on failure,
+            and spinerr is set to a description of the error.
+        
         (DDS = Direct Digital Synthesis). The old version of this command was
         'pb_set_clock', which is still valid, but should not be used.
 
@@ -624,16 +723,21 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.check(self._lib.pb_inst_pbonly(flags, inst, inst_data, length))
 
     def get_status_bit(self):
-        """Read status from the board.
-
-        @return int: Word that indicates the state of the current board like
-                     the representation 2^(<bit>), whereas the value of bit is
-                        bit 0 - Stopped     (2^0 = 1)
-                        bit 1 - Reset       (2^1 = 2)
-                        bit 2 - Running     (2^2 = 4)
-                        bit 3 - Waiting     (2^3 = 8)
-                        bit 4 - Scanning (RadioProcessor boards only, 2^4 = 16)
-
+        """
+        Read status from the board.
+        
+        
+        Returns
+        -------
+        int
+            Word that indicates the state of the current board like
+            the representation 2^(<bit>), whereas the value of bit is
+            bit 0 - Stopped     (2^0 = 1)
+            bit 1 - Reset       (2^1 = 2)
+            bit 2 - Running     (2^2 = 4)
+            bit 3 - Waiting     (2^3 = 8)
+            bit 4 - Scanning (RadioProcessor boards only, 2^4 = 16)
+        
         Not all boards support this, see your manual. Each bit of the returned
         integer indicates whether the board is in that state. Bit 0 is the
         least significant bit.
@@ -659,12 +763,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_read_status()
 
     def get_status_message(self):
-        """ Read status message from the board.
-
+        """
+        Read status message from the board.
+        
         Not all boards support this, see your manual. The returned string will
         either have the board's status or an error message.
-
-        @return str: containing the status message of the board.
+        
+        
+        Returns
+        -------
+        str
+            containing the status message of the board.
         """
         self._lib.pb_status_message.restype = ctypes.c_char_p
 
@@ -676,24 +785,33 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # =========================================================================
 
     def write_pulse_form(self, sequence_list, loop=True):
-        """ The higher level function, which creates the actual sequences.
-
-        @param list sequence_list: a list with dictionaries. The dictionaries
-                                   have the elements 'active_channels' and
-                                   'length. The 'active_channels' is
-                                   a numpy list, which contains the channel
-                                   number, which should be switched on. The
-                                   channel numbers start with 0. E.g.
-
+        """
+        The higher level function, which creates the actual sequences.
+        
+        Parameters
+        ----------
+        sequence_list : list
+            a list with dictionaries. The dictionaries
+            have the elements 'active_channels' and
+            'length. The 'active_channels' is
+            a numpy list, which contains the channel
+            number, which should be switched on. The
+            channel numbers start with 0. E.g.
+        
                                    [{'active_channels':[0], 'length': 10e-6},
                                     {'active_channels':[], 'length': 20e-6}]
                                     which will switch on
-
-        @param bool loop: optional, set if sequence should be looped (so that it
-                          runs continuously) or not, default it True.
-
-        @return int: The number of created pulses with the given sequence.
-
+        
+        loop : bool
+            optional, set if sequence should be looped (so that it
+            runs continuously) or not, default it True.
+        
+        
+        Returns
+        -------
+        int
+            The number of created pulses with the given sequence.
+        
         This method should called with the general sequence_list to program
         the PulseBlaster.
         """
@@ -754,15 +872,24 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return num
 
     def _convert_pulse_to_inst(self, active_channels, length):
-        """ Convert a pulse of one row to a instructions for the PulseBlaster.
-
-        @param np.array active_channels: the list of active channels like
-                                         e.g. [0,4,7]. Note that the channels
-                                         start from 0.
-        @param float length: length of the current row in s.
-
-        @return int: The address number num of the created instruction.
-
+        """
+        Convert a pulse of one row to a instructions for the PulseBlaster.
+        
+        Parameters
+        ----------
+        active_channels : np.array
+            the list of active channels like
+            e.g. [0,4,7]. Note that the channels
+            start from 0.
+        length : float
+            length of the current row in s.
+        
+        
+        Returns
+        -------
+        int
+            The address number num of the created instruction.
+        
         Helper method for write_pulse_form.
         """
 
@@ -865,16 +992,24 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return num
 
     def _convert_to_bitmask(self, active_channels):
-        """ Convert a list of channels into a bitmask.
-
-        @param np.array active_channels: the list of active channels like  e.g.
-                                            [0,4,7].
-                                         Note that the channels start from 0.
-
-        @return int: The channel-list is converted into a bitmask (an sequence
-                     of 1 and 0). The returned integer corresponds to such a
-                     bitmask.
-
+        """
+        Convert a list of channels into a bitmask.
+        
+        Parameters
+        ----------
+        active_channels : np.array
+            the list of active channels like  e.g.
+            [0,4,7].
+            Note that the channels start from 0.
+        
+        
+        Returns
+        -------
+        int
+            The channel-list is converted into a bitmask (an sequence
+            of 1 and 0). The returned integer corresponds to such a
+            bitmask.
+        
         Note that you can get a binary representation of an integer in python
         if you use the command bin(<integer-value>). All higher unneeded digits
         will be dropped, i.e. 0b00100 is turned into 0b100. Examples are
@@ -906,15 +1041,23 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return bits
 
     def _factor(self, number):
-        """ Try to write a number higher than 256 as a product of two numbers.
-
-        @param int number: this number you want to factorize
-
-        @return tuple(2): The first number divides the input value without any
-                          residual, the second number tell you how often you
-                          have to multiply the first number to get the input
-                          value.
-
+        """
+        Try to write a number higher than 256 as a product of two numbers.
+        
+        Parameters
+        ----------
+        number : int
+            this number you want to factorize
+        
+        
+        Returns
+        -------
+        tuple(2)
+            The first number divides the input value without any
+            residual, the second number tell you how often you
+            have to multiply the first number to get the input
+            value.
+        
         Starting from 256 you try to find a number which will divide the input
         value such that no residue remains. If there is no number, then you
         have found a prime number that is bigger than the number 256. If you
@@ -933,8 +1076,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return 1, number
 
     def _correct_sequence_for_delays(self, sequence):
-        """ Take a sequence and modify it to take into account delays
-
+        """
+        Take a sequence and modify it to take into account delays
+        
         For example the sequence
         [{'active_channels': [0], 'length': 50e-09},
         {'active_channels': [], 'length': 1500e-09},
@@ -950,10 +1094,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         In this example, the pulse on channel 2 is sent sooner and the pulse on channel 0
         is sent at the end to affect the system at t=0
-
-        @param sequence : the theoretical sequence to correct
-
-        @return corrected_sequence : the sequence taking the delays into account
+        
+        Parameters
+        ----------
+        sequence : 
+            the theoretical sequence to correct
+        
+        
+        Returns
+        -------
+        corrected_sequence
+            the sequence taking the delays into account
         """
         # If no delay is specified, skip the whole process
         if len(self._channel_delays) == 0:
@@ -1050,23 +1201,33 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # =========================================================================
 
     def activate_channels(self, ch_list, length=100e-9, immediate_start=True):
-        """ Set specific channels to high, all others to low.
-
-        @param list ch_list: the list of active channels like  e.g. [0,4,7].
-                             Note that the channels start from 0. Note, an empty
-                             list will set all channels to low.
-        @param int length: optional, length of the activated channel output in
-                           s. Since there will be no switching of channels
-                           within this mode, the length of the pulsing time can
-                           be chosen arbitrary. Here 100e-9s is the default value.
-                           A larger number does not make a lot of sense.
-
-        @param bool immediate_start: optional, indicate whether output should
-                                     directly be switch on, default is True.
-
-        @return int: the number of created pulse instructions, normally it
-                     should output just the number 1.
-
+        """
+        Set specific channels to high, all others to low.
+        
+        Parameters
+        ----------
+        ch_list : list
+            the list of active channels like  e.g. [0,4,7].
+            Note that the channels start from 0. Note, an empty
+            list will set all channels to low.
+        length : int
+            optional, length of the activated channel output in
+            s. Since there will be no switching of channels
+            within this mode, the length of the pulsing time can
+            be chosen arbitrary. Here 100e-9s is the default value.
+            A larger number does not make a lot of sense.
+        
+        immediate_start : bool
+            optional, indicate whether output should
+            directly be switch on, default is True.
+        
+        
+        Returns
+        -------
+        int
+            the number of created pulse instructions, normally it
+            should output just the number 1.
+        
         This is a high level command mostly used not for pulsing but just rather
         for switching something on or off.
 
@@ -1091,31 +1252,53 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # =========================================================================
 
     def getNumberOfSwitches(self):
-        """ Gives the number of switches connected to this hardware.
-
-        @return int: number of swiches on this hardware
+        """
+        Gives the number of switches connected to this hardware.
+        
+        
+        Returns
+        -------
+        int
+            number of swiches on this hardware
         """
         return len(self._switch_states)
 
     def _get_switch_state(self, switch_num):
-        """ Gives state of switch.
-
-        @param int switch_num: number of switch, numbering starts with 0
-
-        @return bool: True if on, False if off, None on error
+        """
+        Gives state of switch.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch, numbering starts with 0
+        
+        
+        Returns
+        -------
+        bool
+            True if on, False if off, None on error
         """
 
         return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
     def getCalibration(self, switch_num, switch_state):
-        """ Get calibration parameter for switch.
-
-        @param int switch_num: number of switch for which to get calibration
-                                 parameter
-        @param str switch_state: state ['On', 'Off'] for which to get
-                                calibration parameter
-
-        @return str: calibration parameter for switch and state.
+        """
+        Get calibration parameter for switch.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch for which to get calibration
+            parameter
+        switch_state : str
+            state ['On', 'Off'] for which to get
+            calibration parameter
+        
+        
+        Returns
+        -------
+        str
+            calibration parameter for switch and state.
         """
 
         # There is no possibility to calibrate the voltage values for the
@@ -1124,27 +1307,45 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return possible_states[switch_state]
 
     def setCalibration(self, switch_num, switch_state, value):
-        """ Set calibration parameter for switch.
-
-          @param int switch_num: number of switch for which to get calibration
-                                   parameter
-          @param str switch_state: state ['On', 'Off'] for which to get
-                                   calibration parameter
-          @param int value: calibration parameter to be set.
-
-          @return bool: True if succeeds, False otherwise
+        """
+        Set calibration parameter for switch.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch for which to get calibration
+            parameter
+        switch_state : str
+            state ['On', 'Off'] for which to get
+            calibration parameter
+        value : int
+            calibration parameter to be set.
+        
+        
+        Returns
+        -------
+        bool
+            True if succeeds, False otherwise
         """
         self.log.warning('Not possible to set a Switch Voltage for '
                          'PulseBlaster Devices. Command ignored.')
         return True
 
     def _set_switch_on(self, switch_num):
-        """ Switch on.
-
-        @param int switch_num: number of switch to be switched, number starts
-                               from zero.
-
-        @return bool: True if succeeds, False otherwise
+        """
+        Switch on.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch to be switched, number starts
+            from zero.
+        
+        
+        Returns
+        -------
+        bool
+            True if succeeds, False otherwise
         """
 
         self._switch_states['d_ch{0}'.format(switch_num+1)] = True
@@ -1156,11 +1357,19 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
     def _set_switch_off(self, switch_num):
-        """ Switch off.
-
-        @param int switch_num: number of switch to be switched
-
-        @return bool: True if suceeds, False otherwise
+        """
+        Switch off.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch to be switched
+        
+        
+        Returns
+        -------
+        bool
+            True if suceeds, False otherwise
         """
 
         self._switch_states['d_ch{0}'.format(switch_num+1)] = False
@@ -1172,11 +1381,19 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
     def getSwitchTime(self, switch_num):
-        """ Give switching time for switch.
-
-        @param int switch_num: number of switch
-
-        @return float: time needed for switch state change
+        """
+        Give switching time for switch.
+        
+        Parameters
+        ----------
+        switch_num : int
+            number of switch
+        
+        
+        Returns
+        -------
+        float
+            time needed for switch state change
         """
 
         # switch time is limited to communication speed to the device,
@@ -1188,11 +1405,16 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # =========================================================================
 
     def get_constraints(self):
-        """Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as
-                                    attributes.
-
+        """
+        Retrieve the hardware constrains from the Pulsing device.
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as
+            attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude,
         total_length_bins, channel_config, ...) related to the pulse generator
         hardware to the caller.
@@ -1331,41 +1553,59 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self.start()
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switches the pulsing device off.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self.stop()
 
     def load_waveform(self, load_dict):
-        """ Loads a waveform to the specified channel of the pulsing device.
+        """
+        Loads a waveform to the specified channel of the pulsing device.
+        
+        Parameters
+        ----------
+        load_dict : dict|list
+            a dictionary with keys being one of the
+            available channel index and values being the
+            name of the already written waveform to load
+            into the channel. Examples:
+        
+                    {1: rabi_ch1, 2: rabi_ch2}
+                or
+                    {1: rabi_ch2, 2: rabi_ch1}
 
-        @param dict|list load_dict: a dictionary with keys being one of the
-                                    available channel index and values being the
-                                    name of the already written waveform to load
-                                    into the channel. Examples:
+            If just a list of waveform names if given,
+            the channel association will be invoked from
+            the channel suffix '_ch1', '_ch2' etc. A
+            possible configuration can be e.g.
 
-                                        {1: rabi_ch1, 2: rabi_ch2}
-                                    or
-                                        {1: rabi_ch2, 2: rabi_ch1}
-
-                                    If just a list of waveform names if given,
-                                    the channel association will be invoked from
-                                    the channel suffix '_ch1', '_ch2' etc. A
-                                    possible configuration can be e.g.
-
-                                        ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
-
-        @return dict: Dictionary containing the actually loaded waveforms per
-                      channel.
-
+                    ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per
+            channel.
+        
         For devices that have a workspace (i.e. AWG) this will load the waveform
         from the device workspace into the channel. For a device without mass
         memory, this will make the waveform/pattern that has been previously
@@ -1402,25 +1642,33 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device in order to be ready
+        """
+        Loads a sequence to the channels of the device in order to be ready
             for playback.
+        
+        Parameters
+        ----------
+        sequence_name : dict|list
+            a dictionary with keys being one of the
+            available channel index and values being
+            the name of the already written waveform
+            to load into the channel. Examples:
+        
+                    {1: rabi_ch1, 2: rabi_ch2} or
+                    {1: rabi_ch2, 2: rabi_ch1}
 
-        @param dict|list sequence_name: a dictionary with keys being one of the
-                                        available channel index and values being
-                                        the name of the already written waveform
-                                        to load into the channel. Examples:
-
-                                            {1: rabi_ch1, 2: rabi_ch2} or
-                                            {1: rabi_ch2, 2: rabi_ch1}
-
-                                        If just a list of waveform names if
-                                        given, the channel association will be
-                                        invoked from the channel suffix '_ch1',
-                                        '_ch2' etc.
-
-        @return dict: Dictionary containing the actually loaded waveforms per
-                      channel.
-
+            If just a list of waveform names if
+            given, the channel association will be
+            invoked from the channel suffix '_ch1',
+            '_ch2' etc.
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per
+            channel.
+        
         For devices that have a workspace (i.e. AWG) this will load the sequence
         from the device workspace into the channels. For a device without mass
         memory this will make the waveform/pattern that has been
@@ -1433,14 +1681,19 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return {}
 
     def get_loaded_assets(self):
-        """ Retrieve the currently loaded asset names for each active channel
+        """
+        Retrieve the currently loaded asset names for each active channel
             of the device.
-
-        @return (dict, str): Dictionary with keys being the channel number and
-                             values being the respective asset loaded into the
-                             channel, string describing the asset type
-                             ('waveform' or 'sequence')
-
+        
+        
+        Returns
+        -------
+        (dict, str)
+            Dictionary with keys being the channel number and
+            values being the respective asset loaded into the
+            channel, string describing the asset type
+            ('waveform' or 'sequence')
+        
         The returned dictionary will have the channel numbers as keys. In case
         of loaded waveforms the dictionary values will be the waveform names. In
         case of a loaded sequence the values will be the sequence name appended
@@ -1457,9 +1710,14 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return asset_dict, asset_type
 
     def clear_all(self):
-        """ Clears all loaded waveforms from the pulse generators RAM/workspace.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Clears all loaded waveforms from the pulse generators RAM/workspace.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
 
         self._currently_loaded_waveform = ''
@@ -1469,12 +1727,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return 0
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware.
-
-        @return (int, dict): tuple with an integer value of the current status
-                             and a corresponding dictionary containing status
-                             description for all the possible status variables
-                             of the pulse generator hardware.
+        """
+        Retrieves the status of the pulsing hardware.
+        
+        
+        Returns
+        -------
+        (int, dict)
+            tuple with an integer value of the current status
+            and a corresponding dictionary containing status
+            description for all the possible status variables
+            of the pulse generator hardware.
         """
         num = self.get_status_bit()
         if num in [0, 1, 2]:
@@ -1487,22 +1750,35 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return state, status_dict
 
     def get_sample_rate(self):
-        """ Get the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
-
+        """
+        Get the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
+        
         Do not return a saved sample rate from an attribute, but instead
         retrieve the current sample rate directly from the device.
         """
         return self.SAMPLE_RATE
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware.
-
-        @param float sample_rate: The sampling rate to be set (in Hz)
-
-        @return float: the sample rate returned from the device (in Hz).
-
+        """
+        Set the sample rate of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sampling rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        float
+            the sample rate returned from the device (in Hz).
+        
         Note: After setting the sampling rate of the device, use the actually
         set return value for further processing.
         """
@@ -1513,20 +1789,29 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.get_sample_rate()
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
-
-        @param list amplitude: optional, if the amplitude value (in Volt peak to
-                               peak, i.e. the full amplitude) of a specific
-                               channel is desired.
-        @param list offset: optional, if the offset value (in Volt) of a
-                            specific channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel
-                               descriptor string (i.e. 'a_ch1') and items being
-                               the values for those channels. Amplitude is
-                               always denoted in Volt-peak-to-peak and Offset
-                               in volts.
-
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if the amplitude value (in Volt peak to
+            peak, i.e. the full amplitude) of a specific
+            channel is desired.
+        offset : list
+            optional, if the offset value (in Volt) of a
+            specific channel is desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel
+            descriptor string (i.e. 'a_ch1') and items being
+            the values for those channels. Amplitude is
+            always denoted in Volt-peak-to-peak and Offset
+            in volts.
+        
         Note: Do not return a saved amplitude and/or offset value but instead
               retrieve the current amplitude and/or offset directly from the
               device.
@@ -1549,20 +1834,29 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return dict(), dict()
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel(s).
-
-        @param dict amplitude: dictionary, with key being the channel descriptor
-                               string (i.e. 'a_ch1', 'a_ch2') and items being
-                               the amplitude values (in Volt peak to peak, i.e.
-                               the full amplitude) for the desired channel.
-        @param dict offset: dictionary, with key being the channel descriptor
-                            string (i.e. 'a_ch1', 'a_ch2') and items being the
-                            offset values (in absolute volt) for the desired
-                            channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for
-                              amplitude and offset for ALL channels.
-
+        """
+        Set amplitude and/or offset value of the provided analog channel(s).
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel descriptor
+            string (i.e. 'a_ch1', 'a_ch2') and items being
+            the amplitude values (in Volt peak to peak, i.e.
+            the full amplitude) for the desired channel.
+        offset : dict
+            dictionary, with key being the channel descriptor
+            string (i.e. 'a_ch1', 'a_ch2') and items being the
+            offset values (in absolute volt) for the desired
+            channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for
+            amplitude and offset for ALL channels.
+        
         If nothing is passed then the command will return the current
         amplitudes/offsets.
 
@@ -1572,19 +1866,28 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return {}, {}
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided/all channels.
-
-        @param list low: optional, if the low value (in Volt) of a specific
-                         channel is desired.
-        @param list high: optional, if the high value (in Volt) of a specific
-                          channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel
-                               descriptor strings (i.e. 'd_ch1', 'd_ch2') and
-                               items being the values for those channels. Both
-                               low and high value of a channel is denoted in
-                               volts.
-
+        """
+        Retrieve the digital low and high level of the provided/all channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if the low value (in Volt) of a specific
+            channel is desired.
+        high : list
+            optional, if the high value (in Volt) of a specific
+            channel is desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel
+            descriptor strings (i.e. 'd_ch1', 'd_ch2') and
+            items being the values for those channels. Both
+            low and high value of a channel is denoted in
+            volts.
+        
         Note: Do not return a saved low and/or high value but instead retrieve
               the current low and/or high value directly from the device.
 
@@ -1617,20 +1920,29 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return low_dict, high_dict
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel descriptor
-                         string (i.e. 'd_ch1', 'd_ch2') and items being the low
-                         values (in volt) for the desired channel.
-        @param dict high: dictionary, with key being the channel descriptor
-                          string (i.e. 'd_ch1', 'd_ch2') and items being the
-                          high values (in volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the
-                              current low value and the second dict the high
-                              value for ALL digital channels. Keys are the
-                              channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
-
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel descriptor
+            string (i.e. 'd_ch1', 'd_ch2') and items being the low
+            values (in volt) for the desired channel.
+        high : dict
+            dictionary, with key being the channel descriptor
+            string (i.e. 'd_ch1', 'd_ch2') and items being the
+            high values (in volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the
+            current low value and the second dict the high
+            value for ALL digital channels. Keys are the
+            channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
+        
         If nothing is passed then the command will return the current voltage
         levels.
 
@@ -1642,14 +1954,22 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self.get_digital_level()
 
     def get_active_channels(self,  ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are
-                        needed to be asked without obtaining all the channels.
-
-        @return dict: where keys denoting the channel string and items boolean
-                      expressions whether channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are
+            needed to be asked without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel string and items boolean
+            expressions whether channel are active or not.
+        
         Example for an possible input (order is not important):
 
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
@@ -1673,16 +1993,24 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return active_ch
 
     def set_active_channels(self, ch=None):
-        """ Set the active channels for the pulse generator hardware.
-
-        @param dict ch: dictionary with keys being the analog or digital string
-                        generic names for the channels (i.e. 'd_ch1', 'a_ch2')
-                        with items being a boolean value. True: Activate
-                        channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and
-                      digital channels
-
+        """
+        Set the active channels for the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string
+            generic names for the channels (i.e. 'd_ch1', 'a_ch2')
+            with items being a boolean value. True: Activate
+            channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and
+            digital channels
+        
         If nothing is passed then the command will simply return the unchanged
         current state.
 
@@ -1722,30 +2050,43 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
     def write_waveform(self, name, analog_samples, digital_samples,
                        is_first_chunk, is_last_chunk, total_number_of_samples):
-        """ Write a new waveform or append samples to an already existing
+        """
+        Write a new waveform or append samples to an already existing
             waveform on the device memory.
-
-        @param str name: the name of the waveform to be created/append to
-        @param numpy.ndarray analog_samples: array of type float32 containing
-                                             the voltage samples
-        @param numpy.ndarray digital_samples: array of type bool containing the
-                                               marker states (if analog channels
-                                               are active, this must be the same
-                                               length as analog_samples)
-        @param bool is_first_chunk: flag indicating if it is the first chunk to
-                                    write. If True this method will create a new
-                                    empty waveform. If False the samples are
-                                    appended to the existing waveform.
-        @param bool is_last_chunk: flag indicating if it is the last chunk to
-                                   write. Some devices may need to know when to
-                                   close the appending waveform file.
-        @param int total_number_of_samples: The number of sample points for the
-                                            entire waveform (not only the
-                                            currently written chunk)
-
-        @return (int, list): number of samples written (-1 indicates failed
-                             process) and list of created waveform names.
-
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        analog_samples : numpy.ndarray
+            array of type float32 containing
+            the voltage samples
+        digital_samples : numpy.ndarray
+            array of type bool containing the
+            marker states (if analog channels
+            are active, this must be the same
+            length as analog_samples)
+        is_first_chunk : bool
+            flag indicating if it is the first chunk to
+            write. If True this method will create a new
+            empty waveform. If False the samples are
+            appended to the existing waveform.
+        is_last_chunk : bool
+            flag indicating if it is the last chunk to
+            write. Some devices may need to know when to
+            close the appending waveform file.
+        total_number_of_samples : int
+            The number of sample points for the
+            entire waveform (not only the
+            currently written chunk)
+        
+        
+        Returns
+        -------
+        (int, list)
+            number of samples written (-1 indicates failed
+            process) and list of created waveform names.
+        
         The flags is_first_chunk and is_last_chunk can be used as indicator,
         if a new waveform should be created or if the write process to a
         waveform should be terminated.
@@ -1820,26 +2161,34 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return chunk_length, [self._current_pb_waveform_name]
 
     def _convert_sample_to_pb_sequence(self, digital_samples):
-        """ Helper method to create a pulse blaster sequence.
+        """
+        Helper method to create a pulse blaster sequence.
+        
+        Parameters
+        ----------
+        digital_samples : numpy.ndarray
+            array of type bool containing the
+            marker states (if analog channels
+            are active, this must be the same
+            length as analog_samples)
+        
+        
+        Returns
+        -------
+        list
+            a sequence list with dictionaries formated for the generic
+            method 'write_pulse_form. The dictionaries have the
+            elements 'active_channels' and 'length. The
+            'active_channels' is a list, which contains the channel
+            number, which should be switched on. The channel numbers
+            start with 0. The 'length' entry contains the length of
+            the 'active_channels' in ns. E.g.
+        
+                [{'active_channels':[0], 'length': 10e-6},
+                    {'active_channels':[], 'length': 20e-6}]
 
-        @param numpy.ndarray digital_samples: array of type bool containing the
-                                              marker states (if analog channels
-                                              are active, this must be the same
-                                              length as analog_samples)
-
-        @return list: a sequence list with dictionaries formated for the generic
-                      method 'write_pulse_form. The dictionaries have the
-                      elements 'active_channels' and 'length. The
-                      'active_channels' is a list, which contains the channel
-                      number, which should be switched on. The channel numbers
-                      start with 0. The 'length' entry contains the length of
-                      the 'active_channels' in ns. E.g.
-
-                        [{'active_channels':[0], 'length': 10e-6},
-                         {'active_channels':[], 'length': 20e-6}]
-
-                      which will switch on channel 0 for 10us on and switch all
-                      channels off for 20us.
+            which will switch on channel 0 for 10us on and switch all
+            channels off for 20us.
         """
 
         ch_list = list(digital_samples)
@@ -1905,13 +2254,21 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def write_sequence(self, name, sequence_parameters):
         """
         Write a new sequence on the device memory.
-
-        @param str name: the name of the waveform to be created/append to
-        @param dict sequence_parameters: dictionary containing the parameters
-                                         for a sequence
-
-        @return: int, number of sequence steps written (-1 indicates failed
-                 process)
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        sequence_parameters : dict
+            dictionary containing the parameters
+            for a sequence
+        
+        
+        Returns
+        -------
+        int
+            number of sequence steps written (-1 indicates failed
+            process)
         """
         self.log.warning('PulseBlaster digital pulse generator has no '
                          'sequencing capabilities.\n'
@@ -1919,64 +2276,103 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return -1
 
     def get_waveform_names(self):
-        """ Retrieve the names of all uploaded waveforms on the device.
-
-        @return list: List of all uploaded waveform name strings in the device
-                      workspace.
+        """
+        Retrieve the names of all uploaded waveforms on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded waveform name strings in the device
+            workspace.
         """
 
         #FIXME: That seems not to be right. Docstring does not match with output.
         return [self._current_pb_waveform_name]
 
     def get_sequence_names(self):
-        """ Retrieve the names of all uploaded sequence on the device.
-
-        @return list: List of all uploaded sequence name strings in the device
-                      workspace.
+        """
+        Retrieve the names of all uploaded sequence on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded sequence name strings in the device
+            workspace.
         """
         return list()
 
 
     def delete_waveform(self, waveform_name):
-        """Delete the waveform with name "waveform_name" from the device memory.
-
-        @param str waveform_name: The name of the waveform to be deleted
-                                  Optionally a list of waveform names can be
-                                  passed.
-
-        @return list: a list of deleted waveform names.
+        """
+        Delete the waveform with name "waveform_name" from the device memory.
+        
+        Parameters
+        ----------
+        waveform_name : str
+            The name of the waveform to be deleted
+            Optionally a list of waveform names can be
+            passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted waveform names.
         """
         self.log.info('PulserBlaster does not has any waveform, skip delete '
                       'command.')
         return list()
 
     def delete_sequence(self, sequence_name):
-        """ Delete the sequence with name "sequence_name" from the device memory.
-
-        @param str sequence_name: The name of the sequence to be deleted
-                                  Optionally a list of sequence names can be passed.
-
-        @return list: a list of deleted sequence names.
+        """
+        Delete the sequence with name "sequence_name" from the device memory.
+        
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the sequence to be deleted
+            Optionally a list of sequence names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted sequence names.
         """
         return list()
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Will always return False for pulse generator hardware without interleave.
         """
         return False
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
-
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
+        
         Note: After setting the interleave of the device, retrieve the
               interleave again and use that information for further processing.
 
@@ -1989,35 +2385,55 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return False
 
     def reset(self):
-        """ Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self.reset_device()
 
     def has_sequence_mode(self):
-        """ Asks the pulse generator whether sequence mode exists.
-
-        @return: bool, True for yes, False for no.
+        """
+        Asks the pulse generator whether sequence mode exists.
+        
+        
+        Returns
+        -------
+        bool
+            True for yes, False for no.
         """
         return False
 
     @property
     def name(self):
-        """ Name of the hardware as string.
-
-        @return str: The name of the hardware
+        """
+        Name of the hardware as string.
+        
+        
+        Returns
+        -------
+        str
+            The name of the hardware
         """
         return self.module_name
 
     @property
     def available_states(self):
-        """ Names of the states as a dict of tuples.
-
+        """
+        Names of the states as a dict of tuples.
+        
         The keys contain the names for each of the switches. The values are tuples of strings
         representing the ordered names of available states for each switch.
-
-        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
+        
+        
+        Returns
+        -------
+        dict
+            Available states per switch in the form {"switch": ("state1", "state2")}
         """
         return {ch: (False, True) for ch in self._switch_states.keys()}
 
@@ -2029,19 +2445,32 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return int(switch.replace('d_ch', ''))
 
     def get_state(self, switch):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to query the state for
+        
+        Returns
+        -------
+        str
+            The current switch state
         """
 
         return self._get_switch_state(self._switch_name_to_num(switch))
 
     def set_state(self, switch, state):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to change
+        state : str
+            name of the state to set
         """
 
         if state:

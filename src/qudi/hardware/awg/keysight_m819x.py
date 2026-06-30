@@ -146,9 +146,13 @@ class AWGM819X(PulserInterface):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
-
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude, total_length_bins,
         channel_config, ...) related to the pulse generator hardware to the caller.
 
@@ -174,11 +178,16 @@ class AWGM819X(PulserInterface):
         pass
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error, higher number corresponds to
+            current status of the device. Check then the
+            class variable status_dic.)
         """
         self._write_output_on()
         self.check_dev_error()
@@ -205,10 +214,15 @@ class AWGM819X(PulserInterface):
         return self.get_status()[0]
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
+        """
+        Switches the pulsing device off.
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error, higher number corresponds to
+            current status of the device. Check then the
+            class variable status_dic.)
         """
 
         self.write(':ABOR')
@@ -220,17 +234,21 @@ class AWGM819X(PulserInterface):
         return self.get_status()[0]
 
     def load_waveform(self, load_dict, to_nextfree_segment=False):
-        """ Loads a waveform to the specified channel of the pulsing device.
-
-        @param dict|list load_dict: a dictionary with keys being one of the available channel
-                                    index and values being the name of the already written
-                                    waveform to load into the channel.
-                                    Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names is given, the channel
-                                    association will be invoked from the channel
-                                    suffix '_ch1', '_ch2' etc.
-
+        """
+        Loads a waveform to the specified channel of the pulsing device.
+        
+        Parameters
+        ----------
+        load_dict : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names is given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+        
                                         {1: rabi_ch1, 2: rabi_ch2}
                                     or
                                         {1: rabi_ch2, 2: rabi_ch1}
@@ -239,12 +257,16 @@ class AWGM819X(PulserInterface):
                                     the channel association will be invoked from
                                     the channel suffix '_ch1', '_ch2' etc. A
                                     possible configuration can be e.g.
-
+        
                                         ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
-
-        @return dict: Dictionary containing the actually loaded waveforms per
-                      channel.
-
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per
+            channel.
+        
         For devices that have a workspace (i.e. AWG) this will load the waveform
         from the device workspace into the channel. For a device without mass
         memory, this will make the waveform/pattern that has been previously
@@ -295,22 +317,30 @@ class AWGM819X(PulserInterface):
         return self.get_loaded_assets()
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device in order to be ready for playback.
+        """
+        Loads a sequence to the channels of the device in order to be ready for playback.
         For devices that have a workspace (i.e. AWG) this will load the sequence from the device
         workspace into the channels.
         For a device without mass memory this will make the waveform/pattern that has been
         previously written with self.write_waveform ready to play.
-
-        @param dict|list sequence_name: a dictionary with keys being one of the available channel
-                                        index and values being the name of the already written
-                                        waveform to load into the channel.
-                                        Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                    {1: rabi_ch2, 2: rabi_ch1}
-                                        If just a list of waveform names if given, the channel
-                                        association will be invoked from the channel
-                                        suffix '_ch1', '_ch2' etc.
-
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
+        
+        Parameters
+        ----------
+        sequence_name : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per channel.
         """
 
         if not (set(self.get_loaded_assets()[0].values())).issubset(set([sequence_name])):
@@ -337,10 +367,14 @@ class AWGM819X(PulserInterface):
         In case of loaded waveforms the dictionary values will be the waveform names.
         In case of a loaded sequence the values will be the sequence name appended by a suffix
         representing the track loaded to the respective channel (i.e. '<sequence_name>_1').
-
-        @return (dict, str): Dictionary with keys being the channel number and values being the
-                             respective asset loaded into the channel,
-                             string describing the asset type ('waveform' or 'sequence')
+        
+        
+        Returns
+        -------
+        (dict, str)
+            Dictionary with keys being the channel number and values being the
+            respective asset loaded into the channel,
+            string describing the asset type ('waveform' or 'sequence')
         """
 
         # Get all active channels
@@ -410,9 +444,14 @@ class AWGM819X(PulserInterface):
         return loaded_assets, type_per_ch[0]   # interface requires same type for all ch
 
     def clear_all(self):
-        """ Clears all loaded waveforms from the pulse generators RAM/workspace.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Clears all loaded waveforms from the pulse generators RAM/workspace.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
 
         self.write_all_ch(':TRAC{}:DEL:ALL', all_by_one={'m8195a': True})
@@ -421,11 +460,16 @@ class AWGM819X(PulserInterface):
         return
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware
-
-        @return (int, dict): tuple with an integer value of the current status and a corresponding
-                             dictionary containing status description for all the possible status
-                             variables of the pulse generator hardware.
+        """
+        Retrieves the status of the pulsing hardware
+        
+        
+        Returns
+        -------
+        (int, dict)
+            tuple with an integer value of the current status and a corresponding
+            dictionary containing status description for all the possible status
+            variables of the pulse generator hardware.
         """
 
         status_dic = {-1: 'Failed Request or Communication',
@@ -438,10 +482,15 @@ class AWGM819X(PulserInterface):
         return current_status, status_dic
 
     def get_sample_rate(self):
-        """ Get the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
-
+        """
+        Get the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
+        
         Do not return a saved sample rate from an attribute, but instead retrieve the current
         sample rate directly from the device.
         """
@@ -449,12 +498,20 @@ class AWGM819X(PulserInterface):
         return sample_rate
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware.
-
-        @param float sample_rate: The sampling rate to be set (in Hz)
-
-        @return float: the sample rate returned from the device (in Hz).
-
+        """
+        Set the sample rate of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sampling rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        float
+            the sample rate returned from the device (in Hz).
+        
         Note: After setting the sampling rate of the device, use the actually set return value for
               further processing.
         """
@@ -466,16 +523,24 @@ class AWGM819X(PulserInterface):
         return self.get_sample_rate()
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
-
-        @param list amplitude: optional, if the amplitude value (in Volt peak to peak, i.e. the
-                               full amplitude) of a specific channel is desired.
-        @param list offset: optional, if the offset value (in Volt) of a specific channel is
-                            desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor string
-                               (i.e. 'a_ch1') and items being the values for those channels.
-                               Amplitude is always denoted in Volt-peak-to-peak and Offset in volts.
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if the amplitude value (in Volt peak to peak, i.e. the
+            full amplitude) of a specific channel is desired.
+        offset : list
+            optional, if the offset value (in Volt) of a specific channel is
+            desired.
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel descriptor string
+            (i.e. 'a_ch1') and items being the values for those channels.
+            Amplitude is always denoted in Volt-peak-to-peak and Offset in volts.
 
         Note: Do not return a saved amplitude and/or offset value but instead retrieve the current
               amplitude and/or offset directly from the device.
@@ -523,19 +588,28 @@ class AWGM819X(PulserInterface):
         return amp, off
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel(s).
-
-        @param dict amplitude: dictionary, with key being the channel descriptor string
-                               (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
-                               (in Volt peak to peak, i.e. the full amplitude) for the desired
-                               channel.
-        @param dict offset: dictionary, with key being the channel descriptor string
-                            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
-                            (in absolute volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for amplitude and
-                              offset for ALL channels.
-
+        """
+        Set amplitude and/or offset value of the provided analog channel(s).
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the amplitude values
+            (in Volt peak to peak, i.e. the full amplitude) for the desired
+            channel.
+        offset : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'a_ch1', 'a_ch2') and items being the offset values
+            (in absolute volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for amplitude and
+            offset for ALL channels.
+        
         If nothing is passed then the command will return the current amplitudes/offsets.
 
         Note: After setting the amplitude and/or offset values of the device, use the actual set
@@ -602,12 +676,16 @@ class AWGM819X(PulserInterface):
         return self.get_analog_level()
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided/all channels.
-
-        @param list low: optional, if the low value (in Volt) of a specific channel is desired.
-        @param list high: optional, if the high value (in Volt) of a specific channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel descriptor strings
+        """
+        Retrieve the digital low and high level of the provided/all channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if the low value (in Volt) of a specific channel is desired.
+        high : list
+            optional, if the high value (in Volt) of a specific channel is desired.
+        
                                (i.e. 'd_ch1', 'd_ch2') and items being the values for those
                                channels. Both low and high value of a channel is denoted in volts.
 
@@ -650,19 +728,28 @@ class AWGM819X(PulserInterface):
         return low_val, high_val
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel descriptor string
-                         (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
-                         desired channel.
-        @param dict high: dictionary, with key being the channel descriptor string
-                          (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
-                          desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the current low value and
-                              the second dict the high value for ALL digital channels.
-                              Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
-
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the low values (in volt) for the
+            desired channel.
+        high : dict
+            dictionary, with key being the channel descriptor string
+            (i.e. 'd_ch1', 'd_ch2') and items being the high values (in volt) for the
+            desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the current low value and
+            the second dict the high value for ALL digital channels.
+            Keys are the channel descriptor strings (i.e. 'd_ch1', 'd_ch2')
+        
         If nothing is passed then the command will return the current voltage levels.
 
         Note: After setting the high and/or low values of the device, use the actual set return
@@ -743,13 +830,20 @@ class AWGM819X(PulserInterface):
         activation_config must still be valid according to the constraints.
         If the resulting set of active channels can not be found in the available
         activation_configs, the channel states must remain unchanged.
-
-        @param dict ch: dictionary with keys being the analog or digital string generic names for
-                        the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
-                        True: Activate channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and digital channels
-
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string generic names for
+            the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
+            True: Activate channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and digital channels
+        
         If nothing is passed then the command will simply return the unchanged current state.
 
         Note: After setting the active channels of the device, use the returned dict for further
@@ -795,24 +889,36 @@ class AWGM819X(PulserInterface):
         be created or if the write process to a waveform should be terminated.
 
         NOTE: All sample arrays in analog_samples and digital_samples must be of equal length!
-
-        @param str name: the name of the waveform to be created/append to
-        @param dict analog_samples: keys are the generic analog channel names (i.e. 'a_ch1') and
-                                    values are 1D numpy arrays of type float32 containing the
-                                    voltage samples normalized to half Vpp (between -1 and 1).
-        @param dict digital_samples: keys are the generic digital channel names (i.e. 'd_ch1') and
-                                     values are 1D numpy arrays of type bool containing the marker
-                                     states.
-        @param bool is_first_chunk: Flag indicating if it is the first chunk to write.
-                                    If True this method will create a new empty wavveform.
-                                    If False the samples are appended to the existing waveform.
-        @param bool is_last_chunk:  Flag indicating if it is the last chunk to write.
-                                    Some devices may need to know when to close the appending wfm.
-        @param int total_number_of_samples: The number of sample points for the entire waveform
-                                            (not only the currently written chunk)
-
-        @return (int, list): Number of samples written (-1 indicates failed process) and list of
-                             created waveform names
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        analog_samples : dict
+            keys are the generic analog channel names (i.e. 'a_ch1') and
+            values are 1D numpy arrays of type float32 containing the
+            voltage samples normalized to half Vpp (between -1 and 1).
+        digital_samples : dict
+            keys are the generic digital channel names (i.e. 'd_ch1') and
+            values are 1D numpy arrays of type bool containing the marker
+            states.
+        is_first_chunk : bool
+            Flag indicating if it is the first chunk to write.
+            If True this method will create a new empty wavveform.
+            If False the samples are appended to the existing waveform.
+        is_last_chunk : bool
+            Flag indicating if it is the last chunk to write.
+            Some devices may need to know when to close the appending wfm.
+        total_number_of_samples : int
+            The number of sample points for the entire waveform
+            (not only the currently written chunk)
+        
+        
+        Returns
+        -------
+        (int, list)
+            Number of samples written (-1 indicates failed process) and list of
+            created waveform names
         """
 
         waveforms = []
@@ -861,15 +967,23 @@ class AWGM819X(PulserInterface):
         Write a new sequence on the device memory.
         In wave_mem_mode == 'pc_hdd' and if elements in the sequence are not available on the AWG yet, they will be
         transferred from the PC.
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        sequence_parameters : list
+            List containing tuples of length 2. Each tuple represents
+            a sequence step. The first entry of the tuple is a list of
+            waveform names (str); one for each channel. The second
+            tuple element is a SequenceStep instance containing the
+            sequencing parameters for this step.
+            
+        Returns
+        -------
+        int
+            number of sequence steps written (-1 indicates failed process)
 
-        @param str name: the name of the waveform to be created/append to
-        @param list sequence_parameters: List containing tuples of length 2. Each tuple represents
-                                         a sequence step. The first entry of the tuple is a list of
-                                         waveform names (str); one for each channel. The second
-                                         tuple element is a SequenceStep instance containing the
-                                         sequencing parameters for this step.
-
-        @return: int, number of sequence steps written (-1 indicates failed process)
         """
 
         # Check if device has sequencer option installed
@@ -979,9 +1093,14 @@ class AWGM819X(PulserInterface):
         return int(ctr_steps_written)
 
     def get_waveform_names(self):
-        """ Retrieve the names of all uploaded waveforms on the device.
-
-        @return list: List of all uploaded waveform name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded waveforms on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded waveform name strings in the device workspace.
         """
 
         names = []
@@ -1003,11 +1122,16 @@ class AWGM819X(PulserInterface):
         return names
 
     def get_sequence_names(self):
-        """ Retrieve the names of all uploaded sequence on the device.
-
+        """
+        Retrieve the names of all uploaded sequence on the device.
+        
         In mode 'pc_hdd', self._assets_storage_path must equal sequence_generator_logic.__assets_storage_path!
-
-        @return list: List of all uploaded sequence name strings in the device workspace.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded sequence name strings in the device workspace.
         """
         sequence_list = list()
 
@@ -1039,12 +1163,20 @@ class AWGM819X(PulserInterface):
         return sequence_list
 
     def delete_waveform(self, waveform_name):
-        """ Delete the waveform with name "waveform_name" from the device memory.
-
-        @param str waveform_name: The name of the waveform to be deleted without _ch? postfix.
-                                  Optionally a list of waveform names can be passed.
-
-        @return list: a list of deleted waveform names.
+        """
+        Delete the waveform with name "waveform_name" from the device memory.
+        
+        Parameters
+        ----------
+        waveform_name : str
+            The name of the waveform to be deleted without _ch? postfix.
+            Optionally a list of waveform names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted waveform names.
         """
         if isinstance(waveform_name, str):
             waveform_name = [waveform_name]
@@ -1084,12 +1216,20 @@ class AWGM819X(PulserInterface):
         return list(set(deleted_waveforms))
 
     def delete_sequence(self, sequence_name):
-        """ Delete the sequence with name "sequence_name" from the device memory.
-
-        @param str sequence_name: The name of the sequence to be deleted
-                                  Optionally a list of sequence names can be passed.
-
-        @return list: a list of deleted sequence names.
+        """
+        Delete the sequence with name "sequence_name" from the device memory.
+        
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the sequence to be deleted
+            Optionally a list of sequence names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted sequence names.
         """
         if isinstance(sequence_name, str):
             sequence_name = [sequence_name]
@@ -1119,22 +1259,35 @@ class AWGM819X(PulserInterface):
         return list(set(deleted_sequences))
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Will always return False for pulse generator hardware without interleave.
         """
         return False
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
-
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
+        
         Note: After setting the interleave of the device, retrieve the
               interleave again and use that information for further processing.
 
@@ -1147,9 +1300,14 @@ class AWGM819X(PulserInterface):
         return self.get_interleave()
 
     def reset(self):
-        """ Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.write('*RST')
         self.write('*WAI')
@@ -1344,8 +1502,13 @@ class AWGM819X(PulserInterface):
     def set_trigger_mode(self, mode="cont"):
         """
         Trigger mode according to manual 3.3.
-        :param mode: "cont", "trig" or "gate"
-        :return:
+        Parameters
+        ----------
+        mode :
+            "cont", "trig" or "gate"
+        
+        Returns
+        -------
         """
         if mode == "cont":
             self.write_all_ch(":INIT:CONT{}:STAT ON",  all_by_one={'m8195a': True})
@@ -1422,12 +1585,19 @@ class AWGM819X(PulserInterface):
     def _float_to_int(self, val, n_bits):
 
         """
-        :param val: np.array(dtype=float64) of sampled values from sequencegenerator.sample_pulse_block_ensemble().
-                    normed (-1...1) where 1 encodes the full Vpp as set in 'PulsedGui/Pulsegenerator Settings'.
-                    If MW ampl in 'PulsedGui/Predefined methods' < as full Vpp, amplitude reduction will be
-                    performed digitally (reducing the effective digital resolution in bits).
-        :param n_bits: number of bits; sets the highest integer allowed. Eg. 8 bits -> int in [-128, 127]
-        :return:    np.array(dtype=int16)
+        Parameters
+        ----------
+        val :
+            np.array(dtype=float64) of sampled values from sequencegenerator.sample_pulse_block_ensemble().
+            normed (-1...1) where 1 encodes the full Vpp as set in 'PulsedGui/Pulsegenerator Settings'.
+            If MW ampl in 'PulsedGui/Predefined methods' < as full Vpp, amplitude reduction will be
+            performed digitally (reducing the effective digital resolution in bits).
+        n_bits :
+            number of bits; sets the highest integer allowed. Eg. 8 bits -> int in [-128, 127]
+        
+        Returns
+        -------
+        np.array(dtype=int16)
         """
 
         bitsize = int(2 ** n_bits)
@@ -1453,10 +1623,17 @@ class AWGM819X(PulserInterface):
         Takes 2 digital sample values from the sequence generator and converts them to int.
         For AWG819x always two digital channels are tied with a single analogue output.
         The resulting int values are used to construct the binary samples.
-        :param vals_dch_1: np.ndarray, digital samples from the sequence generator
-        :param vals_dch_2: np.ndarray, digital samples from the sequence generator
-        :param int_type_str: int type the output is casted to
-        :return:
+        Parameters
+        ----------
+        vals_dch_1 :
+            np.ndarray, digital samples from the sequence generator
+        vals_dch_2 :
+            np.ndarray, digital samples from the sequence generator
+        int_type_str :
+            int type the output is casted to
+        
+        Returns
+        -------
         """
 
         bit_dch_1 = 0x1 & np.asarray(val_dch_1).astype(int_type_str)
@@ -1469,8 +1646,10 @@ class AWGM819X(PulserInterface):
         """
         Creates a binary sample output that combines analog and digital samples
         from the sequence generator in the correct format.
-
-        :return binary samples as expected from awg hardware
+        
+        Returns
+        -------
+            binary samples as expected from awg hardware
         """
         pass
 
@@ -1488,8 +1667,11 @@ class AWGM819X(PulserInterface):
         Preserves capital letters. Note that Windows FS can't keep different files with
         equal names except for capital / non capital letters.
         Handled by deleting case insensitive before writing in _write_to_memory().
-        :param wave_name:
-        :return:
+        Parameters
+        ----------
+        wave_name :
+        
+
         """
         return str(wave_name + self._wave_file_extension)
 
@@ -1565,12 +1747,15 @@ class AWGM819X(PulserInterface):
 
     def _write_wave_to_memory(self, name, analog_samples, digital_samples, active_analog, to_segment_id=1):
         """
-        :param name:
-        :param analog_samples:
-        :param digital_samples:
-        :param active_analog:
-        :param to_segment_id: id of the segment table the wave will be written to. -1: take next free segment.
-        :return:
+        Parameters
+        ----------
+        name :
+        analog_samples :
+        digital_samples :
+        active_analog :
+        to_segment_id :
+            id of the segment table the wave will be written to. -1: take next free segment.
+        
         """
         waveforms = []
 
@@ -1628,18 +1813,30 @@ class AWGM819X(PulserInterface):
         return waveforms
 
     def has_sequence_mode(self):
-        """ Asks the pulse generator whether sequence mode exists.
-
-        @return: bool, True for yes, False for no.
+        """
+        Asks the pulse generator whether sequence mode exists.
+        
+        Returns
+        -------
+        bool
+            True for yes, False for no.
         """
         return self._sequence_mode
 
     def write(self, command):
-        """ Sends a command string to the device.
-
-            @param string command: string containing the command
-
-            @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         bytes_written = self.awg.write(command)
 
@@ -1650,11 +1847,19 @@ class AWGM819X(PulserInterface):
         return 0
 
     def write_bin(self, command, values):
-        """ Sends a command string to the device.
-
-                    @param string command: string containing the command
-
-                    @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.awg.timeout = None
         bytes_written = self.awg.write_binary_values(command, datatype=self._wave_transfer_datatype, is_big_endian=False,
@@ -1663,13 +1868,20 @@ class AWGM819X(PulserInterface):
 
     def write_all_ch(self, command, *args, all_by_one=None, d_chs=False):
         """
-        :param command: visa command
-        :param all_by_one:  dict, eg. {"m8190a": False, "m8195a": True}. Set true when for
-                            the specific device one command, not separate with ch_nums is required.
-                            Eg. "TRAC:SEL" instead for "TRAC1:SEL" and "TRAC2:SEL"
-                            If device not listed, will default to False.
-        :param args:    replacement list which is filled into command
-        :return:
+        Parameters
+        ----------
+        command :
+            visa command
+        all_by_one :
+            dict, eg. {"m8190a": False, "m8195a": True}. Set true when for
+            the specific device one command, not separate with ch_nums is required.
+            Eg. "TRAC:SEL" instead for "TRAC1:SEL" and "TRAC2:SEL"
+            If device not listed, will default to False.
+        args :
+            replacement list which is filled into command
+        
+        Returns
+        -------
         """
 
         if all_by_one is None:
@@ -1695,14 +1907,22 @@ class AWGM819X(PulserInterface):
 
     def query_all_ch(self, command, *args, all_by_one=None):
         """
-        :param command: visa command
-        :param all_by_one:  dict, eg. {"m8190a": False, "m8195a": True}. Set true when for
-                            the specific device one command, not separate with ch_nums is required.
-                            Eg. "TRAC:SEL" instead for "TRAC1:SEL" and "TRAC2:SEL"
-                            If device not listed, will default to False.
-        :param args:    replacement list which is filled into command
-        :return: response of all channels collapsed to single value if all channels equal
-                 error and response of first channel if otherwise
+        Parameters
+        ----------
+        command :
+            visa command
+        all_by_one :
+            dict, eg. {"m8190a": False, "m8195a": True}. Set true when for
+            the specific device one command, not separate with ch_nums is required.
+            Eg. "TRAC:SEL" instead for "TRAC1:SEL" and "TRAC2:SEL"
+            If device not listed, will default to False.
+        args :
+            replacement list which is filled into command
+        
+        Returns
+        -------
+        response of all channels collapsed to single value if all channels equal
+            error and response of first channel if otherwise
         """
 
         if all_by_one is None:
@@ -1731,11 +1951,19 @@ class AWGM819X(PulserInterface):
             return collapsed_ret[0]
 
     def query(self, question, force_no_check=False):
-        """ Asks the device a 'question' and receive and return an answer from it.
-
-        @param string question: string containing the command
-
-        @return string: the answer of the device to the 'question' in a string
+        """
+        Asks the device a 'question' and receive and return an answer from it.
+        
+        Parameters
+        ----------
+        question : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        string
+            the answer of the device to the 'question' in a string
         """
         ret = self.awg.query(question).strip().strip('"')
         if self._debug_check_all_commands and not force_no_check:
@@ -1751,7 +1979,11 @@ class AWGM819X(PulserInterface):
     def _is_awg_running(self):
         """
         Aks the AWG if the AWG is running
-        @return: bool, (True: running, False: stoped)
+
+        Returns
+        -------
+        bool
+            (True: running, False: stoped)
         """
         # 0 No Output is running
         # 1 CH01 is running
@@ -1770,7 +2002,11 @@ class AWGM819X(PulserInterface):
     def _is_output_on(self):
         """
         Asks the AWG if the outputs are on
-        @return: bool, (True: Outputs are on, False: Outputs are switched off)
+
+        Returns
+        -------
+        bool
+            (True: Outputs are on, False: Outputs are switched off)
         """
 
         state = 0
@@ -1787,8 +2023,12 @@ class AWGM819X(PulserInterface):
         """
         Helper method to return a sorted list of all technically available channel descriptors
         (e.g. ['a_ch1', 'a_ch2', 'd_ch1', 'd_ch2'])
-
-        @return list: Sorted list of channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of channels
         """
         configs = self.get_constraints().activation_config
         if 'all' in configs:
@@ -1804,15 +2044,22 @@ class AWGM819X(PulserInterface):
         """
         Helper method to return a sorted list of all technically available analog channel
         descriptors (e.g. ['a_ch1', 'a_ch2'])
-
-        @return list: Sorted list of analog channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of analog channels
         """
         return [chnl for chnl in self._get_all_channels() if chnl.startswith('a')]
 
     def _get_active_d_or_a_channels(self, only_analog=False, only_digital=False):
         """
         Helper method to quickly get only digital or analog active channels.
-        :return: list: Sorted list of selected a/d channels
+        
+        Returns
+        -------
+        list: Sorted list of selected a/d channels
         """
 
         activation_dict = self.get_active_channels()
@@ -1835,8 +2082,12 @@ class AWGM819X(PulserInterface):
         """
         Helper method to return a sorted list of all technically available digital channel
         descriptors (e.g. ['d_ch1', 'd_ch2'])
-
-        @return list: Sorted list of digital channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of digital channels
         """
         return [chnl for chnl in self._get_all_channels() if chnl.startswith('d')]
 
@@ -1931,9 +2182,16 @@ class AWGM819X(PulserInterface):
     def get_segment_id(self, segment_waveform_name, ch_num):
         """
         Finds id of a given waveform name.
-        :param segment_waveform_name: waveform name without (eg. .bin) extension
-        :param ch_num: analog awg channel
-        :return: -1 if not found
+        Parameters
+        ----------
+        segment_waveform_name :
+            waveform name without (eg. .bin) extension
+        ch_num :
+            analog awg channel
+        
+        Returns
+        -------
+        -1 if not found
         """
 
         segment_table = self.get_segment_table(ch_num)
@@ -2039,13 +2297,19 @@ class AWGM819X(PulserInterface):
     def get_sequencer_state(self, ch_num):
         """
         Queries the state of the sequencer.
-        :param ch_num: 1 or 2
-        :return: state, sequence table id
-                 state:
-                 0: idle
-                 1: waiting for trigger
-                 2: running
-                 3: waiting for advancement event
+        Parameters
+        ----------
+        ch_num :
+            1 or 2
+        
+        Returns
+        -------
+        state, sequence table id
+            state:
+            0: idle
+            1: waiting for trigger
+            2: running
+            3: waiting for advancement event
         """
 
         awg_mode = self.query("FUNC{:d}:MODE?".format(ch_num))
@@ -2079,8 +2343,12 @@ class AWGM819X(PulserInterface):
         eg. rabi.1.bin -> rabi.1
             rabi.1 -> rabi
             rabi -> rabi
-        :param filename:
-        :return:
+        Parameters
+        ----------
+        filename :
+        
+        Returns
+        -------
         """
         return filename.rsplit('.', 1)[0]
 
@@ -2100,8 +2368,14 @@ class AWGM819X(PulserInterface):
         """
         Converts a channel name like 'a_ch1' to channel number internally used to address
         this channel in VISA commands. Eg. 'd_ch1' -> 3 on M8195A.
-        :param chstr: list of str or str
-        :return: list of int or int
+        Parameters
+        ----------
+        chstr :
+            list of str or str
+        
+        Returns
+        -------
+        list of int or int
         """
 
         def single_str_2_num(chstr):
@@ -2187,7 +2461,10 @@ class AWGM8195A(AWGM819X):
         """
         Whether waveforms need to be uploaded in an interleaved intermediate format.
         Not to confuse with interleave mode from get_interleave().
-        :return: True/False: need interleaved wavefile?
+        
+        Returns
+        -------
+        True/False: need interleaved wavefile?
         """
         if self.awg_mode in ['MARK', 'SING', 'DUAL', 'FOUR']:
             return self.marker_on
@@ -2204,9 +2481,13 @@ class AWGM8195A(AWGM819X):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
-
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude, total_length_bins,
         channel_config, ...) related to the pulse generator hardware to the caller.
 
@@ -2416,14 +2697,22 @@ class AWGM8195A(AWGM819X):
         return ':VOLT{0:d}'.format(d_ch_internal)
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are needed to be asked
-                        without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel string and items boolean expressions whether
-                       channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are needed to be asked
+            without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel string and items boolean expressions whether
+            channel are active or not.
+        
         Example for an possible input (order is not important):
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
         then the output might look like
@@ -2625,9 +2914,13 @@ class AWGM8190A(AWGM819X):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
-
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude, total_length_bins,
         channel_config, ...) related to the pulse generator hardware to the caller.
 
@@ -2801,14 +3094,22 @@ class AWGM8190A(AWGM819X):
         return ':{}:VOLT'.format(d_ch_internal)
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are needed to be asked
-                        without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel string and items boolean expressions whether
-                       channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are needed to be asked
+            without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel string and items boolean expressions whether
+            channel are active or not.
+        
         Example for an possible input (order is not important):
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
         then the output might look like
@@ -2894,9 +3195,13 @@ class AWGM8190A(AWGM819X):
 
     def _get_loaded_seq_name(self, ch_num, idx):
         """
-        :param ch_num:
-        :param idx: 0,1,2. Not the sequenceId = seqtable id of first element in sequence
-        :return:
+        Parameters
+        ----------
+        ch_num :
+        idx :
+            0,1,2. Not the sequenceId = seqtable id of first element in sequence
+        
+      
         """
         seq_id = self.get_loaded_assets_id(ch_num, 'sequence')[idx]
         return self.query(':SEQ{:d}:NAME? {:d}'.format(ch_num, seq_id))

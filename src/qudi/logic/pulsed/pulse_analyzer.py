@@ -155,8 +155,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         This property holds all parameters needed for the currently selected analysis_method as
         well as the currently selected method name.
-
-        @return dict: dictionary with keys being the parameter name and values being the parameter
+        
+        
+        Returns
+        -------
+        dict
+            dictionary with keys being the parameter name and values being the parameter
         """
         # Get reference to the extraction method
         method = self._analysis_methods.get(self._current_analysis_method)
@@ -174,8 +178,11 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Update parameters contained in self._parameters by values in settings_dict.
         Also sets the current analysis method by passing its name using key "method".
         Parameters not included in self._parameters (except "method") will be ignored.
-
-        @param dict settings_dict: dictionary containing the parameters to set (name, value)
+        
+        Parameters
+        ----------
+        settings_dict : dict
+            dictionary containing the parameters to set (name, value)
         """
         if not isinstance(settings_dict, dict):
             return
@@ -200,8 +207,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
     def analysis_methods(self):
         """
         Return available analysis methods.
-
-        @return dict: Dictionary with keys being the method names and values being the methods.
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary with keys being the method names and values being the methods.
         """
         return self._analysis_methods
 
@@ -210,8 +221,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         Returns the full set of parameters for all methods as well as the currently selected method
         in order to store them in a StatusVar in PulsedMeasurementLogic.
-
-        @return dict: full set of parameters and currently selected analysis method.
+        
+        
+        Returns
+        -------
+        dict
+            full set of parameters and currently selected analysis method.
         """
         settings_dict = self._parameters.copy()
         settings_dict['method'] = self._current_analysis_method
@@ -221,13 +236,20 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         Wrapper method to call the currently selected analysis method with laser_data and the
         appropriate keyword arguments.
-
-        @param numpy.ndarray laser_data: 2D numpy array (dtype='int64') containing the timetraces
-                                         for all extracted laser pulses.
-        @return (numpy.ndarray, numpy.ndarray): tuple of two numpy arrays containing the evaluated
-                                                signal data (one data point for each laser pulse)
-                                                and the measurement error corresponding to each
-                                                data point.
+        
+        Parameters
+        ----------
+        laser_data : numpy.ndarray
+            2D numpy array (dtype='int64') containing the timetraces
+            for all extracted laser pulses.
+        
+        Returns
+        -------
+        (numpy.ndarray, numpy.ndarray)
+            tuple of two numpy arrays containing the evaluated
+            signal data (one data point for each laser pulse)
+            and the measurement error corresponding to each
+            data point.
         """
         analysis_method = self._analysis_methods[self._current_analysis_method]
 
@@ -239,10 +261,17 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Get the proper values for keyword arguments other than "laser_data" for <method>.
         Try to take the values from self._parameters. If the keyword is missing in the dictionary,
         take the default values from the method signature.
-
-        @param method: reference to a callable analysis method
-        @return dict: A dictionary containing the argument keywords for <method> and corresponding
-                      values from self._parameters.
+        
+        Parameters
+        ----------
+        method : 
+            reference to a callable analysis method
+        
+        Returns
+        -------
+        dict
+            A dictionary containing the argument keywords for <method> and corresponding
+            values from self._parameters.
         """
         kwargs_dict = dict()
         method_signature = inspect.signature(method)
@@ -260,12 +289,20 @@ class PulseAnalyzer(PulseAnalyzerBase):
         return kwargs_dict
 
     def __import_external_analyzers(self, path):
-        """ Helper method to import all modules from given directory path.
+        """
+        Helper method to import all modules from given directory path.
         Find all classes in those modules that inherit exclusively from PulseAnalyzerBase class
         and return a list of them.
-
-        @param str path: Paths to import modules from
-        @return list: A list of imported valid analyzer classes
+        
+        Parameters
+        ----------
+        path : str
+            Paths to import modules from
+        
+        Returns
+        -------
+        list
+            A list of imported valid analyzer classes
         """
         class_list = list()
         # Get all python modules to import from.
@@ -293,8 +330,11 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         Helper method to populate the dictionaries containing all references to callable analysis
         methods contained in analyzer instances passed to this method.
-
-        @param list instance_list: List containing instances of analyzer classes
+        
+        Parameters
+        ----------
+        instance_list : list
+            List containing instances of analyzer classes
         """
         self._analysis_methods = dict()
         for instance in instance_list:
@@ -317,9 +357,16 @@ class PulseAnalyzer(PulseAnalyzerBase):
     def is_analyzer_class(obj):
         """
         Helper method to check if an object is a valid analyzer class.
-
-        @param object obj: object to check
-        @return bool: True if obj is a valid analyzer class, False otherwise
+        
+        Parameters
+        ----------
+        obj : object
+            object to check
+        
+        Returns
+        -------
+        bool
+            True if obj is a valid analyzer class, False otherwise
         """
         if inspect.isclass(obj):
             return PulseAnalyzerBase in obj.__bases__ and len(obj.__bases__) == 1

@@ -148,8 +148,12 @@ class MotorStageMicos(MotorInterface):
 
     #Todo: add term_char to visa connection
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        @return: error code
+        """
+        Initialisation performed during activation of the module.
+        
+        Returns
+        -------
+        error code
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
@@ -192,8 +196,12 @@ class MotorStageMicos(MotorInterface):
         return 0
 
     def on_deactivate(self):
-        """ Deinitialisation performed during deactivation of the module.
-        @return: error code
+        """
+        Deinitialisation performed during deactivation of the module.
+        
+        Returns
+        -------
+        error code
         """
         self._serial_connection_xy.close()
         self._serial_connection_zphi.close()
@@ -201,10 +209,15 @@ class MotorStageMicos(MotorInterface):
         return 0
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the sequence generation and GUI
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the sequence generation and GUI
+        
         Provides all the constraints for the motorized stage (like total
         movement, velocity, ...)
         Each constraint is a tuple of the form
@@ -281,16 +294,24 @@ class MotorStageMicos(MotorInterface):
         return constraints
 
     def move_rel(self, param_dict):
-        """Moves stage in given direction (relative movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
-
-        @return dict pos: dictionary with the current magnet position
+        """
+        Moves stage in given direction (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
+        
+        
+        Returns
+        -------
+        dict pos
+            dictionary with the current magnet position
         """
         # Todo: check if the move is within the range allowed from config
 
@@ -313,17 +334,25 @@ class MotorStageMicos(MotorInterface):
         return self.get_pos()
 
     def move_abs(self, param_dict):
-        """Moves stage to absolute position
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-                                The values for the axes are in millimeter,
-                                the value for the rotation is in degrees.
-
-        @return dict pos: dictionary with the current axis position
+        """
+        Moves stage to absolute position
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+            The values for the axes are in millimeter,
+            the value for the rotation is in degrees.
+        
+        
+        Returns
+        -------
+        dict pos
+            dictionary with the current axis position
         """
 
         curr_pos = None
@@ -494,9 +523,14 @@ class MotorStageMicos(MotorInterface):
 
 
     def abort(self):
-        """Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops movement of the stage
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             # only checking sending command to x and z because these
@@ -513,17 +547,25 @@ class MotorStageMicos(MotorInterface):
             return -1
 
     def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list: optional, if a specific position of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                position is asked.
-
-        @return dict: with keys being the axis labels and item the current
-                      position.        """
-
+        """
+        Gets current position of the stage arms
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific position of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            position is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with keys being the axis labels and item the current
+            position.        """
+        
         constraints = self.get_constraints()
         param_dict = {}
 
@@ -558,15 +600,17 @@ class MotorStageMicos(MotorInterface):
 
     def get_status(self, param_list=None):
         """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict: with the axis label as key and the status number as item.
-        The meaning of the return value is:
+        
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
+        
+        dict
+            with the axis label as key and the status number as item.
+            The meaning of the return value is:
         """
         constraints = self.get_constraints()
         param_dict = {}
@@ -613,16 +657,24 @@ class MotorStageMicos(MotorInterface):
             return -1
 
     def calibrate(self, param_list=None):
-        """ Calibrates the stage.
-
-        @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
-                                needed axis should be passed in the param_list.
-                                If nothing is passed, then all connected axis
-                                will be calibrated.
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Calibrates the stage.
+        
+        Parameters
+        ----------
+        param_list : dict
+            param_list: optional, if a specific calibration
+            of an axis is desired, then the labels of the
+            needed axis should be passed in the param_list.
+            If nothing is passed, then all connected axis
+            will be calibrated.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         After calibration the stage moves to home position which will be the
         zero point for the passed axis. The calibration procedure will be
         different for each stage.
@@ -658,15 +710,23 @@ class MotorStageMicos(MotorInterface):
 
 
     def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes.
-
-        @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed as the param_list.
-                                If nothing is passed, then from each axis the
-                                velocity is asked.
-
-        @return dict : with the axis label as key and the velocity as item.
+        """
+        Gets the current velocity for all connected axes.
+        
+        Parameters
+        ----------
+        param_list : dict
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the velocity as item.
         """
         constraints = self.get_constraints()
         vel = {}
@@ -689,13 +749,17 @@ class MotorStageMicos(MotorInterface):
         return vel
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-velocity-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
         """
         constraints = self.get_constraints()
 
@@ -718,12 +782,20 @@ class MotorStageMicos(MotorInterface):
 ########################## internal methods ##################################
 
     def _write(self, axis, command):
-        """this method just sends a command to the motor! DOES NOT RETURN AN ANSWER!
-        @param axis string: name of the axis that should be asked
-
-        @param command string: command
-
-        @return error code (0:OK, -1:error)
+        """
+        this method just sends a command to the motor! DOES NOT RETURN AN ANSWER!
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be asked
+        
+        string : command
+            command
+        
+        
+        Returns
+        -------
+        error code (0:OK, -1:error)
         """
         constraints = self.get_constraints()
         try:
@@ -741,8 +813,13 @@ class MotorStageMicos(MotorInterface):
             return -1
 
     def _read_answer(self, axis):
-        """this method reads the answer from the motor!
-        @return answer string: answer of motor
+        """
+        this method reads the answer from the motor!
+        
+        Returns
+        -------
+        answer string
+            answer of motor
         """
         constraints = self.get_constraints()
 
@@ -761,12 +838,21 @@ class MotorStageMicos(MotorInterface):
         return answer
 
     def _ask(self, axis, question):
-        """this method combines writing a command and reading the answer
-        @param axis string: name of the axis that should be asked
-
-        @param command string: command
-
-        @return answer string: answer of motor
+        """
+        this method combines writing a command and reading the answer
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be asked
+        
+        string : command
+            command
+        
+        
+        Returns
+        -------
+        answer string
+            answer of motor
         """
         constraints = self.get_constraints()
         if constraints[axis]['label'] == 'x' or constraints[axis]['label'] == 'y':
@@ -783,9 +869,13 @@ class MotorStageMicos(MotorInterface):
         """
         this method checks if the magnet is still moving and returns
         a dictionary which of the axis are moving.
-
-        @return: dict param_dict: Dictionary displaying if axis are moving:
-        0 for immobile and 1 for moving
+        
+        
+        Returns
+        -------
+        dict
+            param_dict: Dictionary displaying if axis are moving:
+            0 for immobile and 1 for moving
         """
         constraints = self.get_constraints()
         param_dict = {}
@@ -795,10 +885,15 @@ class MotorStageMicos(MotorInterface):
         return param_dict
 
     def _motor_stopped(self):
-        """this method checks if the magnet is still moving and returns
+        """
+        this method checks if the magnet is still moving and returns
             False if it is moving and True of it is immobile
-
-            @return: bool stopped: False for immobile and True for moving
+        
+        
+        Returns
+        -------
+        bool
+            stopped: False for immobile and True for moving
         """
         param_dict = self._in_movement()
         stopped = True
@@ -809,14 +904,24 @@ class MotorStageMicos(MotorInterface):
         return stopped
 
     def _do_move_rel(self, axis, step):
-        """internal method for the relative move
-
-        @param axis string: name of the axis that should be moved
-
-        @param float step: step in millimeter
-
-        @return str axis: axis which is moved
-                move float: absolute position to move to
+        """
+        internal method for the relative move
+        
+        Parameters
+        ----------
+        string : axis
+            name of the axis that should be moved
+        
+        step : float
+            step in millimeter
+        
+        
+        Returns
+        -------
+        str axis
+            axis which is moved
+        move float
+            absolute position to move to
         """
         constraints = self.get_constraints()
         if not (abs(constraints[axis]['pos_step']) < abs(step)):

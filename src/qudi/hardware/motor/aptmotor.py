@@ -208,15 +208,22 @@ class APTMotor:
 
     def __init__(self, path_dll, serialnumber, hwtype, label='', unit='m'):
         """
-        @param str path_dll: the absolute path to the dll of the current
-                             operating system
-        @param int serialnumber: serial number of the stage
-        @param str hwtype: name for the type of the hardware device you want to
-                           control. The name must be available in hwtype_dict!
-        @param str label: a label which identifies the axis and gives
-                          it a meaning.
-        @param str unit: the unit of this axis, possible entries are m, ° or
-                         degree
+        Parameters
+        ----------
+        path_dll : str
+            the absolute path to the dll of the current
+            operating system
+        serialnumber : int
+            serial number of the stage
+        hwtype : str
+            name for the type of the hardware device you want to
+            control. The name must be available in hwtype_dict!
+        label : str
+            a label which identifies the axis and gives
+            it a meaning.
+        unit : str
+            the unit of this axis, possible entries are m, ° or
+            degree
         """
 
         self.aptdll = windll.LoadLibrary(path_dll)
@@ -289,17 +296,22 @@ class APTMotor:
         return hwinfo
 
     def get_stage_axis_info(self):
-        """ Get parameter configuration of the stage
-
-        @return list: with the 4 entries:
-                        float min_pos: Minimum position in m or degree
-                        float max_pos: Maximum position in m or degree
-                        int units: 1=m and 2=degree
-                        float pitch: The angular distance to the next teeth in
-                                     the stepper motor. That determines
-                                     basically the precision of the movement of
-                                     the stepper motor.
-
+        """
+        Get parameter configuration of the stage
+        
+        
+        Returns
+        -------
+        list
+            with the 4 entries:
+            float min_pos: Minimum position in m or degree
+            float max_pos: Maximum position in m or degree
+            int units: 1=m and 2=degree
+            float pitch: The angular distance to the next teeth in
+                         the stepper motor. That determines
+                         basically the precision of the movement of
+                         the stepper motor.
+        
         This method will handle the conversion to the non SI unit mm.
         """
         minimumPosition = c_float()
@@ -325,17 +337,24 @@ class APTMotor:
         return stageAxisInformation
 
     def set_stage_axis_info(self, pos_min, pos_max, pitch, unit=1):
-        """ Set parameter configuration of the stage.
-
-        @param float pos_min: minimal position of the axis in m or degree.
-        @param float pos_max: maximal position of the axis in m or degree.
-        @param float pitch: the pitch determines the full step angle of a
-                            stepper magnet motor. That is the resolution of the
-                            stepper motor.
-        @param int unit: unit of the axis, possible values:
-                            1 = m
-                            2 = degree
-
+        """
+        Set parameter configuration of the stage.
+        
+        Parameters
+        ----------
+        pos_min : float
+            minimal position of the axis in m or degree.
+        pos_max : float
+            maximal position of the axis in m or degree.
+        pitch : float
+            the pitch determines the full step angle of a
+            stepper magnet motor. That is the resolution of the
+            stepper motor.
+        unit : int
+            unit of the axis, possible values:
+            1 = m
+            2 = degree
+        
         This method will handle the conversion to the non SI unit mm.
         """
         if unit == 1:
@@ -367,11 +386,16 @@ class APTMotor:
         return hardwareLimitSwitches
 
     def setHardwareLimitSwitches(self, switch_reverse, switch_forward):
-        """ Set the Switch Configuration of the axis.
-
-        @param int switch_reverse: sets the switch in reverse movement
-        @param int switch_forward: sets the switch in forward movement
-
+        """
+        Set the Switch Configuration of the axis.
+        
+        Parameters
+        ----------
+        switch_reverse : int
+            sets the switch in reverse movement
+        switch_forward : int
+            sets the switch in forward movement
+        
         The following values are allowed:
         0x01 or 1: Ignore switch or switch not present.
         0x02 or 2: Switch makes on contact.
@@ -387,12 +411,17 @@ class APTMotor:
         return hardwareLimitSwitches
 
     def getVelocityParameters(self):
-        """ Retrieve the velocity parameter with the currently used acceleration.
-
-        @return list: with 4 entries:
-                        float min_vel: minimal velocity in m/s or degree/s
-                        float curr_acc: currently set acceleration in m/s^2 or degree/s^2
-                        float max_vel: maximal velocity in m/s or degree/s
+        """
+        Retrieve the velocity parameter with the currently used acceleration.
+        
+        
+        Returns
+        -------
+        list
+            with 4 entries:
+            float min_vel: minimal velocity in m/s or degree/s
+            float curr_acc: currently set acceleration in m/s^2 or degree/s^2
+            float max_vel: maximal velocity in m/s or degree/s
         """
         minimumVelocity = c_float()
         acceleration = c_float()
@@ -419,16 +448,22 @@ class APTMotor:
         return maxVel
 
     def setVelocityParameters(self, minVel, acc, maxVel):
-        """ Set the velocity and acceleration parameter.
-
-        @param flaot minVel: the minimum velocity at which to start and end a
-                             move in m/s or degree/s
-        @param float acc: the rate at which the velocity climbs from minimum
-                          to maximum, and slows from maximum to minimum current
-                          acceleration in m/s^2 or degree/s^2
-        @param float maxVel: the maximum velocity at which to perform a move in
-                             m/s or degree/s
-
+        """
+        Set the velocity and acceleration parameter.
+        
+        Parameters
+        ----------
+        minVel : flaot
+            the minimum velocity at which to start and end a
+            move in m/s or degree/s
+        acc : float
+            the rate at which the velocity climbs from minimum
+            to maximum, and slows from maximum to minimum current
+            acceleration in m/s^2 or degree/s^2
+        maxVel : float
+            the maximum velocity at which to perform a move in
+            m/s or degree/s
+        
         Note: The minVel parameter value is locked at zero and cannot be
               adjusted.
         """
@@ -444,9 +479,13 @@ class APTMotor:
         self.aptdll.MOT_SetVelParams(self.SerialNum, minimumVelocity, acceleration, maximumVelocity)
 
     def set_velocity(self, maxVel):
-        """ Set the maximal velocity for the motor movement.
-
-        @param float maxVel: maximal velocity of the stage in m/s or degree/s.
+        """
+        Set the maximal velocity for the motor movement.
+        
+        Parameters
+        ----------
+        maxVel : float
+            maximal velocity of the stage in m/s or degree/s.
         """
         if self.verbose:
             print('set_velocity', maxVel)
@@ -454,11 +493,16 @@ class APTMotor:
         self.setVelocityParameters(minVel, acc, maxVel)
 
     def getVelocityParameterLimits(self):
-        """ Get the current maximal velocity and acceleration parameter.
-
-        @return list: with 2 entries:
-                        float max_acc: maximum acceleration in m/s^2 or degree/s^2
-                        float max_vel: maximal velocity in m/s or degree/s
+        """
+        Get the current maximal velocity and acceleration parameter.
+        
+        
+        Returns
+        -------
+        list
+            with 2 entries:
+                float max_acc: maximum acceleration in m/s^2 or degree/s^2
+                float max_vel: maximal velocity in m/s or degree/s
         """
 
         maximumAcceleration = c_float()
@@ -499,17 +543,23 @@ class APTMotor:
         return home_param
 
     def set_home_parameter(self, home_dir, switch_dir, home_vel, zero_offset):
-        """ Set the home parameters.
-        @param int home_dir: direction to the home position,
-                                1 = Move forward
-                                2 = Move backward
-        @param int switch_dir: Direction of the switch limit:
-                                 4 = Use forward limit switch for home datum
-                                 1 = Use forward limit switch for home datum.
-        @param float home_vel = default velocity
-        @param float zero_offset: the distance or offset (in mm or degrees) of
-                                  the limit switch from the Home position.
-
+        """
+        Set the home parameters.
+        Parameters
+        ----------
+        home_dir : int
+            direction to the home position,
+            1 = Move forward
+            2 = Move backward
+        switch_dir : int
+            Direction of the switch limit:
+            4 = Use forward limit switch for home datum
+            1 = Use forward limit switch for home datum.
+        home_vel : float
+            default velocity
+        zero_offset : float
+            the distance or offset (in mm or degrees) of
+            the limit switch from the Home position.
         """
         home_dir_c = c_long(home_dir)
         switch_dir_c = c_long(switch_dir)
@@ -521,9 +571,14 @@ class APTMotor:
         return True
 
     def get_pos(self):
-        """ Obtain the current absolute position of the stage.
-
-        @return float: the value of the axis either in m or in degree.
+        """
+        Obtain the current absolute position of the stage.
+        
+        
+        Returns
+        -------
+        float
+            the value of the axis either in m or in degree.
         """
 
         if self.verbose:
@@ -544,9 +599,13 @@ class APTMotor:
             return position.value
 
     def move_rel(self, relDistance):
-        """ Moves the motor a relative distance specified
-
-        @param float relDistance: Relative position desired, in m or in degree.
+        """
+        Moves the motor a relative distance specified
+        
+        Parameters
+        ----------
+        relDistance : float
+            Relative position desired, in m or in degree.
         """
         if self.verbose:
             print('move_rel ', relDistance, c_float(relDistance))
@@ -564,9 +623,13 @@ class APTMotor:
             print('move_rel SUCESS')
 
     def move_abs(self, absPosition):
-        """ Moves the motor to the Absolute position specified
-
-        @param float absPosition: absolute Position desired, in m or degree.
+        """
+        Moves the motor to the Absolute position specified
+        
+        Parameters
+        ----------
+        absPosition : float
+            absolute Position desired, in m or degree.
         """
         if self.verbose:
             print('move_abs ', absPosition, c_float(absPosition))
@@ -584,10 +647,15 @@ class APTMotor:
         return True
 
     def mcRel(self, relDistance, moveVel=0.5e-3):
-        """ Moves the motor a relative distance specified at a controlled velocity.
-
-        @param float relDistance: Relative position desired in m or in degree
-        @param float moveVel: Motor velocity, m/s or in degree/s
+        """
+        Moves the motor a relative distance specified at a controlled velocity.
+        
+        Parameters
+        ----------
+        relDistance : float
+            Relative position desired in m or in degree
+        moveVel : float
+            Motor velocity, m/s or in degree/s
         """
         if self.verbose:
             print('mcRel ', relDistance, c_float(relDistance), 'mVel', moveVel)
@@ -604,10 +672,15 @@ class APTMotor:
         return True
 
     def mcAbs(self, absPosition, moveVel=0.5):
-        """ Moves the motor to the Absolute position specified at a controlled velocity.
-
-        @param float absPosition: Position desired in m or degree.
-        @param float moveVel: Motor velocity, m/s or degree/s
+        """
+        Moves the motor to the Absolute position specified at a controlled velocity.
+        
+        Parameters
+        ----------
+        absPosition : float
+            Position desired in m or degree.
+        moveVel : float
+            Motor velocity, m/s or degree/s
         """
         if self.verbose:
             print('mcAbs ', absPosition, c_float(absPosition), 'mVel', moveVel)
@@ -624,10 +697,14 @@ class APTMotor:
         return True
 
     def move_bc_rel(self, relDistance):
-        """ Moves the motor a relative distance specified, correcting for backlash.
-
-        @param float relDistance: Relative position desired in m or in degree
-
+        """
+        Moves the motor a relative distance specified, correcting for backlash.
+        
+        Parameters
+        ----------
+        relDistance : float
+            Relative position desired in m or in degree
+        
         NOTE: Be careful in using this method. If interactive mode is on, then
               the stage reacts immediately on both input for the relative
               movement, which prevents the proper execution of the first
@@ -645,9 +722,13 @@ class APTMotor:
         return True
 
     def mbAbs(self, absPosition):
-        """ Moves the motor to the Absolute position specified
-
-        @param float absPosition: Position desired in m or degree
+        """
+        Moves the motor to the Absolute position specified
+        
+        Parameters
+        ----------
+        absPosition : float
+            Position desired in m or degree
         """
         if self.verbose:
             print('mbAbs ', absPosition, c_float(absPosition))
@@ -673,10 +754,15 @@ class APTMotor:
         return status
 
     def get_status(self):
-        """ Get the status bits of the current axis.
-
-        @return tuple(int, dict): the current status as an integer and the
-                                  dictionary explaining the current status.
+        """
+        Get the status bits of the current axis.
+        
+        
+        Returns
+        -------
+        tuple(int, dict)
+            the current status as an integer and the
+            dictionary explaining the current status.
         """
 
         status_bits = c_long()
@@ -715,23 +801,36 @@ class APTMotor:
         self.move_abs(0.0)
 
     def _test_bit(self, int_val, offset):
-        """ Check a bit in an integer number at position offset.
-
-        @param int int_val: an integer value, which is checked
-        @param int offset: the position which should be checked whether in
-                           int_val for a bit of 1 is set.
-
-        @return bool: Check in an integer representation, whether the bin at the
-                      position offset is set to 0 or to 1. If bit is set True
-                      will be returned else False.
+        """
+        Check a bit in an integer number at position offset.
+        
+        Parameters
+        ----------
+        int_val : int
+            an integer value, which is checked
+        offset : int
+            the position which should be checked whether in
+            int_val for a bit of 1 is set.
+        
+        
+        Returns
+        -------
+        bool
+            Check in an integer representation, whether the bin at the
+            position offset is set to 0 or to 1. If bit is set True
+            will be returned else False.
         """
         mask = 1 << offset
         return(int_val & mask) != 0
 
     def set_backlash(self, backlash):
-        """ Set the provided backlash for the apt motor.
-
-        @param float backlash: the backlash in m or degree for the used stage.
+        """
+        Set the provided backlash for the apt motor.
+        
+        Parameters
+        ----------
+        backlash : float
+            the backlash in m or degree for the used stage.
         """
 
         if self._unit == 'm':
@@ -746,9 +845,14 @@ class APTMotor:
         return backlash
 
     def get_backlash(self):
-        """ Ask for the currently set backlash in the controller for the axis.
-
-        @return float: backlash in m or degree, depending on the axis config.
+        """
+        Ask for the currently set backlash in the controller for the axis.
+        
+        
+        Returns
+        -------
+        float
+            backlash in m or degree, depending on the axis config.
         """
         backlash = c_float()
         self.aptdll.MOT_GetBLashDist(self.SerialNum, pointer(backlash))
@@ -941,13 +1045,18 @@ class APTStage(MotorInterface):
             self._axis_dict[label_axis].cleanUpAPT()
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the motor stage hardware. These
-                      constraints will be passed via the logic to the GUI so
-                      that proper display elements with boundary conditions
-                      can be made.
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the motor stage hardware. These
+            constraints will be passed via the logic to the GUI so
+            that proper display elements with boundary conditions
+            can be made.
+        
         Provides all the constraints for each axis of a motorized stage
         (like total travel distance, velocity, ...)
         Each axis has its own dictionary, where the label is used as the
@@ -1046,21 +1155,25 @@ class APTStage(MotorInterface):
         return constraints
 
     def move_rel(self,  param_dict):
-        """ Moves stage in given direction (relative movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed.
-                                With get_constraints() you can obtain all
-                                possible parameters of that stage. According to
-                                this parameter set you have to pass a dictionary
-                                with keys that are called like the parameters
-                                from get_constraints() and assign a SI value to
-                                that. For a movement in x the dict should e.g.
-                                have the form:
-                                    dict = { 'x' : 23 }
-                                where the label 'x' corresponds to the chosen
-                                axis label.
-
+        """
+        Moves stage in given direction (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed.
+            With get_constraints() you can obtain all
+            possible parameters of that stage. According to
+            this parameter set you have to pass a dictionary
+            with keys that are called like the parameters
+            from get_constraints() and assign a SI value to
+            that. For a movement in x the dict should e.g.
+            have the form:
+                dict = { 'x' : 23 }
+            where the label 'x' corresponds to the chosen
+            axis label.
+        
         A smart idea would be to ask the position after the movement.
         """
         curr_pos_dict = self.get_pos()
@@ -1092,13 +1205,17 @@ class APTStage(MotorInterface):
                     self._axis_dict[label_axis].move_rel(move)
 
     def move_abs(self, param_dict):
-        """ Moves stage to absolute position (absolute movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <a-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+        """
+        Moves stage to absolute position (absolute movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <a-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
         A smart idea would be to ask the position after the movement.
         """
         constraints = self.get_constraints()
@@ -1129,16 +1246,21 @@ class APTStage(MotorInterface):
         self.log.warning('Movement of all the axis aborted! Stage stopped.')
 
     def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list:
+        """
+        Gets current position of the stage arms
+        
+        Parameters
+        ----------
+        param_list : list
             optional, if a specific position of an axis
             is desired, then the labels of the needed
             axis should be passed as the param_list.
             If nothing is passed, then from each axis the
             position is asked.
-
-        @return
+        
+        Returns
+        -------
+        dict
             dict with keys being the axis labels and item the current
             position.
         """
@@ -1155,15 +1277,17 @@ class APTStage(MotorInterface):
         return pos
 
     def get_status(self, param_list=None):
-        """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-
+        """
+        Get the status of the position
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
         """
 
         status = {}
@@ -1178,16 +1302,24 @@ class APTStage(MotorInterface):
         return status
 
     def calibrate(self, param_list=None):
-        """ Calibrates the stage.
-
-        @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
-                                needed axis should be passed in the param_list.
-                                If nothing is passed, then all connected axis
-                                will be calibrated.
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Calibrates the stage.
+        
+        Parameters
+        ----------
+        param_list : dict
+            param_list: optional, if a specific calibration
+            of an axis is desired, then the labels of the
+            needed axis should be passed in the param_list.
+            If nothing is passed, then all connected axis
+            will be calibrated.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         After calibration the stage moves to home position which will be the
         zero point for the passed axis. The calibration procedure will be
         different for each stage.
@@ -1208,12 +1340,16 @@ class APTStage(MotorInterface):
 
     # TODO: This seems to relate specifically to magnet applications, maybe should move
     def _save_pos(self, param_dict):
-        """ Save after each move the parameters to file, since the motor stage
+        """
+        Save after each move the parameters to file, since the motor stage
         looses any information if it is initialized. That might be a way to
         store and retrieve the current position.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed.
         """
 
         for label_axis in param_dict:
@@ -1227,11 +1363,16 @@ class APTStage(MotorInterface):
 
     # TODO: This seems to relate specifically to magnet applications, maybe should move
     def _get_magnet_dump(self):
-        """ Create the folder where the position file is saved, and check
+        """
+        Create the folder where the position file is saved, and check
         whether it exists.
-
-        @return str: the path to the created folder."""
-
+        
+        
+        Returns
+        -------
+        str
+            the path to the created folder."""
+        
         path = get_home_dir()
         magnet_path = os.path.join(path, 'magnet')
 
@@ -1244,13 +1385,17 @@ class APTStage(MotorInterface):
     def get_velocity(self, param_list=None):
         """ Gets the current velocity for all connected axes.
 
-        @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed as the param_list.
-                                If nothing is passed, then from each axis the
-                                velocity is asked.
+        Parameters
+        ----------
+        param_list : dict
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
 
-        @return dict : with the axis label as key and the velocity as item.
+        dict
+            with the axis label as key and the velocity as item.
         """
 
         vel = {}
@@ -1265,13 +1410,17 @@ class APTStage(MotorInterface):
         return vel
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-velocity-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
         """
         constraints = self.get_constraints()
 
@@ -1291,10 +1440,14 @@ class APTStage(MotorInterface):
                 self._axis_dict[label_axis].set_velocity(desired_vel)
 
     def _get_config(self):
-        """ Get the HW information about the APT motors from the config file
-
-        @return: dictionary simlar to the constraints. It has keys matching the axis labels
-                            and the items for these keys are a set of config parameters.
+        """
+        Get the HW information about the APT motors from the config file
+        
+        Returns
+        -------
+        dict 
+            dictionary simlar to the constraints. It has keys matching the axis labels
+            and the items for these keys are a set of config parameters.
         """
         hw_conf_dict = {}
 

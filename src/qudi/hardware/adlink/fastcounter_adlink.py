@@ -177,11 +177,16 @@ class Adlink9834(FastCounterInterface):
             self.log.exception(e)
 
     def get_constraints(self):
-        """Retrieve the hardware constrains from the Fast counting device.
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -232,16 +237,25 @@ class Adlink9834(FastCounterInterface):
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):
-        """Configuration of the fast counter.
-
-        @param float bin_width_s: Length of a single time bin in the time race histogram in seconds.
-        @param float record_length_s: Total length of the timetrace/each single gate in seconds.
-        @param int number_of_gates: optional, number of gates in the pulse sequence. Ignore for not gated counter.
-
-        @return tuple(binwidth_s, record_length_s, number_of_gates):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual record length in seconds
-                    number_of_gates: the number of gated, which are accepted, None if not-gated
+        """
+        Configuration of the fast counter.
+        
+        Parameters
+        ----------
+        bin_width_s : float
+            Length of a single time bin in the time race histogram in seconds.
+        record_length_s : float
+            Total length of the timetrace/each single gate in seconds.
+        number_of_gates : int
+            optional, number of gates in the pulse sequence. Ignore for not gated counter.
+        
+        
+        Returns
+        -------
+        tuple(binwidth_s, record_length_s, number_of_gates)
+            binwidth_s: float the actual set binwidth in seconds
+            gate_length_s: the actual record length in seconds
+            number_of_gates: the number of gated, which are accepted, None if not-gated
         """
         self._disarm_card()
         self._free_buffers()
@@ -334,17 +348,27 @@ class Adlink9834(FastCounterInterface):
             self.log.error(f"Error when arming card: {e}")
 
     def is_gated(self):
-        """Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the fast counter is a gated
-                      counter (TRUE) or not (FALSE).
+        """
+        Check the gated counting possibility.
+        
+        
+        Returns
+        -------
+        bool
+            Boolean value indicates if the fast counter is a gated
+            counter (TRUE) or not (FALSE).
         """
         return True
 
     def get_binwidth(self):
-        """Returns the width of a single timebin in the timetrace in seconds.
-
-        @return float: current length of a single bin in seconds (seconds/bin)
+        """
+        Returns the width of a single timebin in the timetrace in seconds.
+        
+        
+        Returns
+        -------
+        float
+            current length of a single bin in seconds (seconds/bin)
         """
         return self._settings.scan_interval.value / self._clock_freq
 
@@ -604,8 +628,12 @@ class Adlink9834(FastCounterInterface):
         determines how many measurements should be summed up
         if set to 0 all acquired samples are summed up
         if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
-
-        @return number_of_averages, int: currently set number of averages
+        
+        
+        Returns
+        -------
+        number_of_averages, int
+            currently set number of averages
         """
         return self._number_of_averages
 
@@ -615,8 +643,11 @@ class Adlink9834(FastCounterInterface):
         determines how many measurements should be summed up
         if set to 0 all acquired samples are summed up
         if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
-
-        @param number, int: number of averages to set
+        
+        Parameters
+        ----------
+        int : number,
+            number of averages to set
         """
         self._number_of_averages = int(number)
 

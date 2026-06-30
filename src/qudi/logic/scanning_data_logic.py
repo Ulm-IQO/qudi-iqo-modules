@@ -141,8 +141,15 @@ class ScanningDataLogic(LogicBase):
             -> Tuple[Optional[ScanData], Optional[ScanData]]:
         """
         Get the most recent scan data / back scan data (for a certain scan axes).
-        @param tuple scan_axes: axis or 2D axis pair to get data for
-        @return tuple: most recent scan data and back scan data
+        Parameters
+        ----------
+        scan_axes : tuple
+            axis or 2D axis pair to get data for
+        
+        Returns
+        -------
+        tuple
+            most recent scan data and back scan data
         """
         with self._thread_lock:
             if scan_axes is None:
@@ -210,8 +217,15 @@ class ScanningDataLogic(LogicBase):
             -> Union[int, None]:
         """
         Get the history index of the most recent entry for a certain scan axes.
-        @param tuple scan_axes: axis or 2D axis pair to get data for
-        @return int: index
+        Parameters
+        ----------
+        scan_axes : tuple
+            axis or 2D axis pair to get data for
+        
+        Returns
+        -------
+        int
+            index
         """
         with self._thread_lock:
             if scan_axes is None and self._scan_history:
@@ -239,9 +253,14 @@ class ScanningDataLogic(LogicBase):
         return index
 
     def draw_1d_scan_figure(self, scan_data, channel):
-        """ Create an XY plot of 1D scan data.
-
-        @return fig: a matplotlib figure object to be saved to file.
+        """
+        Create an XY plot of 1D scan data.
+        
+        
+        Returns
+        -------
+        fig
+            a matplotlib figure object to be saved to file.
         """
         data = scan_data.data[channel]
         axis = scan_data.settings.axes[0]
@@ -404,9 +423,14 @@ class ScanningDataLogic(LogicBase):
         return tag
 
     def draw_2d_scan_figure(self, scan_image: ScanImage, cbar_range=None):
-        """ Create a 2-D color map figure of the scan image.
-
-        @return fig: a matplotlib figure object to be saved to file.
+        """
+        Create a 2-D color map figure of the scan image.
+        
+        
+        Returns
+        -------
+        fig
+            a matplotlib figure object to be saved to file.
         """
         image_arr = scan_image.data
         scan_axes = scan_image.axis_names

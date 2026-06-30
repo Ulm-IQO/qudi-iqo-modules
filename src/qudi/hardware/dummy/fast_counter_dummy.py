@@ -69,11 +69,16 @@ class FastCounterDummy(FastCounterInterface):
         return
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -111,19 +116,28 @@ class FastCounterDummy(FastCounterInterface):
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates = 0):
-        """ Configuration of the fast counter.
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        @param float record_length_s: Total length of the timetrace/each single
-                                      gate in seconds.
-        @param int number_of_gates: optional, number of gates in the pulse
-                                    sequence. Ignore for not gated counter.
-
-        @return tuple(binwidth_s, gate_length_s, number_of_gates):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual set gate length in seconds
-                    number_of_gates: the number of gated, which are accepted
+        """
+        Configuration of the fast counter.
+        
+        Parameters
+        ----------
+        bin_width_s : float
+            Length of a single time bin in the time trace
+            histogram in seconds.
+        record_length_s : float
+            Total length of the timetrace/each single
+            gate in seconds.
+        number_of_gates : int
+            optional, number of gates in the pulse
+            sequence. Ignore for not gated counter.
+        
+        
+        Returns
+        -------
+        tuple(binwidth_s, gate_length_s, number_of_gates)
+            binwidth_s: float the actual set binwidth in seconds
+            gate_length_s: the actual set gate length in seconds
+            number_of_gates: the number of gated, which are accepted
         """
         self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
         self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
@@ -183,18 +197,28 @@ class FastCounterDummy(FastCounterInterface):
         return 0
 
     def is_gated(self):
-        """ Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the fast counter is a gated
-                      counter (TRUE) or not (FALSE).
+        """
+        Check the gated counting possibility.
+        
+        
+        Returns
+        -------
+        bool
+            Boolean value indicates if the fast counter is a gated
+            counter (TRUE) or not (FALSE).
         """
 
         return self._gated
 
     def get_binwidth(self):
-        """ Returns the width of a single timebin in the timetrace in seconds.
-
-        @return float: current length of a single bin in seconds (seconds/bin)
+        """
+        Returns the width of a single timebin in the timetrace in seconds.
+        
+        
+        Returns
+        -------
+        float
+            current length of a single bin in seconds (seconds/bin)
         """
         width_in_seconds = self._binwidth * 1/950e6
         return width_in_seconds

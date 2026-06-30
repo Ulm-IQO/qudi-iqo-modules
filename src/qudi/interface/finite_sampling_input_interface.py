@@ -41,62 +41,94 @@ class FiniteSamplingInputInterface(Base):
     @property
     @abstractmethod
     def active_channels(self):
-        """ Names of all currently active channels.
-
-        @return frozenset: The active channel name strings as set
+        """
+        Names of all currently active channels.
+        
+        
+        Returns
+        -------
+        frozenset
+            The active channel name strings as set
         """
         pass
 
     @property
     @abstractmethod
     def sample_rate(self):
-        """ The sample rate (in Hz) at which the samples will be acquired.
-
-        @return float: The current sample rate in Hz
+        """
+        The sample rate (in Hz) at which the samples will be acquired.
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate in Hz
         """
         pass
 
     @property
     @abstractmethod
     def frame_size(self):
-        """ Currently set number of samples per channel to acquire for each data frame.
-
-        @return int: Number of samples per frame
+        """
+        Currently set number of samples per channel to acquire for each data frame.
+        
+        
+        Returns
+        -------
+        int
+            Number of samples per frame
         """
         pass
 
     @property
     @abstractmethod
     def samples_in_buffer(self):
-        """ Currently available samples per channel being held in the input buffer.
+        """
+        Currently available samples per channel being held in the input buffer.
         This is the current minimum number of samples to be read with "get_buffered_samples()"
         without blocking.
-
-        @return int: Number of unread samples per channel
+        
+        
+        Returns
+        -------
+        int
+            Number of unread samples per channel
         """
         pass
 
     @abstractmethod
     def set_sample_rate(self, rate):
-        """ Will set the sample rate to a new value.
-
-        @param float rate: The sample rate to set
+        """
+        Will set the sample rate to a new value.
+        
+        Parameters
+        ----------
+        rate : float
+            The sample rate to set
         """
         pass
 
     @abstractmethod
     def set_active_channels(self, channels):
-        """ Will set the currently active channels. All other channels will be deactivated.
-
-        @param iterable(str) channels: Iterable of channel names to set active.
+        """
+        Will set the currently active channels. All other channels will be deactivated.
+        
+        Parameters
+        ----------
+        channels : iterable(str)
+            Iterable of channel names to set active.
         """
         pass
 
     @abstractmethod
     def set_frame_size(self, size):
-        """ Will set the number of samples per channel to acquire within one frame.
-
-        @param int size: The sample rate to set
+        """
+        Will set the number of samples per channel to acquire within one frame.
+        
+        Parameters
+        ----------
+        size : int
+            The sample rate to set
         """
         pass
 
@@ -121,7 +153,8 @@ class FiniteSamplingInputInterface(Base):
 
     @abstractmethod
     def get_buffered_samples(self, number_of_samples=None):
-        """ Returns a chunk of the current data frame for all active channels read from the frame
+        """
+        Returns a chunk of the current data frame for all active channels read from the frame
         buffer.
         If parameter <number_of_samples> is omitted, this method will return the currently
         available samples within the frame buffer (i.e. the value of property <samples_in_buffer>).
@@ -137,16 +170,24 @@ class FiniteSamplingInputInterface(Base):
 
         If the data acquisition has been stopped before the frame has been acquired completely,
         this method must still return all available samples already read into buffer.
-
-        @param int number_of_samples: optional, the number of samples to read from buffer
-
-        @return dict: Sample arrays (values) for each active channel (keys)
+        
+        Parameters
+        ----------
+        number_of_samples : int
+            optional, the number of samples to read from buffer
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active channel (keys)
         """
         pass
 
     @abstractmethod
     def acquire_frame(self, frame_size=None):
-        """ Acquire a single data frame for all active channels.
+        """
+        Acquire a single data frame for all active channels.
         This method call is blocking until the entire data frame has been acquired.
 
         If an explicit frame_size is given as parameter, it will not overwrite the property
@@ -154,10 +195,17 @@ class FiniteSamplingInputInterface(Base):
 
         See <start_buffered_acquisition>, <stop_buffered_acquisition> and <get_buffered_samples>
         for more details.
-
-        @param int frame_size: optional, the number of samples to acquire in this frame
-
-        @return dict: Sample arrays (values) for each active channel (keys)
+        
+        Parameters
+        ----------
+        frame_size : int
+            optional, the number of samples to acquire in this frame
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active channel (keys)
         """
         pass
 

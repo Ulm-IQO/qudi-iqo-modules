@@ -157,19 +157,29 @@ class ThorlabsPowermeter(ProcessValueInterface):
 
     @property
     def process_values(self):
-        """ Read-Only property returning a snapshot of current process values for all channels.
-
-        @return dict: Snapshot of the current process values (values) for all channels (keys)
+        """
+        Read-Only property returning a snapshot of current process values for all channels.
+        
+        
+        Returns
+        -------
+        dict
+            Snapshot of the current process values (values) for all channels (keys)
         """
         value = self.get_process_value(self._channel_name)
         return {self._channel_name: value}
 
     @property
     def constraints(self):
-        """ Read-Only property holding the constraints for this hardware module.
+        """
+        Read-Only property holding the constraints for this hardware module.
         See class ProcessControlConstraints for more details.
-
-        @return ProcessControlConstraints: Hardware constraints
+        
+        
+        Returns
+        -------
+        ProcessControlConstraints
+            Hardware constraints
         """
         return self._constraints
 
@@ -221,7 +231,10 @@ class ThorlabsPowermeter(ProcessValueInterface):
     def _init_powermeter(self, reset=False):
         """
         Initialize powermeter and open a connection to it.
-        :param reset: whether to reset the powermeter upon connection
+        Parameters
+        ----------
+        reset :
+            whether to reset the powermeter upon connection
         """
         id_query, reset_device = c_bool(True), c_bool(reset)
         address = create_string_buffer(self._device_address.encode('utf-8'))

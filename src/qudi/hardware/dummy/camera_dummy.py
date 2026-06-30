@@ -63,39 +63,64 @@ class CameraDummy(CameraInterface):
         self.stop_acquisition()
 
     def get_name(self):
-        """ Retrieve an identifier of the camera that the GUI can print
-
-        @return string: name for the camera
+        """
+        Retrieve an identifier of the camera that the GUI can print
+        
+        
+        Returns
+        -------
+        string
+            name for the camera
         """
         return self._camera_name
 
     def get_size(self):
-        """ Retrieve size of the image in pixel
-
-        @return tuple: Size (width, height)
+        """
+        Retrieve size of the image in pixel
+        
+        
+        Returns
+        -------
+        tuple
+            Size (width, height)
         """
         return self._resolution
 
     def support_live_acquisition(self):
-        """ Return whether or not the camera can take care of live acquisition
-
-        @return bool: True if supported, False if not
+        """
+        Return whether or not the camera can take care of live acquisition
+        
+        
+        Returns
+        -------
+        bool
+            True if supported, False if not
         """
         return self._support_live
 
     def start_live_acquisition(self):
-        """ Start a continuous acquisition
-
-        @return bool: Success ?
+        """
+        Start a continuous acquisition
+        
+        
+        Returns
+        -------
+        bool
+            Success ?
         """
         if self._support_live:
             self._live = True
             self._acquiring = False
 
     def start_single_acquisition(self):
-        """ Start a single acquisition
-
-        @return bool: Success ?
+        """
+        Start a single acquisition
+        
+        
+        Returns
+        -------
+        bool
+            Success ?
         """
         if self._live:
             return False
@@ -106,60 +131,101 @@ class CameraDummy(CameraInterface):
             return True
 
     def stop_acquisition(self):
-        """ Stop/abort live or single acquisition
-
-        @return bool: Success ?
+        """
+        Stop/abort live or single acquisition
+        
+        
+        Returns
+        -------
+        bool
+            Success ?
         """
         self._live = False
         self._acquiring = False
 
     def get_acquired_data(self):
-        """ Return an array of last acquired image.
-
-        @return numpy array: image data in format [[row],[row]...]
-
+        """
+        Return an array of last acquired image.
+        
+        
+        Returns
+        -------
+        numpy array
+            image data in format [[row],[row]...]
+        
         Each pixel might be a float, integer or sub pixels
         """
         data = np.random.random(self._resolution)*self._exposure*self._gain
         return data.transpose()
 
     def set_exposure(self, exposure):
-        """ Set the exposure time in seconds
-
-        @param float time: desired new exposure time
-
-        @return float: setted new exposure time
+        """
+        Set the exposure time in seconds
+        
+        Parameters
+        ----------
+        time : float
+            desired new exposure time
+        
+        
+        Returns
+        -------
+        float
+            setted new exposure time
         """
         self._exposure = exposure
         return self._exposure
 
     def get_exposure(self):
-        """ Get the exposure time in seconds
+        """
+        Get the exposure time in seconds
 
-        @return float exposure time
+        Returns
+        -------
+        float
+            exposure time
+
         """
         return self._exposure
 
     def set_gain(self, gain):
-        """ Set the gain
-
-        @param float gain: desired new gain
-
-        @return float: new exposure gain
+        """
+        Set the gain
+        
+        Parameters
+        ----------
+        gain : float
+            desired new gain
+        
+        
+        Returns
+        -------
+        float
+            new exposure gain
         """
         self._gain = gain
         return self._gain
 
     def get_gain(self):
-        """ Get the gain
-
-        @return float: exposure gain
+        """
+        Get the gain
+        
+        
+        Returns
+        -------
+        float
+            exposure gain
         """
         return self._gain
 
     def get_ready_state(self):
-        """ Is the camera ready for an acquisition ?
-
-        @return bool: ready ?
+        """
+        Is the camera ready for an acquisition ?
+        
+        
+        Returns
+        -------
+        bool
+            ready ?
         """
         return not (self._live or self._acquiring)

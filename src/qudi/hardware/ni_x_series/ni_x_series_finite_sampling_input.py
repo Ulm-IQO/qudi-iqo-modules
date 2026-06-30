@@ -236,8 +236,12 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     def sample_rate(self):
         """
         The currently set sample rate
-
-        @return float: current sample rate in Hz
+        
+        
+        Returns
+        -------
+        float
+            current sample rate in Hz
         """
         return self._sample_rate
 
@@ -247,11 +251,16 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
     @property
     def samples_in_buffer(self):
-        """ Currently available samples per channel being held in the input buffer.
+        """
+        Currently available samples per channel being held in the input buffer.
         This is the current minimum number of samples to be read with "get_buffered_samples()"
         without blocking.
-
-        @return int: Number of unread samples per channel
+        
+        
+        Returns
+        -------
+        int
+            Number of unread samples per channel
         """
         with self._thread_lock:
             if self.module_state() == 'locked':
@@ -274,9 +283,13 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         return
 
     def set_active_channels(self, channels):
-        """ Will set the currently active channels. All other channels will be deactivated.
-
-        @param iterable(str) channels: Iterable of channel names to set active.
+        """
+        Will set the currently active channels. All other channels will be deactivated.
+        
+        Parameters
+        ----------
+        channels : iterable(str)
+            Iterable of channel names to set active.
         """
         assert hasattr(channels, '__iter__') and not isinstance(channels, str), \
             f'Given input channels {channels} are not iterable'
@@ -297,9 +310,13 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 = frozenset(di_channels), frozenset(ai_channels)
 
     def set_frame_size(self, size):
-        """ Will set the number of samples per channel to acquire within one frame.
-
-        @param int size: The sample rate to set
+        """
+        Will set the number of samples per channel to acquire within one frame.
+        
+        Parameters
+        ----------
+        size : int
+            The sample rate to set
         """
         samples = int(round(size))
         assert self._constraints.frame_size_in_range(samples)[0], \
@@ -371,7 +388,8 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             self.module_state.unlock()
 
     def get_buffered_samples(self, number_of_samples=None):
-        """ Returns a chunk of the current data frame for all active channels read from the frame
+        """
+        Returns a chunk of the current data frame for all active channels read from the frame
         buffer.
         If parameter <number_of_samples> is omitted, this method will return the currently
         available samples within the frame buffer (i.e. the value of property <samples_in_buffer>).
@@ -387,10 +405,17 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         If the data acquisition has been stopped before the frame has been acquired completely,
         this method must still return all available samples already read into buffer.
-
-        @param int number_of_samples: optional, the number of samples to read from buffer
-
-        @return dict: Sample arrays (values) for each active channel (keys)
+        
+        Parameters
+        ----------
+        number_of_samples : int
+            optional, the number of samples to read from buffer
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active channel (keys)
         """
         data = dict()
         if self.module_state() == 'idle' and self.samples_in_buffer < 1:
@@ -451,7 +476,8 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         return data
 
     def acquire_frame(self, frame_size=None):
-        """ Acquire a single data frame for all active channels.
+        """
+        Acquire a single data frame for all active channels.
         This method call is blocking until the entire data frame has been acquired.
 
         If an explicit frame_size is given as parameter, it will not overwrite the property
@@ -459,10 +485,17 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         See <start_buffered_acquisition>, <stop_buffered_acquisition> and <get_buffered_samples>
         for more details.
-
-        @param int frame_size: optional, the number of samples to acquire in this frame
-
-        @return dict: Sample arrays (values) for each active channel (keys)
+        
+        Parameters
+        ----------
+        frame_size : int
+            optional, the number of samples to acquire in this frame
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active channel (keys)
         """
         with self._thread_lock:
             if frame_size is None:
@@ -484,8 +517,12 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         """
         If no external clock is given, configures a counter to provide the sample clock for all
         channels.
-
-        @return int: error code (0: OK, -1: Error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0: OK, -1: Error)
         """
         if self._clk_task_handle is not None:
             self.log.error('Sample clock task is already running. Unable to set up a new clock '
@@ -553,8 +590,12 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     def _init_digital_tasks(self):
         """
         Set up tasks for digital event counting.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         digital_channels = self.__active_channels['di_channels']
         if not digital_channels:
@@ -679,8 +720,12 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     def _init_analog_task(self):
         """
         Set up task for analog voltage measurement.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         analog_channels = self.__active_channels['ai_channels']
         if not analog_channels:
@@ -767,7 +812,11 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     def reset_hardware(self):
         """
         Resets the NI hardware, so the connection is lost and other programs can access it.
-        @return int: error code (0:OK, -1:error)
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             self._device_handle.reset_device()
@@ -822,9 +871,16 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         Helper function to extract the bare terminal name from a string and strip it of the device
         name and dashes.
         Will return the terminal name in lower case.
-
-        @param str term_str: The str to extract the terminal name from
-        @return str: The terminal name in lower case
+        
+        Parameters
+        ----------
+        term_str : str
+            The str to extract the terminal name from
+        
+        Returns
+        -------
+        str
+            The terminal name in lower case
         """
         term = term_str.strip('/').lower()
         if 'dev' in term:
@@ -834,7 +890,10 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     def _extract_ai_di_from_input_channels(self, input_channels):
         """
         Takes an iterable and returns the split up ai and di channels
-        @return tuple(di_channels), tuple(ai_channels))
+        
+        Returns
+        -------
+        tuple(di_channels), tuple(ai_channels))
         """
         input_channels = tuple(self._extract_terminal(src) for src in input_channels)
 
