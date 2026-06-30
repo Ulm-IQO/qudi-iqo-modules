@@ -101,7 +101,7 @@ class DDMethods(Enum):
         return np.array(self._phases)
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value})"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}({self.value})"
 
 
 class SamplingBase:
@@ -268,7 +268,7 @@ class PulseEnvelope:
         return defaults[self.type.value]
 
     def __repr__(self):
-        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}({repr(self.type)}, {self.parameters})"
 
     @classmethod
     def from_dict(cls, parameters: dict) -> "PulseEnvelope":
