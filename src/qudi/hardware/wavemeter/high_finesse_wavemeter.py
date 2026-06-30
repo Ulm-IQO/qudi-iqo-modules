@@ -30,7 +30,7 @@ from typing import Union, Optional, List, Tuple, Sequence, Any, Dict
 
 import numpy as np
 from scipy.constants import lambda2nu
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
@@ -69,7 +69,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     # declare signals
     sigNewWavelength = QtCore.Signal(object)
 
-    _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
+    _proxy = Connector(name='proxy', interface=HighFinesseProxy)
 
     # config options
     _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(

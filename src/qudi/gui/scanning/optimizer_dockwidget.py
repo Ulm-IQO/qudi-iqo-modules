@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OptimizerDockWidget',)
 
 import numpy as np
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from pyqtgraph import PlotDataItem, mkPen
 import copy as cp
 
@@ -59,7 +59,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         # fill list of all optimizer subplot widgets
         for i_col, n_dim in enumerate(plot_dims):
             if n_dim == 1:
-                plot_item = XYPlotItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.DotLine),
+                plot_item = XYPlotItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.PenStyle.DotLine),
                                        symbol='o',
                                        symbolPen=QudiPalette.c1,
                                        symbolBrush=QudiPalette.c1,

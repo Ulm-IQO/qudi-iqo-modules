@@ -23,7 +23,7 @@ __all__ = ['QDPlotLogic', 'QDPlotConfig', 'QDPlotFitContainer']
 
 import numpy as np
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 from lmfit.model import ModelResult as _ModelResult
 from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
 from collections.abc import MutableMapping

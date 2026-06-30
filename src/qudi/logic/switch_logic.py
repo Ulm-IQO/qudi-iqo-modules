@@ -19,12 +19,15 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
+from qudi.interface.switch_interface import SwitchInterface
+
+from qudi.interface.switch_interface import SwitchInterface
 
 
 class SwitchLogic(LogicBase):
@@ -43,7 +46,7 @@ class SwitchLogic(LogicBase):
     """
 
     # connector for one switch, if multiple switches are needed use the SwitchCombinerInterfuse
-    switch = Connector(interface='SwitchInterface')
+    switch = Connector(interface=SwitchInterface)
 
     _watchdog_interval = ConfigOption(name='watchdog_interval', default=1.0, missing='nothing')
     _autostart_watchdog = ConfigOption(name='autostart_watchdog', default=False, missing='nothing')
@@ -71,7 +74,7 @@ class SwitchLogic(LogicBase):
 
         if self._autostart_watchdog:
             self._watchdog_active = True
-            QtCore.QMetaObject.invokeMethod(self, '_watchdog_body', QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self, '_watchdog_body', QtCore.Qt.ConnectionType.QueuedConnection)
         else:
             self._watchdog_active = False
 
@@ -210,7 +213,7 @@ class SwitchLogic(LogicBase):
                 if enable:
                     QtCore.QMetaObject.invokeMethod(self,
                                                     '_watchdog_body',
-                                                    QtCore.Qt.QueuedConnection)
+                                                    QtCore.Qt.ConnectionType.QueuedConnection)
 
     @QtCore.Slot()
     def _watchdog_body(self):

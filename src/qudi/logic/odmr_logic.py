@@ -24,7 +24,7 @@ import numpy as np
 import time
 import datetime
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.core.module import LogicBase
@@ -34,6 +34,8 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import TextDataStorage
+from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface
+from qudi.interface.microwave_interface import MicrowaveInterface
 from qudi.util.enums import SamplingOutputMode
 
 
@@ -53,8 +55,8 @@ class OdmrLogic(LogicBase):
     """
 
     # declare connectors
-    _microwave = Connector(name='microwave', interface='MicrowaveInterface')
-    _data_scanner = Connector(name='data_scanner', interface='FiniteSamplingInputInterface')
+    _microwave = Connector(name='microwave', interface=MicrowaveInterface)
+    _data_scanner = Connector(name='data_scanner', interface=FiniteSamplingInputInterface)
 
     # declare config options
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
@@ -163,7 +165,7 @@ class OdmrLogic(LogicBase):
         self._initialize_odmr_data()
 
         # Connect signals
-        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.QueuedConnection)
+        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.

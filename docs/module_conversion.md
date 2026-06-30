@@ -95,7 +95,7 @@ so it keeps track of them and also shows them in the thread view.
 A simple example for spawning a worker thread and executing a worker method inside this thread.
 ```Python
 import time
-from PySide2.QtCore import QObject, QThread
+from PySide6.QtCore import QObject, QThread
 from qudi.core.threadmanager import ThreadManager
 
 
@@ -118,7 +118,7 @@ def run_in_thread(thread_name='MyThread'):
     thread_manager = ThreadManager.instance()
     if thread_manager is None:
         raise RuntimeError('No thread manager found. Qudi application is probably not running.')
-    # Get a newly spawned thread (PySide2.QtCore.QThread) from the thread manager and give it a name
+    # Get a newly spawned thread (PySide6.QtCore.QThread) from the thread manager and give it a name
     my_thread = thread_manager.get_new_thread(thread_name)
     # Create worker instance and move the worker object to the new thread
     my_worker = Worker()

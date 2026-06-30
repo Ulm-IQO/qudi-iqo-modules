@@ -24,11 +24,13 @@ import datetime
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from PySide2 import QtCore
+from PySide6 import QtCore
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
+
+from qudi.interface.camera_interface import CameraInterface
 
 
 class CameraLogic(LogicBase):
@@ -45,7 +47,7 @@ class CameraLogic(LogicBase):
     """
 
     # declare connectors
-    _camera = Connector(name='camera', interface='CameraInterface')
+    _camera = Connector(name='camera', interface=CameraInterface)
     # declare config options
     _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
                                           default=0.05,

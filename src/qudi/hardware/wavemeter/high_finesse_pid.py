@@ -48,7 +48,7 @@ class HighFinessePID(PIDControllerInterface):
             unit: 'm'    # wavelength (m) or frequency (Hz)
             max_control_limits: [-10^4, 10^4]
     """
-    _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
+    _proxy = Connector(name='proxy', interface=HighFinesseProxy)
 
     # channel of multi-switch with laser light input
     _input_channel: int = ConfigOption(name='input_channel', default=1, checker=lambda x: x > 0)
