@@ -15,6 +15,7 @@
 *.#*
 .*.swp
 .DS_store
+result
 
 # Local config directories
 *.egg-info
