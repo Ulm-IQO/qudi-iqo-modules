@@ -14,6 +14,7 @@
 
 ### New Features
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
+- Added pulse shaping to the `pulsed` tool chain
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
