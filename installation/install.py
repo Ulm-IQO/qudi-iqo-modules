@@ -19,6 +19,8 @@ IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
 
 CORE_DIR: Optional[Path] = None
 IQO_MODULES_DIR: Optional[Path] = None
+CONFIG_DIR: Path = INSTALL_DIR / "config/"
+SCRIPTS_DIR: Path = INSTALL_DIR / "scripts/"
 
 ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
 MANIFEST_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
@@ -202,37 +204,64 @@ def install_modules():
     run(f'"{python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
-def create_launcher():
+def create_launcher_scripts():
     if os.name == "nt":
-        launcher = INSTALL_DIR / "start_qudi.bat"
-        launcher.write_text(f"""@echo off
-cd "{INSTALL_DIR}"
-call "{VENV_DIR}\\Scripts\\activate.bat"
-qudi
-pause
+        activation = INSTALL_DIR / "activate_qudi_environment.ps1"
+        activation.write_text(f"""Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+& "{VENV_DIR}\\Scripts\\Activate.ps1"
 """)
+
+        launcher = INSTALL_DIR / "qudi.ps1"
+        launcher.write_text(f"""& "{activation}"
+        qudi -d
+        """)
+
+        jupyter = INSTALL_DIR / "jupyter_qudi.ps1"
+        jupyter.write_text(f"""& "{activation}"
+        Set-Location "{SCRIPTS_DIR}"
+        jupyter lab
+        """)
     else:
-        launcher = INSTALL_DIR / "start_qudi.sh"
-        launcher.write_text(f"""#!/bin/bash
-cd "{INSTALL_DIR}"
+        activation = INSTALL_DIR / "activate_qudi_environment.sh"
+        activation.write_text(f"""#!/bin/bash
 source "{VENV_DIR}/bin/activate"
-qudi
+""")
+        activation.chmod(0o755)
+
+        launcher = INSTALL_DIR / "qudi.sh"
+        launcher.write_text(f"""#!/bin/bash
+source "{VENV_DIR}/bin/activate"
+qudi -d
 read -n 1 -s -r -p "Press any key to close..."
 echo
 """)
         launcher.chmod(0o755)
-    print(f"Created launcher script at {launcher}")
+
+        jupyter = INSTALL_DIR / "jupyter_qudi.sh"
+        jupyter.write_text(f"""#!/bin/bash
+source "{VENV_DIR}/bin/activate"
+cd "{SCRIPTS_DIR}"
+jupyter lab
+read -n 1 -s -r -p "Press any key to close..."
+echo
+""")
+        jupyter.chmod(0o755)
+    print(f"Created launcher scripts at {activation}, {launcher}, {jupyter}")
 
 
-def create_config_dir():
-    config_dir = INSTALL_DIR / "config/"
-    config_dir.mkdir(exist_ok=True)
+def create_dirs():
+    global CONFIG_DIR, SCRIPTS_DIR
+    CONFIG_DIR = INSTALL_DIR / "config/"
+    SCRIPTS_DIR = INSTALL_DIR / "scripts/"
+    CONFIG_DIR.mkdir(exist_ok=True)
+    SCRIPTS_DIR.mkdir(exist_ok=True)
     if IQO_MODULES_DIR:
-        shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", config_dir / "default.cfg")
+        shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", CONFIG_DIR / "default.cfg")
     else:
         site_packages = site_packages = next((VENV_DIR / "lib").glob("python*/site-packages"))
-        shutil.copy2(site_packages / "qudi/default.cfg", config_dir / "default.cfg")
-    print(f"Created config directory in {config_dir} and copied default config into it")
+        shutil.copy2(site_packages / "qudi/default.cfg", CONFIG_DIR / "default.cfg")
+    print(f"Created config directory in {CONFIG_DIR} and copied default config into it")
+    print(f"Created script directory in {SCRIPTS_DIR}")
 
 
 def create_desktop_file():
@@ -248,7 +277,7 @@ def create_desktop_file():
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{DESKTOP_FILE}")
-$Shortcut.TargetPath = "{INSTALL_DIR / "start_qudi.bat"}"
+$Shortcut.TargetPath = "{INSTALL_DIR / "qudi.ps1"}"
 $Shortcut.WorkingDirectory = "{INSTALL_DIR}"
 $Shortcut.IconLocation = "{iconfile}"
 $Shortcut.Save()
@@ -340,13 +369,13 @@ def main():
 
     install_modules()
 
-    create_launcher()
+    create_dirs()
+
+    create_launcher_scripts()
     create_desktop_file()
 
     start_menu_shortcut()
     desktop_shortcut()
-
-    create_config_dir()
 
     print("\nInstallation complete!")
     print(f"Location: {INSTALL_DIR}")
