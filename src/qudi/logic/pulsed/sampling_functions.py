@@ -260,15 +260,15 @@ class PulseEnvelope:
     @property
     def default_parameters(self) -> dict:
         defaults = {'rectangle': {},
-                    'parabola': {'order_P': 1},
+                    'parabola': {'order': 1},
                     'optimal': {},
-                    'sin_n': {'order_n': 2},
+                    'sin_n': {'order': 2},
                     '_from_gen_settings': {}}
 
         return defaults[self.type.value]
 
     def __repr__(self):
-        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}({repr(self.type)}, {self.parameters})"
 
     @classmethod
     def from_dict(cls, parameters: dict) -> "PulseEnvelope":
