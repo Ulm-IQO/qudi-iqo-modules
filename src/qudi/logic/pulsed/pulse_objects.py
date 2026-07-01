@@ -28,7 +28,7 @@ import importlib
 import numpy as np
 import warnings
 
-from qudi.logic.pulsed.sampling_functions import SamplingFunctions
+from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
 
 
@@ -1125,6 +1125,14 @@ class PredefinedGeneratorBase:
     def sample_rate(self):
         return self.pulse_generator_settings.get('sample_rate')
 
+    @property
+    def optimal_control_assets_path(self) -> str:
+        return self.generation_parameters.get('optimal_control_assets_path')
+
+    @property
+    def pulse_envelope(self) -> PulseEnvelope:
+        return self.generation_parameters.get("pulse_envelope")
+
     ################################################################################################
     #                                   Helper methods                                          ####
     ################################################################################################
@@ -1277,7 +1285,18 @@ class PredefinedGeneratorBase:
         """
         return self._get_trigger_element(length=50e-9, increment=0, channels=self.sync_channel)
 
-    def _get_mw_element(self, length, increment, amp=None, freq=None, phase=None):
+    def _get_envelope(self, envelope: PulseEnvelope):
+        if envelope.type == PulseEnvelopeType.from_gen_settings:
+            # if auto setting, take from generation parameters
+            # if there also auto setting, default to rectangle
+            envelope = PulseEnvelope(PulseEnvelopeType.rectangle) if self.generation_parameters['pulse_envelope'].type == PulseEnvelopeType.from_gen_settings else self.generation_parameters['pulse_envelope']
+            if 'order' in envelope.parameters:
+                envelope.parameters["order"] = self.generation_parameters["pulse_envelope_order"]
+            return envelope
+        else:
+            return envelope
+
+    def _get_mw_element(self, length, increment, amp=None, freq=None, phase=None, envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings)):
         """
         Creates a MW pulse PulseBlockElement
 
@@ -1289,6 +1308,9 @@ class PredefinedGeneratorBase:
 
         @return: PulseBlockElement, the generated MW element
         """
+        envelope = self._get_envelope(envelope)
+        self.log.debug(f"_get_mw_element called with envelope {envelope}")
+
         if self.microwave_channel.startswith('d'):
             mw_element = self._get_trigger_element(
                 length=length,
@@ -1298,13 +1320,28 @@ class PredefinedGeneratorBase:
             mw_element = self._get_idle_element(
                 length=length,
                 increment=increment)
-            mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
-                amplitude=amp,
-                frequency=freq,
-                phase=phase)
+            if envelope.type == PulseEnvelopeType.rectangle:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
+                    amplitude=amp,
+                    frequency=freq,
+                    phase=phase)
+            elif envelope.type == PulseEnvelopeType.parabola:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeParabola(
+                    amplitude=amp,
+                    frequency=freq,
+                    phase=phase,
+                    order=envelope.parameters['order'])
+            elif envelope.type == PulseEnvelopeType.sin_n:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
+                    amplitude=amp,
+                    frequency=freq,
+                    phase=phase,
+                    order=envelope.parameters['order'])
+            else:
+                raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
         return mw_element
 
-    def _get_multiple_mw_element(self, length, increment, amps=None, freqs=None, phases=None):
+    def _get_multiple_mw_element(self, length, increment, amps=None, freqs=None, phases=None, envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings)):
         """
         Creates single, double or triple sine mw element.
 
@@ -1322,6 +1359,8 @@ class PredefinedGeneratorBase:
         if isinstance(phases, (int, float)):
             phases = [phases]
 
+        envelope = self._get_envelope(envelope)
+
         if self.microwave_channel.startswith('d'):
             mw_element = self._get_trigger_element(
                 length=length,
@@ -1335,29 +1374,172 @@ class PredefinedGeneratorBase:
             sine_number = min(len(amps), len(freqs), len(phases))
 
             if sine_number < 2:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
-                    amplitude=amps[0],
-                    frequency=freqs[0],
-                    phase=phases[0])
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
+                        amplitude=amps[0],
+                        frequency=freqs[0],
+                        phase=phases[0])
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeParabola(
+                        amplitude=amps[0],
+                        frequency=freqs[0],
+                        phase=phases[0],
+                        order=envelope.parameters['order'])
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
+                        amplitude=amps[0],
+                        frequency=freqs[0],
+                        phase=phases[0],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+
             elif sine_number == 2:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSum(
-                    amplitude_1=amps[0],
-                    amplitude_2=amps[1],
-                    frequency_1=freqs[0],
-                    frequency_2=freqs[1],
-                    phase_1=phases[0],
-                    phase_2=phases[1])
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1])
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        order=envelope.parameters['order'])
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 3:
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2])
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        order=envelope.parameters['order'])
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 4:
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuadSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3])
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuadSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 5:
+                if envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuintupleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        amplitude_5=amps[4],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        frequency_5=freqs[4],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        phase_5=phases[4],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 6:
+                if envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SextupleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        amplitude_5=amps[4],
+                        amplitude_6=amps[5],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        frequency_5=freqs[4],
+                        frequency_6=freqs[5],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        phase_5=phases[4],
+                        phase_6=phases[5],
+                        order=envelope.parameters['order'])
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
             else:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSum(
-                    amplitude_1=amps[0],
-                    amplitude_2=amps[1],
-                    amplitude_3=amps[2],
-                    frequency_1=freqs[0],
-                    frequency_2=freqs[1],
-                    frequency_3=freqs[2],
-                    phase_1=phases[0],
-                    phase_2=phases[1],
-                    phase_3=phases[2])
+                raise ValueError(f"Unsupported number of sines: {sine_number}")
         return mw_element
 
     def _get_mw_laser_element(self, length, increment, amp=None, freq=None, phase=None):

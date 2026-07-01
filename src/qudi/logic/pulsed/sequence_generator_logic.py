@@ -41,7 +41,7 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
-from qudi.logic.pulsed.sampling_functions import PulseEnvelope, SamplingFunctions
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
 
@@ -108,7 +108,11 @@ class SequenceGeneratorLogic(LogicBase):
                  'laser_length': 3e-6,
                  'laser_delay': 500e-9,
                  'wait_time': 1e-6,
-                 'analog_trigger_voltage': 0.0}
+                 'analog_trigger_voltage': 0.0,
+                 'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
+                 'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
+                 'pulse_envelope_order': 1,
+                 }
     )
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
