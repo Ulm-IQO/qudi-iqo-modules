@@ -13,6 +13,7 @@
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
+- Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
