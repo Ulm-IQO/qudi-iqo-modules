@@ -22,7 +22,7 @@ IQO_MODULES_DIR: Optional[Path] = None
 CONFIG_DIR: Path = INSTALL_DIR / "config/"
 SCRIPTS_DIR: Path = INSTALL_DIR / "scripts/"
 
-ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
+QUDI_ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
 MANIFEST_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
 PYPROJECT_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/pyproject.toml"
 
@@ -206,7 +206,7 @@ def install_modules():
 
 def create_launcher_scripts():
     if os.name == "nt":
-        activation = INSTALL_DIR / "activate_qudi_environment.ps1"
+        activation = INSTALL_DIR / "qudi_environment.ps1"
         activation.write_text(f"""Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 & "{VENV_DIR}\\Scripts\\Activate.ps1"
 """)
@@ -216,13 +216,13 @@ def create_launcher_scripts():
         qudi -d
         """)
 
-        jupyter = INSTALL_DIR / "jupyter_qudi.ps1"
+        jupyter = INSTALL_DIR / "qudi_jupyter.ps1"
         jupyter.write_text(f"""& "{activation}"
         Set-Location "{SCRIPTS_DIR}"
         jupyter lab
         """)
     else:
-        activation = INSTALL_DIR / "activate_qudi_environment.sh"
+        activation = INSTALL_DIR / "qudi_environment.sh"
         activation.write_text(f"""#!/bin/bash
 source "{VENV_DIR}/bin/activate"
 """)
@@ -230,16 +230,16 @@ source "{VENV_DIR}/bin/activate"
 
         launcher = INSTALL_DIR / "qudi.sh"
         launcher.write_text(f"""#!/bin/bash
-source "{VENV_DIR}/bin/activate"
+source "{activation}"
 qudi -d
 read -n 1 -s -r -p "Press any key to close..."
 echo
 """)
         launcher.chmod(0o755)
 
-        jupyter = INSTALL_DIR / "jupyter_qudi.sh"
+        jupyter = INSTALL_DIR / "qudi_jupyter.sh"
         jupyter.write_text(f"""#!/bin/bash
-source "{VENV_DIR}/bin/activate"
+source "{activation}"
 cd "{SCRIPTS_DIR}"
 jupyter lab
 read -n 1 -s -r -p "Press any key to close..."
@@ -265,31 +265,59 @@ def create_dirs():
 
 
 def create_desktop_file():
-    global DESKTOP_FILE, ICON_URL
+    global QUDI_DESKTOP_FILE, QUDI_ICON_URL, JUPYTER_DESKTOP_FILE, ENVIRONMENT_DESKTOP_FILE
 
-    iconfile = INSTALL_DIR
+    qudi_iconfile = INSTALL_DIR
+    jupyter_iconfile = VENV_DIR
+    environment_iconfile = VENV_DIR
     if os.name == "nt":
-        iconname = "logo_qudi.ico"
-        ICON_URL += iconname
-        iconfile = iconfile / iconname
-        DESKTOP_FILE = INSTALL_DIR / "qudi.lnk"
-
+        qudi_iconname = "logo_qudi.ico"
+        QUDI_ICON_URL += qudi_iconname
+        qudi_iconfile = qudi_iconfile / qudi_iconname
+        QUDI_DESKTOP_FILE = INSTALL_DIR / "qudi.lnk"
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{DESKTOP_FILE}")
-$Shortcut.TargetPath = "{INSTALL_DIR / "qudi.ps1"}"
+$Shortcut = $WshShell.CreateShortcut("{QUDI_DESKTOP_FILE}")
+$Shortcut.TargetPath = "powershell.exe"
 $Shortcut.WorkingDirectory = "{INSTALL_DIR}"
-$Shortcut.IconLocation = "{iconfile}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi.ps1"}"'
+$Shortcut.IconLocation = "{qudi_iconfile}"
+$Shortcut.Save()
+        """
+        subprocess.run(["powershell", "-Command", ps_command], check=True)
+
+        jupyter_iconfile = jupyter_iconfile / "Lib/site-packages/jupyter_server/static/favicons/favicon.ico"
+        JUPYTER_DESKTOP_FILE = INSTALL_DIR / "qudi_jupyter.lnk"
+        ps_command = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{JUPYTER_DESKTOP_FILE}")
+$Shortcut.TargetPath = "powershell.exe"
+$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi_jupyter.ps1"}"'
+$Shortcut.IconLocation = "{jupyter_iconfile}"
+$Shortcut.Save()
+        """
+        subprocess.run(["powershell", "-Command", ps_command], check=True)
+
+        environment_iconfile = environment_iconfile / "Scripts/python.exe,0"
+        ENVIRONMENT_DESKTOP_FILE = INSTALL_DIR / "qudi_environment.lnk"
+        ps_command = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{ENVIRONMENT_DESKTOP_FILE}")
+$Shortcut.TargetPath = "powershell.exe"
+$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi_environment.ps1"}"'
+$Shortcut.IconLocation = "{environment_iconfile}"
 $Shortcut.Save()
         """
         subprocess.run(["powershell", "-Command", ps_command], check=True)
 
     else:
-        iconname = "logo-qudi.svg"
-        ICON_URL += iconname
-        iconfile = iconfile / iconname
-        DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
-        DESKTOP_FILE.write_text(f"""[Desktop Entry]
+        qudi_iconname = "logo-qudi.svg"
+        QUDI_ICON_URL += qudi_iconname
+        iconfile = qudi_iconfile / qudi_iconname
+        QUDI_DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
+        QUDI_DESKTOP_FILE.write_text(f"""[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Qudi
@@ -300,13 +328,13 @@ Terminal=true
 Categories=Science;Education;
 StartupNotify=true
 """)
-        DESKTOP_FILE.chmod(0o755)
+        QUDI_DESKTOP_FILE.chmod(0o755)
 
-    print(f"Downloading Qudi icon from {ICON_URL}")
-    with urlopen(ICON_URL) as response:
-        iconfile.write_bytes(response.read())
+    print(f"Downloading Qudi icon from {QUDI_ICON_URL}")
+    with urlopen(QUDI_ICON_URL) as response:
+        qudi_iconfile.write_bytes(response.read())
 
-    print(f"Created desktop file at {DESKTOP_FILE}")
+    print(f"Created desktop file at {QUDI_DESKTOP_FILE}")
 
 def start_menu_shortcut():
     if not yes_no_choice("Create Start Menu shortcut?"):
@@ -318,8 +346,8 @@ def start_menu_shortcut():
     else:
         start_menu = Path.home() / ".local/share/applications"
 
-    destination = start_menu / DESKTOP_FILE.name
-    shutil.copy2(DESKTOP_FILE, destination)
+    destination = start_menu / QUDI_DESKTOP_FILE.name
+    shutil.copy2(QUDI_DESKTOP_FILE, destination)
     print(f"Registered Start Menu shortcut at {destination}")
 
 
@@ -327,9 +355,9 @@ def desktop_shortcut():
     if not yes_no_choice("Create Desktop shortcut?"):
         return
 
-    destination = Path.home() / "Desktop" / DESKTOP_FILE.name
+    destination = Path.home() / "Desktop" / QUDI_DESKTOP_FILE.name
 
-    shutil.copy2(DESKTOP_FILE, destination)
+    shutil.copy2(QUDI_DESKTOP_FILE, destination)
     print(f"Created Desktop shortcut at {destination}")
 
 
