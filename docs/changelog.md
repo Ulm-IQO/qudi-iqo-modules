@@ -6,6 +6,7 @@
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fix several `POIManagerGUI` `PySide6` bugs
 
 ### New Features
 
