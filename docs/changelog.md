@@ -3,12 +3,19 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
 - Fix several `POIManagerGUI` `PySide6` bugs
 
 ### New Features
+- Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
+- Added pulse shaping to the `pulsed` tool chain
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure

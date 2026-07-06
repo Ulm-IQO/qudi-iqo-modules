@@ -452,9 +452,9 @@ class BlockEditor(QtWidgets.QTableView):
         self.model().sigColumnWidthChanged.connect(self.setColumnWidth)
 
         # Set header sizes
-        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         # self.horizontalHeader().setStyleSheet('QHeaderView { font-weight: 400; }')
-        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
+        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         self.verticalHeader().setDefaultSectionSize(50)
 
         # Set item selection and editing behaviour
