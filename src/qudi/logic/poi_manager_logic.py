@@ -667,7 +667,7 @@ class PoiManagerLogic(LogicBase):
         """
         with self._thread_lock:
             # Get current scanner position from  if no position is provided.
-            if position is None:
+            if position is None or position is False:
                 position = self.scanner_position
 
             current_poi_set = set(self.poi_names)
@@ -804,7 +804,7 @@ class PoiManagerLogic(LogicBase):
             if position is None:
                 position = self.scanner_position
 
-            if name is None:
+            if name is None or isinstance(name, bool):
                 if self.active_poi is None:
                     self.log.error('Unable to set POI position. '
                                    'No POI name given and no active POI set.')
@@ -817,7 +817,7 @@ class PoiManagerLogic(LogicBase):
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
-
+                return
             shift = position - self.get_poi_position(name)
             self.add_roi_position(self.roi_origin + shift)
             return
@@ -828,7 +828,7 @@ class PoiManagerLogic(LogicBase):
             if position is None:
                 position = self.scanner_position
 
-            if name is None:
+            if name is None or isinstance(name, bool):
                 if self.active_poi is None:
                     self.log.error('Unable to set POI position. '
                                    'No POI name given and no active POI set.')
@@ -841,6 +841,7 @@ class PoiManagerLogic(LogicBase):
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
+                return
 
             shift = position - self.get_poi_position(name)
             self._roi.set_poi_anchor(name, self.get_poi_anchor(name) + shift)

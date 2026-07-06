@@ -11,6 +11,7 @@
 - Fix `installtion.py` for arbitrary Python versions
 - Fixed tests for `rpyc>6`
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
+- Fix several `POIManagerGUI` `PySide6` bugs
 
 ### New Features
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
