@@ -14,6 +14,7 @@
 - Fix several `POIManagerGUI` `PySide6` bugs
 
 ### New Features
+- supporting custom alternative plots in pulsed analysis 
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 - Added pulse shaping to the `pulsed` tool chain
 
