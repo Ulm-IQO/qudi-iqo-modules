@@ -3,6 +3,10 @@ import time
 import numpy as np
 
 
+##############################################################################
+#   The following dataclasses are for the PulsedMeasurementLogic class and   #
+# are used to store and manage the settings and data for pulsed measurements #                                                
+##############################################################################
 def _as_bool(value):
     """Converts a value to a boolean. If the value is a string, 
     it checks for common truthy values.
@@ -182,7 +186,7 @@ class PulsedMeasurementData:
 class DataStashCache:
     """Manages the memory for stashed/recalled raw data."""
     cache: dict = field(default_factory=dict)
-    active_tag: str = None
+    active_tag: str | None = None
 
     def stash(self, tag: str, raw_data: np.ndarray, sweeps: int, time_elapsed: float):
         self.cache[tag] = {
@@ -200,6 +204,9 @@ class DataStashCache:
 
     def clear_active(self):
         self.active_tag = None
+
+    def get_active(self):
+        return self.cache.get(self.active_tag, None)
 
 @dataclass(frozen=True)
 class AlternativeSignalSettings:
@@ -221,7 +228,7 @@ class AlternativeSignalSettings:
     @classmethod
     def from_dict(cls, data: dict):
         return cls(
-            alternative_data_type=str(data.get('alternative_data_type', 'None')),
+            alternative_data_type=data.get('alternative_data_type', None),
             zeropad=int(data.get('zeropad', 0)),
             psd=_as_bool(data.get('psd', False)),
             window=str(data.get('window', 'none')),
@@ -231,7 +238,7 @@ class AlternativeSignalSettings:
     def update_from_dict(self, data: dict):
         return replace(
             self,
-            alternative_data_type=str(data.get('alternative_data_type', self.alternative_data_type)),
+            alternative_data_type=data.get('alternative_data_type', self.alternative_data_type),
             zeropad=int(data.get('zeropad', self.zeropad)),
             psd=_as_bool(data.get('psd', self.psd)),
             window=str(data.get('window', self.window)),
@@ -246,15 +253,11 @@ class ExecutionState:
     start_time: float = 0.0
     time_of_pause: float = 0.0
     elapsed_pause: float = 0.0
-    timer_interval_s: float = 5.0  # e.g., default 5 seconds
+    timer_interval_s: float = 5.0  # default 5 seconds
 
     @property
     def elapsed_time(self) -> float:
         return self.get_live_elapsed_time()
-
-    @property
-    def elapsed_sweeps(self) -> int:
-        return 0
 
     def start(self):
         """Called when a new measurement begins."""
@@ -290,35 +293,3 @@ class FitDefinition:
     estimator: str = 'default'
     custom_parameters: dict | None = None
 
-@dataclass(frozen=True)
-class AnalysisSettings:
-    """Serializable analysis parameters for the pulse analyzer."""
-
-    parameters: dict = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        return dict(self.parameters)
-
-    @classmethod
-    def from_dict(cls, data: dict | None = None):
-        return cls(parameters=dict(data or {}))
-
-    def update_from_dict(self, data: dict | None = None):
-        return replace(self, parameters={**self.parameters, **dict(data or {})})
-
-
-@dataclass(frozen=True)
-class ExtractionSettings:
-    """Serializable extraction parameters for the pulse extractor."""
-
-    parameters: dict = field(default_factory=dict)
-
-    def to_dict(self) -> dict:
-        return dict(self.parameters)
-
-    @classmethod
-    def from_dict(cls, data: dict | None = None):
-        return cls(parameters=dict(data or {}))
-
-    def update_from_dict(self, data: dict | None = None):
-        return replace(self, parameters={**self.parameters, **dict(data or {})})
