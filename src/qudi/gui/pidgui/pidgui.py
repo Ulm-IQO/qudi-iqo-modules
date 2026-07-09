@@ -37,7 +37,7 @@ from qudi.logic.pid_logic import PIDLogic
 class PIDMainWindow(QtWidgets.QMainWindow):
     """ Create the Main Window based on the *.ui file. """
 
-    def __init__(self):
+    def __init__(self, window_title: str = 'Qudi: Pid Control'):
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
         ui_file = os.path.join(this_dir, 'ui_pid_control.ui')
@@ -45,6 +45,7 @@ class PIDMainWindow(QtWidgets.QMainWindow):
         # Load it
         super().__init__()
         uic.loadUi(ui_file, self)
+        self.setWindowTitle(window_title)
         self.show()
 
 
@@ -91,8 +92,9 @@ class PIDGui(GuiBase):
 
         #####################
         # Configuring the dock widgets
-        # Use the inherited class 'CounterMainWindow' to create the GUI window
-        self._mw = PIDMainWindow()
+        # Use the inherited class 'PIDMainWindow' to create the GUI window
+        window_title = f"Qudi: {self.module_name.replace('_', ' ').title()}"
+        self._mw = PIDMainWindow(window_title=window_title)
 
         # Setup dock widgets
         self._mw.centralwidget.hide()
