@@ -1,31 +1,24 @@
 # -*- coding: utf-8 -*-
+
 """
-Qudi hardware driver for the FAST ComTec MCS8 photon-counting card.
+This file contains the Qudi hardware file implementation for FastComtec MCS6.
 
-This module controls the FAST ComTec DLL through ctypes.  The ctypes
-structures mirror the vendor DLL memory layout and must remain binary
-compatible with the header definitions used by the hardware library.
-
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the
-top-level directory of this distribution and on
-<https://github.com/Ulm-IQO/qudi-iqo-modules/>
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
-Qudi is free software: you can redistribute it and/or modify it under the
-terms of the GNU Lesser General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Qudi is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
-details.
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
 
-You should have received a copy of the GNU Lesser General Public License along
-with qudi. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
-
 #TODO: start stop works but pause does not work, i guess gui/logic problem
 #TODO: Check if there are more modules which are missing, and more settings for FastComtec which need to be put, should we include voltage threshold?
 
