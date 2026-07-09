@@ -62,6 +62,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     SequenceAnalysisResult,
     SamplingInformation,
     AssetInfo,
+    LoadedAsset,
     SequenceSamplingState,
     PulserBenchmarks,
 )
@@ -397,16 +398,16 @@ class SequenceGeneratorLogic(LogicBase):
             return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
                 if self._strip_ch_extension(name) != return_name:
-                    return '', ''
+                    return LoadedAsset.empty()
         elif asset_type == 'sequence' and len(name_list) > 0:
             return_type = 'PulseSequence'
             return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
                 if self._strip_ch_extension(name) != return_name:
-                    return '', ''
+                    return LoadedAsset.empty()
         else:
-            return '', ''
-        return return_name, return_type
+            return LoadedAsset.empty()
+        return LoadedAsset(name=return_name, asset_type=return_type)
 
     @QtCore.Slot(dict)
     def set_pulse_generator_settings(self, settings_dict=None, **kwargs):

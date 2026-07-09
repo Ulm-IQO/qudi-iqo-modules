@@ -47,18 +47,20 @@ from qudi.interface.microwave_interface import MicrowaveInterface
 
 #IMPORT ALL CLASSES FROM DATA CLASS
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
-    AnalysisSettings,
+    AnalysisParameters,
     DataStashCache,
     ExecutionState,
-    ExtractionSettings,
+    ExtractionParameters,
+    GenerationMethodParameters,
     AlternativeSignalSettings,
-    FitDefinition,
+    MeasurementInformation,
     MicrowaveSettings,
     FastCounterSettings,
     PulsedMeasurementSettings,
     PulsedMeasurementData,
     _as_bool
 )
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 
 
 
@@ -108,18 +110,11 @@ class PulsedMeasurementLogic(LogicBase):
 
     # status variables
     # ext. microwave settings
-    # __microwave_power = StatusVar(default=-30.0)
-    #__microwave_freq = StatusVar(default=2870e6)
-    #__use_ext_microwave = StatusVar(default=False)
     __microwave_settings= StatusVar(default=MicrowaveSettings(power=-30.0, frequency=2870e6, use_ext_microwave=False),
                                         constructor=lambda x: MicrowaveSettings.from_dict(x) if isinstance(x, dict) else MicrowaveSettings(power=-30.0, frequency=2870e6, use_ext_microwave=False),
                                         representer=lambda obj: obj.to_dict())
 
     # fast counter settings
-    """"
-    __fast_counter_record_length = StatusVar(default=3.0e-6)
-    __fast_counter_binwidth = StatusVar(default=1.0e-9)
-    __fast_counter_gates = StatusVar(default=0)"""
     __fast_counter_settings=StatusVar(default=FastCounterSettings(record_length=3.0e-6,
                                         bin_width=1.0e-9,
                                         number_of_gates=0,
@@ -127,17 +122,7 @@ class PulsedMeasurementLogic(LogicBase):
                                        constructor=lambda x: FastCounterSettings.from_dict(x) if isinstance(x, dict) else FastCounterSettings(record_length=3.0e-6, bin_width=1.0e-9, number_of_gates=0, is_gated=False),
                                        representer=lambda obj: obj.to_dict())
 
-
     # Pulsed measurement settings
-    """_invoke_settings_from_sequence = StatusVar(default=False)
-    _number_of_lasers = StatusVar(default=50)
-    _controlled_variable = StatusVar(default=list(range(50)),
-                                     constructor=lambda x: np.array(x, dtype=float),
-                                     representer=lambda x: list(x))
-    _alternating = StatusVar(default=False)
-    _laser_ignore_list = StatusVar(default=list())
-    _data_units = StatusVar(default=('s', ''))
-    _data_labels = StatusVar(default=('Tau', 'Signal'))"""
     __measurement_settings = StatusVar(default=PulsedMeasurementSettings(invoke_settings=False,
                                                 controlled_variable=np.array(list(range(50)), dtype=float),
                                                 number_of_lasers=50,
@@ -149,24 +134,30 @@ class PulsedMeasurementLogic(LogicBase):
                         representer=lambda obj: obj.to_dict())
 
     # PulseExtractor settings
-    extraction_parameters = StatusVar(default=None)
-    analysis_parameters = StatusVar(default=None)
+    extraction_parameters = StatusVar(default=ExtractionParameters())
+    analysis_parameters = StatusVar(default=AnalysisParameters())
 
     # Container to store measurement information about the currently loaded sequence
-    _measurement_information = StatusVar(default=dict())
+    _measurement_information = StatusVar(
+        default=MeasurementInformation(),
+        constructor=lambda x: MeasurementInformation.from_dict(x) if isinstance(x, dict)
+        else (x if isinstance(x, MeasurementInformation) else MeasurementInformation()),
+        representer=lambda obj: obj.to_dict())
     # Container to store information about the sampled waveform/sequence currently loaded
-    _sampling_information = StatusVar(default=dict())
-    _generation_method_parameters = StatusVar(default=dict())
+    _sampling_information = StatusVar(
+        default=SamplingInformation(),
+        constructor=lambda x: x if isinstance(x, SamplingInformation)
+        else (SamplingInformation.from_dict(x) if isinstance(x, dict) else SamplingInformation()))
+    _generation_method_parameters = StatusVar(
+        default=GenerationMethodParameters(),
+        constructor=lambda x: GenerationMethodParameters.from_dict(x) if isinstance(x, dict)
+        else (x if isinstance(x, GenerationMethodParameters) else GenerationMethodParameters()),
+        representer=lambda obj: obj.to_dict())
 
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
 
-    # alternative signal computation settings:
-    """_alternative_data_type = StatusVar(default=None)
-    zeropad = StatusVar(default=0)
-    psd = StatusVar(default=False)
-    window = StatusVar(default='none')
-    base_corr = StatusVar(default=True)"""
+    # alternative signal computation settings
     alternate_signal_settings = StatusVar(default=AlternativeSignalSettings(alternative_data_type=None),
                                         constructor=lambda x: AlternativeSignalSettings.from_dict(x) if isinstance(x, dict) else AlternativeSignalSettings(alternative_data_type=None),
                                         representer=lambda obj: obj.to_dict())
@@ -259,12 +250,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         # timer for measurement
         self.__analysis_timer = None
-        #self.__start_time = 0
-        #self.__elapsed_time = 0
-        #self.__elapsed_sweeps = 0
         self.__execution_state = ExecutionState()
-        #ExecutionState is the dataclass containing the following data:
-        #start_time, time_of_pause, elapsed_pause, is_paused, timer_interval_s where _s represents seconds.
 
         # threading
         self._threadlock = Mutex()
@@ -280,17 +266,7 @@ class PulsedMeasurementLogic(LogicBase):
                                                      measurement_error=measurement_error,
                                                      laser_data=laser_data,
                                                      raw_data=raw_data)
-        """
-        self._saved_raw_data = dict()  # temporary saved raw data
-        self._recalled_raw_data_tag = None  # the currently recalled raw data dict key
-        """
         self._data_stash=DataStashCache()  # manages the memory for stashed/recalled raw data
-        
-        # Paused measurement flag
-        """self.__is_paused = False
-        self._time_of_pause = None
-        self._elapsed_pause = 0"""
-        #Already defined up in ExecutionState, so we don't need to redefine it here.
 
         # for fit:
         self.fit_config_model = None  # Model for custom fit configurations
@@ -347,9 +323,6 @@ class PulsedMeasurementLogic(LogicBase):
         # initialize arrays for the measurement data
         self._initialize_data_arrays()
 
-        # recalled saved raw data dict key
-        self._recalled_raw_data_tag = None
-
         # Connect internal signals
         self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -365,9 +338,17 @@ class PulsedMeasurementLogic(LogicBase):
         self.sigStopTimer.disconnect()
         return
 
+    @extraction_parameters.constructor
+    def __constr_extraction_parameters(self, value):
+        return ExtractionParameters.from_dict(value) if isinstance(value, dict) else ExtractionParameters()
+
     @extraction_parameters.representer
     def __repr_extraction_parameters(self, value):
         return self._pulseextractor.full_settings_dict
+
+    @analysis_parameters.constructor
+    def __constr_analysis_parameters(self, value):
+        return AnalysisParameters.from_dict(value) if isinstance(value, dict) else AnalysisParameters()
 
     @analysis_parameters.representer
     def __repr_analysis_parameters(self, value):
@@ -517,6 +498,26 @@ class PulsedMeasurementLogic(LogicBase):
     @property
     def elapsed_time(self):
         return self.measurement_data.elapsed_time
+
+    @property
+    def raw_data(self):
+        return self.measurement_data.raw_data
+
+    @property
+    def laser_data(self):
+        return self.measurement_data.laser_data
+
+    @property
+    def signal_data(self):
+        return self.measurement_data.signal_data
+
+    @property
+    def signal_alt_data(self):
+        return self.measurement_data.signal_alt_data
+
+    @property
+    def measurement_error(self):
+        return self.measurement_data.measurement_error
     ############################################################################
 
     ############################################################################
@@ -621,6 +622,10 @@ class PulsedMeasurementLogic(LogicBase):
                     settings_dict.update(kwargs)
 
                 # Set parameters if present
+                # use_ext_microwave can only ever be True if a microwave connector is actually
+                # present - otherwise force it back to False regardless of what was requested.
+                if 'use_ext_microwave' in settings_dict:
+                    settings_dict['use_ext_microwave'] = _as_bool(settings_dict['use_ext_microwave']) and microwave is not None
                 self.__microwave_settings = self.__microwave_settings.update_from_dict(settings_dict)
                 if self.__microwave_settings.use_ext_microwave and microwave is not None:
                     # Apply the settings to hardware
@@ -698,24 +703,27 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def measurement_information(self):
-        return self._measurement_information
+        return self._measurement_information.to_dict()
 
     @measurement_information.setter
     def measurement_information(self, info_dict):
-        # Check if mandatory params to invoke settings are missing and set empty dict in that case.
-        mand_params = ('number_of_lasers',
-                       'controlled_variable',
-                       'laser_ignore_list',
-                       'alternating',
-                       'counting_length')
-        if not isinstance(info_dict, dict) or not all(param in info_dict for param in mand_params):
+        if isinstance(info_dict, MeasurementInformation):
+            info = info_dict
+        elif isinstance(info_dict, dict):
+            info = MeasurementInformation.from_dict(info_dict)
+        else:
+            info = MeasurementInformation()
+
+        # Check if mandatory params to invoke settings are missing and set empty container in
+        # that case.
+        if not info.is_valid:
             self.log.debug('The set measurement_information did not contain all the necessary '
-                           'information or was not a dict. Setting empty dict.')
-            self._measurement_information = dict()
+                           'information or was not a dict. Setting empty container.')
+            self._measurement_information = MeasurementInformation()
             return
 
-        # Set measurement_information dict
-        self._measurement_information = info_dict.copy()
+        # Set measurement_information container
+        self._measurement_information = info
 
         # invoke settings if needed
         if self.__measurement_settings.invoke_settings and self._measurement_information:
@@ -729,22 +737,26 @@ class PulsedMeasurementLogic(LogicBase):
 
     @sampling_information.setter
     def sampling_information(self, info_dict):
-        if isinstance(info_dict, dict):
+        if isinstance(info_dict, SamplingInformation):
             self._sampling_information = info_dict
+        elif isinstance(info_dict, dict):
+            self._sampling_information = SamplingInformation.from_dict(info_dict)
         else:
-            self._sampling_information = dict()
+            self._sampling_information = SamplingInformation()
         return
 
     @property
     def generation_method_parameters(self):
-        return self._generation_method_parameters
+        return self._generation_method_parameters.to_dict()
 
     @generation_method_parameters.setter
     def generation_method_parameters(self, info_dict):
-        if isinstance(info_dict, dict):
+        if isinstance(info_dict, GenerationMethodParameters):
             self._generation_method_parameters = info_dict
+        elif isinstance(info_dict, dict):
+            self._generation_method_parameters = GenerationMethodParameters.from_dict(info_dict)
         else:
-            self._generation_method_parameters = dict()
+            self._generation_method_parameters = GenerationMethodParameters()
         return
 
     @property
@@ -1160,17 +1172,18 @@ class PulsedMeasurementLogic(LogicBase):
         return result
 
     def _apply_invoked_settings(self):
-        if not isinstance(self._measurement_information, dict) or not self._measurement_information:
+        info = self._measurement_information
+        if not isinstance(info, MeasurementInformation) or not info.is_valid:
             self.log.warning('Can\'t invoke measurement settings from sequence information '
                          'since no measurement_information container is given.')
             return
 
         # First try to set parameters that can be changed during a running measurement
         units_labels = {}
-        if 'units' in self._measurement_information:
-            units_labels['units'] = self._measurement_information.get('units')
-        if 'labels' in self._measurement_information:
-            units_labels['labels'] = self._measurement_information.get('labels')
+        if info.units is not None:
+            units_labels['units'] = info.units
+        if info.labels is not None:
+            units_labels['labels'] = info.labels
         if units_labels:
             with self._threadlock:
                 self.__measurement_settings = self.__measurement_settings.update_from_dict(units_labels)
@@ -1180,19 +1193,19 @@ class PulsedMeasurementLogic(LogicBase):
 
         required = ('number_of_lasers', 'laser_ignore_list', 'alternating', 'controlled_variable', 'counting_length')
         for key in required:
-            if key not in self._measurement_information:
+            if getattr(info, key) is None:
                 self.log.error(f'Unable to invoke setting for "{key}".\n'
                            'Measurement information container is incomplete/invalid.')
                 return
 
         self.__measurement_settings = self.__measurement_settings.update_from_dict({
-            'number_of_lasers': int(self._measurement_information['number_of_lasers']),
-            'laser_ignore_list': sorted(self._measurement_information['laser_ignore_list']),
-            'alternating': bool(self._measurement_information['alternating']),
-            'controlled_variable': self._measurement_information['controlled_variable'],
+            'number_of_lasers': int(info.number_of_lasers),
+            'laser_ignore_list': sorted(info.laser_ignore_list),
+            'alternating': bool(info.alternating),
+            'controlled_variable': info.controlled_variable,
         })
 
-        fast_counter_record_length = self._measurement_information['counting_length']
+        fast_counter_record_length = info.counting_length
         if self._fastcounter().is_gated():
             self.set_fast_counter_settings(number_of_gates=self.__measurement_settings.number_of_lasers,
                                        record_length=fast_counter_record_length)
@@ -1318,10 +1331,11 @@ class PulsedMeasurementLogic(LogicBase):
             elapsed_time = self.__execution_state.get_live_elapsed_time()
 
         # add old raw data from previous measurements if necessary
+        # (the "starting measurement with stashed raw data" info log already happens once, in
+        # start_pulsed_measurement() - logging it again here on every analysis timer tick would
+        # spam the log for the whole duration of the measurement)
         stashed_data = self._data_stash.get_active()
         if stashed_data is not None:
-            # self.log.info('Found old saved raw data with tag "{0}".'
-            #               ''.format(self._recalled_raw_data_tag))
             elapsed_sweeps += stashed_data['elapsed_sweeps']
             elapsed_time += stashed_data['elapsed_time']
             if not fc_data.any():

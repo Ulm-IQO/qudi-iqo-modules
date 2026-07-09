@@ -1,21 +1,43 @@
+# -*- coding: utf-8 -*-
+"""
+This file contains the dataclasses used by PulsedMeasurementLogic to store and manage its
+settings and data for pulsed measurements.
+
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
 from dataclasses import dataclass, replace, field
+from typing import ClassVar, Optional
 import time
 import numpy as np
 
 
 ##############################################################################
 #   The following dataclasses are for the PulsedMeasurementLogic class and   #
-# are used to store and manage the settings and data for pulsed measurements #                                                
+# are used to store and manage the settings and data for pulsed measurements #
 ##############################################################################
 def _as_bool(value):
-    """Converts a value to a boolean. If the value is a string, 
+    """Converts a value to a boolean. If the value is a string,
     it checks for common truthy values.
     """
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
     return bool(value)
 
-#done
+
 @dataclass(frozen=True)
 class FastCounterSettings:
     """Settings used to configure and describe the fast counter."""
@@ -52,7 +74,6 @@ class FastCounterSettings:
         )
 
 
-#Done
 @dataclass(frozen=True)
 class MicrowaveSettings:
     """External microwave settings used during a pulsed measurement."""
@@ -284,12 +305,133 @@ class ExecutionState:
         if self.is_paused:
             return self.time_of_pause - self.start_time
         return time.time() - self.start_time
-    
-@dataclass(frozen=True)
-class FitDefinition:
-    """Definition for default fit configurations"""
-    name: str
-    model: str
-    estimator: str = 'default'
-    custom_parameters: dict | None = None
+
+
+@dataclass
+class MeasurementInformation:
+    """Metadata about the currently loaded pulse block ensemble/sequence (number of laser
+    pulses, controlled variable array, etc.), used to auto-populate PulsedMeasurementSettings
+    when 'invoke_settings' is enabled.
+
+    All fields default to None ("not yet available"). Use is_valid (or plain bool(...), which
+    mirrors it) to check whether enough information is present to invoke measurement settings -
+    this replaces the previous "check 5 required keys are present in a plain dict" convention.
+    """
+    number_of_lasers: Optional[int] = None
+    controlled_variable: Optional[np.ndarray] = None
+    laser_ignore_list: Optional[list] = None
+    alternating: Optional[bool] = None
+    counting_length: Optional[float] = None
+    units: Optional[tuple] = None
+    labels: Optional[tuple] = None
+
+    _MANDATORY_FIELDS: ClassVar[tuple] = (
+        'number_of_lasers', 'controlled_variable', 'laser_ignore_list', 'alternating', 'counting_length'
+    )
+
+    @property
+    def is_valid(self) -> bool:
+        """True only if every field required to invoke measurement settings is present."""
+        return all(getattr(self, name) is not None for name in self._MANDATORY_FIELDS)
+
+    def __bool__(self):
+        return self.is_valid
+
+    def to_dict(self) -> dict:
+        if not self.is_valid:
+            return {}
+        data = {
+            'number_of_lasers': self.number_of_lasers,
+            'controlled_variable': self.controlled_variable,
+            'laser_ignore_list': self.laser_ignore_list,
+            'alternating': self.alternating,
+            'counting_length': self.counting_length,
+        }
+        if self.units is not None:
+            data['units'] = self.units
+        if self.labels is not None:
+            data['labels'] = self.labels
+        return data
+
+    @classmethod
+    def from_dict(cls, data):
+        if not isinstance(data, dict) or not all(data.get(key) is not None for key in cls._MANDATORY_FIELDS):
+            return cls()
+        return cls(
+            number_of_lasers=int(data['number_of_lasers']),
+            controlled_variable=data['controlled_variable'],
+            laser_ignore_list=list(data['laser_ignore_list']),
+            alternating=bool(data['alternating']),
+            counting_length=float(data['counting_length']),
+            units=tuple(data['units']) if data.get('units') is not None else None,
+            labels=tuple(data['labels']) if data.get('labels') is not None else None,
+        )
+
+
+class AnalysisParameters(dict):
+    """dict-based structured container for the persisted PulseAnalyzer settings: the keyword
+    argument values collected for all known analysis methods, plus the name of the currently
+    selected method under the 'method' key.
+
+    This stays a dict subclass (the same pattern as SequenceStep in pulse_objects.py) rather
+    than a plain dataclass because PulseAnalyzer reads and mutates it directly as an ordinary
+    dict (isinstance(..., dict) checks, "del container[param]", "for p in container" - see
+    pulse_analyzer.py). Subclassing dict keeps that code working unchanged while giving the
+    container a name, a docstring, and named read access via .method/.parameters.
+    """
+
+    @property
+    def method(self):
+        """Name of the currently selected analysis method, or None if not set."""
+        return self.get('method')
+
+    @property
+    def parameters(self) -> dict:
+        """All method keyword-argument parameters, excluding the 'method' key itself."""
+        return {key: value for key, value in self.items() if key != 'method'}
+
+    def to_dict(self) -> dict:
+        return dict(self)
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data) if isinstance(data, dict) else cls()
+
+
+class ExtractionParameters(dict):
+    """Same purpose as AnalysisParameters, but for the persisted PulseExtractor settings - see
+    pulse_extractor.py."""
+
+    @property
+    def method(self):
+        return self.get('method')
+
+    @property
+    def parameters(self) -> dict:
+        return {key: value for key, value in self.items() if key != 'method'}
+
+    def to_dict(self) -> dict:
+        return dict(self)
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data) if isinstance(data, dict) else cls()
+
+
+class GenerationMethodParameters(dict):
+    """dict-based structured container for the keyword arguments used to (re-)generate the
+    currently loaded PulseBlockEnsemble/PulseSequence via a predefined generator method.
+
+    Kept as a dict subclass for the same reason as AnalysisParameters/ExtractionParameters:
+    PulseBlockEnsemble/PulseSequence (pulse_objects.py) already store this as a plain dict on
+    their own 'generation_method_parameters' attribute, and the parameter names vary freely
+    depending on which predefined generator method produced the ensemble/sequence.
+    """
+
+    def to_dict(self) -> dict:
+        return dict(self)
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(data) if isinstance(data, dict) else cls()
 

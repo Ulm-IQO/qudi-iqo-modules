@@ -1,3 +1,24 @@
+# -*- coding: utf-8 -*-
+"""
+This file contains the dataclasses used by SequenceGeneratorLogic to store and manage the
+settings for pulse/sequence object generation and the connected pulse generator hardware.
+
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
 from dataclasses import dataclass, replace, field, fields
 from typing import Optional
 import numpy as np
@@ -363,12 +384,14 @@ class PulserBenchmarks:
         if ignore:
             return True
         return not np.isnan(self.estimate_combined_speed())
-    
-#The following class is for storing the results of the ensemble analysis 
-#performed by the SequenceGeneratorLogic class.
+
 
 @dataclass(frozen=True)
 class EnsembleAnalysisResult:
+    """Result of analyzing a single PulseBlockEnsemble: sample/element counts, channel
+    transition timings and the generation parameters used, as returned by
+    SequenceGeneratorLogic.analyze_block_ensemble()."""
+
     number_of_samples: int
     number_of_elements: int
     elements_length_bins: np.ndarray
@@ -382,8 +405,13 @@ class EnsembleAnalysisResult:
     laser_rising_bins: np.ndarray
     laser_falling_bins: np.ndarray
 
+
 @dataclass(frozen=True)
 class SequenceAnalysisResult:
+    """Result of analyzing a PulseSequence: the same information as
+    EnsembleAnalysisResult, aggregated over the whole sequence plus broken down per step, as
+    returned by SequenceGeneratorLogic.analyze_sequence()."""
+
     digital_channels: set
     analog_channels: set
     channel_set: set
@@ -404,20 +432,38 @@ class SequenceAnalysisResult:
     laser_falling_bins: np.ndarray
 
 
+# Note: SamplingInformation is the only class in this file that is also used by
+# pulsed_measurement_logic (imported directly from there). It stores the results of the
+# ensemble/sequence analysis performed by SequenceGeneratorLogic as well as the results of the
+# sampling performed by PulsedMeasurementLogic.
 @dataclass
 class SamplingInformation:
-    """Stores sampling metadata and waveform references for generated ensembles and sequences."""
+    """Stores sampling metadata and waveform references for generated ensembles and sequences.
+
+    Note: pulse_generator_settings is typed as Optional[dict], NOT PulseGeneratorSettings,
+    even though it conceptually is a pulse generator settings snapshot. It is always populated
+    from SequenceGeneratorLogic.pulse_generator_settings, which itself returns
+    PulseGeneratorSettings.to_dict() (a plain dict) rather than the dataclass instance - see
+    sequence_generator_logic.py's sample_pulse_sequence/from_dict call sites. Two call sites
+    depend on this being a plain dict: the sampling-cache comparison in
+    SequenceGeneratorLogic.sample_pulse_sequence (dict equality) and
+    pulse_extraction_methods/basic_extraction_methods.py (dict subscript access,
+    e.g. sampling_information['pulse_generator_settings']['sample_rate']). Reconstructing a real
+    PulseGeneratorSettings instance here would require updating both of those call sites plus
+    defensively handling older pickled sessions whose pulse_generator_settings dict may not match
+    the current schema - left as a plain dict to avoid that risk.
+    """
     waveforms: list = field(default_factory=list)
-    pulse_generator_settings: Optional[PulseGeneratorSettings] = None
+    pulse_generator_settings: Optional[dict] = None
     number_of_samples: int = 0
     number_of_elements: int = 0
     elements_length_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
     ideal_length: float = 0.0
-    
+
     # Sequence-specific fields
     step_waveform_list: list = field(default_factory=list)
     ensemble_info: dict = field(default_factory=dict)
-    
+
     # Legacy fields catch-all (optional, to ensure no data is lost)
     _legacy_data: dict = field(default_factory=dict)
 
@@ -473,16 +519,59 @@ class SamplingInformation:
         """Safely parses a legacy dictionary into the dataclass."""
         if not data:
             return cls()
-            
-        # Extract known fields
-        known_field_names = {f.name for f in fields(cls)}
+
+        # Extract known fields, excluding '_legacy_data' itself: a round-tripped YAML dump (via
+        # the generic dataclass_representer registered for this class) includes '_legacy_data' as
+        # a top-level key alongside the real fields, since it iterates over ALL dataclass fields.
+        # Treating it as a "known field" here would make it end up in both init_kwargs and the
+        # explicit _legacy_data= kwarg below, raising "got multiple values for keyword argument
+        # '_legacy_data'". Instead, seed legacy_kwargs from it (if present) and merge in any other
+        # unrecognized keys on top.
+        known_field_names = {f.name for f in fields(cls) if f.name != '_legacy_data'}
         init_kwargs = {}
-        legacy_kwargs = {}
-        
+        legacy_kwargs = dict(data.get('_legacy_data') or {})
+
         for key, value in data.items():
-            if key in known_field_names:
+            if key == '_legacy_data':
+                continue
+            elif key in known_field_names:
                 init_kwargs[key] = value
             else:
                 legacy_kwargs[key] = value
-                
+
         return cls(**init_kwargs, _legacy_data=legacy_kwargs)
+
+
+@dataclass(frozen=True)
+class LoadedAsset:
+    """Name and type ('PulseBlockEnsemble', 'PulseSequence', or '' if nothing/unknown is
+    currently loaded) of the waveform/sequence currently loaded on the pulse generator hardware.
+
+    Supports iteration/indexing so existing tuple-style call sites (*loaded_asset,
+    loaded_asset[0], loaded_asset[1]) keep working unchanged - the same backward-compatibility
+    pattern already used by AssetInfo above.
+    """
+
+    name: str
+    asset_type: str
+
+    @property
+    def as_tuple(self):
+        return (self.name, self.asset_type)
+
+    def __iter__(self):
+        return iter(self.as_tuple)
+
+    def __len__(self):
+        return len(self.as_tuple)
+
+    def __getitem__(self, index):
+        return self.as_tuple[index]
+
+    def __bool__(self):
+        """True only if both a name and a recognized asset type are set."""
+        return bool(self.name) and bool(self.asset_type)
+
+    @classmethod
+    def empty(cls):
+        return cls(name='', asset_type='')

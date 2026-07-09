@@ -2369,8 +2369,8 @@ class PulsedMeasurementGui(GuiBase):
 
         # Fit settings dialog
         fit_containers = self.pulsedmasterlogic().fit_containers
-        self._pa.first_plot_fitwidget.link_fit_container(fit_containers[0])
-        self._pa.second_plot_fitwidget.link_fit_container(fit_containers[1])
+        self._pa.first_plot_fitwidget.link_fit_container(fit_containers.primary)
+        self._pa.second_plot_fitwidget.link_fit_container(fit_containers.alternative)
         self._pa.first_plot_fitwidget.sigDoFit.connect(
             lambda x: self.pulsedmasterlogic().do_fit(x, False)
         )
