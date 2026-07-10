@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
 
-This file contains the qudi hardware module to use a National Instruments X-series card as fastcounter 
-(time-resolved gated photon counting) and data instreamer (mixed analog/digital streaming for the 
-time-series display). Tested with NI-6323, NI-6343. and NI-6363. 
+This file contains the qudi hardware module to use a National Instruments X-series card as fastcounter
+(time-resolved gated photon counting) and data instreamer (mixed analog/digital streaming for the
+time-series display). Tested with NI-6323, NI-6343. and NI-6363.
 100 MHz resolution (= 10 ns binwidth) for photon streams up to 10 MHz.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
@@ -255,6 +255,26 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
     them if the stream is active.
 
     See module docstring for full channel layout and configuration.
+
+    Example configuration for copy paste:
+
+    ni_fastcounter:
+    module.Class: 'ni_x_series.ni_x_series_counter.NIXSeriesCounter'
+        options:
+            device_name: 'Dev1'
+            photon_pfi: 'PFI8'
+            gate_pfi: 'PFI10'
+            diag_enabled: false
+            diag_interval_s: 2.0
+            sample_rate: 10.0
+            channel_buffer_size: 10000
+            digital_sources:
+            - 'PFI8'
+            # analog_sources:
+            # - 'ai0'
+            adc_voltage_range: [-10, 10]
+            read_write_timeout: 10
+
     """
 
     # ── ConfigOptions ─────────────────────────────────────────────────────────
@@ -1216,7 +1236,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
                     # samples — matching exactly what the standalone does per
                     # sample, averaged over the poll interval.
                     result[i] = float(np.mean(_tmp[:n])) * self._sample_rate
-                
+
             # Analog: drain all buffered samples and return the mean per channel.
             if self._ni_ai_reader is not None:
                 n_ai = len(self._analog_sources)
@@ -1753,7 +1773,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
     def _make_reader_thread(self, task_handle, chunk_size, shared_list, lock,
                             stop_event, overflow_event, label):
-        
+
         diag_enabled    = self._diag_enabled
 
         raw_buf    = (ctypes.c_uint32 * chunk_size)()
