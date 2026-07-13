@@ -24,6 +24,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import numpy as np
 
 from qudi.util.math import compute_ft
@@ -36,7 +38,8 @@ class FourierTransformAltPlot(AltPlotMethodBase):
 
     name = 'FFT'
 
-    def compute(self, signal_data, zeropad=0, window='none', base_corr=True, psd=False):
+    def compute(self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none',
+                base_corr: bool = True, psd: bool = False) -> np.ndarray | None:
         if signal_data.shape[1] < 2:
             return None
 
@@ -61,11 +64,11 @@ class FourierTransformAltPlot(AltPlotMethodBase):
 
     # FFT swaps the x-axis to the inverse domain and renders the y-axis in arbitrary units.
     @property
-    def x_axis_label(self):
+    def x_axis_label(self) -> str:
         return 'FT {0}'.format(self.data_labels[0])
 
     @property
-    def x_axis_unit(self):
+    def x_axis_unit(self) -> str:
         x_unit = self.data_units[0]
         if x_unit == 's':
             return 'Hz'
@@ -76,11 +79,11 @@ class FourierTransformAltPlot(AltPlotMethodBase):
         return ''
 
     @property
-    def y_axis_label(self):
+    def y_axis_label(self) -> str:
         return 'FT({0})'.format(self.data_labels[1])
 
     @property
-    def y_axis_unit(self):
+    def y_axis_unit(self) -> str:
         return 'arb. u.'
 
 
@@ -90,7 +93,7 @@ class DeltaAltPlot(AltPlotMethodBase):
 
     name = 'Delta'
 
-    def compute(self, signal_data):
+    def compute(self, signal_data: np.ndarray) -> np.ndarray | None:
         if len(signal_data) != 3:
             return None
         alt_data = np.empty((2, signal_data.shape[1]), dtype=float)
@@ -98,6 +101,6 @@ class DeltaAltPlot(AltPlotMethodBase):
         alt_data[1] = signal_data[1] - signal_data[2]
         return alt_data
 
-    def is_available(self):
+    def is_available(self) -> bool:
         return self.is_alternating
 
