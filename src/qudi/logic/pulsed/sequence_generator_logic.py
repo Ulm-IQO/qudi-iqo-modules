@@ -42,7 +42,7 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
-from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType, SamplingFunctions
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 
 from qudi.util.yaml import SafeRepresenter, SafeConstructor
@@ -65,6 +65,8 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     LoadedAsset,
     SequenceSamplingState,
     PulserBenchmarks,
+    _DEFAULT_GENERATION_PARAMETERS,
+    _DEFAULT_PULSE_GENERATOR_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters
 
@@ -81,33 +83,17 @@ def _dataclass_to_dict(obj, exclude=()):
 
 def _default_generator_settings():
     """Factory for the default SequenceGeneratorSettings, used both as the StatusVar default
-    and as the fallback when restoring a malformed/legacy status value."""
+    and as the fallback when restoring a malformed/legacy status value.
+
+    generation_parameters/pulse_generator_settings reuse the single shared default instances
+    defined in sequence_generator_logic_data.py (that file can't import back from this one, so
+    it owns these literals rather than duplicating them here) - SequenceGeneratorSettings.
+    from_dict() falls back to the exact same instances when a saved settings file is missing one
+    of these keys.
+    """
     return SequenceGeneratorSettings(
-        generation_parameters=GenerationParameters(
-            laser_channel='d_ch1',
-            sync_channel='',
-            gate_channel='',
-            microwave_channel='a_ch1',
-            microwave_frequency=2.87e9,
-            microwave_amplitude=0.0,
-            rabi_period=100e-9,
-            laser_length=3e-6,
-            laser_delay=500e-9,
-            wait_time=1e-6,
-            analog_trigger_voltage=0.0,
-            optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
-            pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
-            pulse_envelope_order=1,
-        ),
-        pulse_generator_settings=PulseGeneratorSettings(
-            activation_config=ActivationConfig(name='', channels=set()),
-            sample_rate=0.0,
-            analog_levels=AnalogLevels(amplitude=dict(), offset=dict()),
-            digital_levels=DigitalLevels(low=dict(), high=dict()),
-            interleave=False,
-            flags=set(),
-            upload_speed=np.nan,
-        ),
+        generation_parameters=_DEFAULT_GENERATION_PARAMETERS,
+        pulse_generator_settings=_DEFAULT_PULSE_GENERATOR_SETTINGS,
         pulser_benchmarks=PulserBenchmarks(),
     )
 

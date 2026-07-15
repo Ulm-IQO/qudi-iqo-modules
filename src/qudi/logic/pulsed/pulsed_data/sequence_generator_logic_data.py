@@ -23,7 +23,7 @@ from dataclasses import dataclass, replace, field, fields
 from typing import Optional
 import numpy as np
 
-from qudi.logic.pulsed.sampling_functions import PulseEnvelope
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 from qudi.util.benchmark import BenchmarkTool
 
 
@@ -478,6 +478,14 @@ class SamplingInformation:
     number_of_elements: int = 0
     elements_length_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
     ideal_length: float = 0.0
+    # Populated from the EnsembleAnalysisResult/SequenceAnalysisResult computed at sampling time
+    # (sequence_generator_logic.py: info_dict = _dataclass_to_dict(ensemble_info)/
+    # _dataclass_to_dict(self.analyze_sequence(sequence)), which dumps every field of that result
+    # - these two used to only arrive here implicitly, via that dump landing in _legacy_data
+    # (since they weren't declared fields), rather than because they were designed to live here.
+    # Read by pulse_extraction_methods/basic_extraction_methods.py's ungated_gated_conv_deriv().
+    laser_rising_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
+    laser_falling_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
 
     # Sequence-specific fields
     step_waveform_list: list = field(default_factory=list)
@@ -603,6 +611,38 @@ class LoadedAsset:
         return cls(name='', asset_type='')
 
 
+# Default sub-settings for SequenceGeneratorSettings.from_dict()'s per-field fallbacks (a saved
+# settings file predating a given field) and for sequence_generator_logic.py's
+# _default_generator_settings() (a brand new settings object). Defined once, here, since this
+# file can't import back from sequence_generator_logic.py (that direction would be circular) -
+# this is the lower-level file, so it owns the shared literals instead.
+_DEFAULT_GENERATION_PARAMETERS = GenerationParameters(
+    laser_channel='d_ch1',
+    sync_channel='',
+    gate_channel='',
+    microwave_channel='a_ch1',
+    microwave_frequency=2.87e9,
+    microwave_amplitude=0.0,
+    rabi_period=100e-9,
+    laser_length=3e-6,
+    laser_delay=500e-9,
+    wait_time=1e-6,
+    analog_trigger_voltage=0.0,
+    optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
+    pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
+    pulse_envelope_order=1,
+)
+_DEFAULT_PULSE_GENERATOR_SETTINGS = PulseGeneratorSettings(
+    activation_config=ActivationConfig(name='', channels=set()),
+    sample_rate=0.0,
+    analog_levels=AnalogLevels(amplitude=dict(), offset=dict()),
+    digital_levels=DigitalLevels(low=dict(), high=dict()),
+    interleave=False,
+    flags=set(),
+    upload_speed=np.nan,
+)
+
+
 @dataclass(frozen=True)
 class SequenceGeneratorSettings:
     """Single settings container bundling everything SequenceGeneratorLogic persists as
@@ -632,10 +672,24 @@ class SequenceGeneratorSettings:
 
     @classmethod
     def from_dict(cls, data):
+        """Tolerant of a saved dict missing keys added after it was written - falls back to
+        that field's own default rather than raising KeyError."""
         return cls(
-            generation_parameters=GenerationParameters.from_dict(data['generation_parameters']),
-            pulse_generator_settings=PulseGeneratorSettings.from_dict(data['pulse_generator_settings']),
-            pulser_benchmarks=PulserBenchmarks.from_dict(data['pulser_benchmarks']),
+            generation_parameters=(
+                GenerationParameters.from_dict(data['generation_parameters'])
+                if 'generation_parameters' in data
+                else _DEFAULT_GENERATION_PARAMETERS
+            ),
+            pulse_generator_settings=(
+                PulseGeneratorSettings.from_dict(data['pulse_generator_settings'])
+                if 'pulse_generator_settings' in data
+                else _DEFAULT_PULSE_GENERATOR_SETTINGS
+            ),
+            pulser_benchmarks=(
+                PulserBenchmarks.from_dict(data['pulser_benchmarks'])
+                if 'pulser_benchmarks' in data
+                else PulserBenchmarks()
+            ),
         )
 
     def update_from_dict(self, data):

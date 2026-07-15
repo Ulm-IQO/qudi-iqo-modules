@@ -207,7 +207,7 @@ class PulsedMeasurementData:
 class DataStashCache:
     """Manages the memory for stashed/recalled raw data."""
     cache: dict = field(default_factory=dict)
-    active_tag: str | None = None
+    active_tag: Optional[str] = None
 
     def stash(self, tag: str, raw_data: np.ndarray, sweeps: int, time_elapsed: float):
         self.cache[tag] = {
@@ -232,7 +232,7 @@ class DataStashCache:
 @dataclass(frozen=True)
 class AlternativeSignalSettings:
     """Settings for alternative signal processing methods."""
-    alternative_data_type: str|None
+    alternative_data_type: Optional[str]
     zeropad:int=0
     psd: bool=False
     window: str='none'
@@ -501,12 +501,33 @@ class GenerationMethodParameters(dict):
         return cls(data) if isinstance(data, dict) else cls()
 
 
+# Default sub-settings for PulsedMeasurementSettings.from_dict()'s per-field fallbacks (a saved
+# settings file predating a given field) and for pulsed_measurement_logic.py's
+# _default_measurement_settings() (a brand new settings object). Defined once, here, since
+# pulsed_measurement_logic_data.py cannot import from pulsed_measurement_logic.py (that direction
+# would be circular) - this is the lower-level file, so it owns the shared literals instead.
+_DEFAULT_MICROWAVE_SETTINGS = MicrowaveSettings(power=-30.0, frequency=2870e6, use_ext_microwave=False)
+_DEFAULT_FAST_COUNTER_SETTINGS = FastCounterSettings(
+    record_length=3.0e-6, bin_width=1.0e-9, number_of_gates=0, is_gated=False
+)
+_DEFAULT_READOUT_SETTINGS = ReadoutSettings(
+    invoke_settings=False,
+    controlled_variable=np.array(list(range(50)), dtype=float),
+    number_of_lasers=50,
+    laser_ignore_list=list(),
+    alternating=False,
+    units=('s', ''),
+    labels=('Tau', 'Signal'),
+)
+_DEFAULT_ALTERNATE_SIGNAL_SETTINGS = AlternativeSignalSettings(alternative_data_type=None)
+
+
 @dataclass(frozen=True)
 class PulsedMeasurementSettings:
     """Single settings container bundling everything PulsedMeasurementLogic persists as
     user-configurable settings: external microwave, fast counter, readout (controlled
     variable/units/labels/...), alternative signal processing, extraction/analysis parameters,
-    and the analysis-loop timer interval.
+    the analysis-loop timer interval, and the available data-fit configurations.
 
     Note: extraction_parameters and analysis_parameters are SHARED objects, not independently
     owned copies. PulseExtractor/PulseAnalyzer hold a reference to the exact same
@@ -518,6 +539,14 @@ class PulsedMeasurementSettings:
     mirrors this: it mutates these two fields' dicts in place (dict.update()) rather than
     replacing them with a freshly-constructed instance, precisely so PulseExtractor/
     PulseAnalyzer's reference stays valid.
+
+    Note: fit_configs is NOT a shared object like the two fields above - it's a plain value
+    (a tuple of FitConfiguration.to_dict()-shaped dicts). PulsedMeasurementLogic's
+    FitConfigurationsModel (from qudi.util.datafitting, in the separately-installed qudi-core
+    package) keeps its own internal storage behind Qt's row-based model API, which this
+    dataclass cannot hold a live reference into - instead, PulsedMeasurementLogic listens for
+    FitConfigurationsModel.sigFitConfigurationsChanged and replaces this field wholesale via
+    _apply_fit_configs() whenever the model's contents change (e.g. from GUI edits).
 
     Note: sampling_information/measurement_information/generation_method_parameters are
     intentionally NOT part of this container - they live on whichever PulseBlockEnsemble/
@@ -534,6 +563,7 @@ class PulsedMeasurementSettings:
     extraction_parameters: ExtractionParameters
     analysis_parameters: AnalysisParameters
     timer_interval_s: float
+    fit_configs: tuple
 
     def to_dict(self):
         return {
@@ -544,18 +574,48 @@ class PulsedMeasurementSettings:
             'extraction_parameters': self.extraction_parameters.to_dict(),
             'analysis_parameters': self.analysis_parameters.to_dict(),
             'timer_interval_s': float(self.timer_interval_s),
+            'fit_configs': tuple(self.fit_configs),
         }
 
     @classmethod
     def from_dict(cls, data):
+        """Tolerant of a saved dict missing keys added after it was written (e.g. an older save
+        file that predates fit_configs being added to this class) - falls back to that field's
+        own default rather than raising KeyError. extraction_parameters/analysis_parameters
+        don't need an explicit fallback here: ExtractionParameters.from_dict()/
+        AnalysisParameters.from_dict() already return an empty container for non-dict input
+        (including None from a missing key), so data.get(...) with no second argument is
+        sufficient.
+        """
         return cls(
-            microwave_settings=MicrowaveSettings.from_dict(data['microwave_settings']),
-            fast_counter_settings=FastCounterSettings.from_dict(data['fast_counter_settings']),
-            readout_settings=ReadoutSettings.from_dict(data['readout_settings']),
-            alternate_signal_settings=AlternativeSignalSettings.from_dict(data['alternate_signal_settings']),
-            extraction_parameters=ExtractionParameters.from_dict(data['extraction_parameters']),
-            analysis_parameters=AnalysisParameters.from_dict(data['analysis_parameters']),
-            timer_interval_s=float(data['timer_interval_s']),
+            microwave_settings=(
+                MicrowaveSettings.from_dict(data['microwave_settings'])
+                if 'microwave_settings' in data
+                else _DEFAULT_MICROWAVE_SETTINGS
+            ),
+            fast_counter_settings=(
+                FastCounterSettings.from_dict(data['fast_counter_settings'])
+                if 'fast_counter_settings' in data
+                else _DEFAULT_FAST_COUNTER_SETTINGS
+            ),
+            readout_settings=(
+                ReadoutSettings.from_dict(data['readout_settings'])
+                if 'readout_settings' in data
+                else _DEFAULT_READOUT_SETTINGS
+            ),
+            alternate_signal_settings=(
+                AlternativeSignalSettings.from_dict(data['alternate_signal_settings'])
+                if 'alternate_signal_settings' in data
+                else _DEFAULT_ALTERNATE_SIGNAL_SETTINGS
+            ),
+            extraction_parameters=ExtractionParameters.from_dict(data.get('extraction_parameters')),
+            analysis_parameters=AnalysisParameters.from_dict(data.get('analysis_parameters')),
+            timer_interval_s=float(data.get('timer_interval_s', 5.0)),
+            # A missing key here means an older save file that predates fit_configs - it
+            # genuinely had zero fit configs of its own, so the correct fallback is an empty
+            # tuple, NOT qudi's shipped default fit configs (that fuller default belongs in
+            # _default_measurement_settings(), for a brand new settings object).
+            fit_configs=tuple(data.get('fit_configs', ())),
         )
 
     def update_from_dict(self, data):
@@ -596,6 +656,7 @@ class PulsedMeasurementSettings:
             self.analysis_parameters.update(value if isinstance(value, dict) else AnalysisParameters.from_dict(value))
 
         timer_interval_s = float(data.get('timer_interval_s', self.timer_interval_s))
+        fit_configs = tuple(data.get('fit_configs', self.fit_configs))
 
         return replace(
             self,
@@ -604,5 +665,6 @@ class PulsedMeasurementSettings:
             readout_settings=readout_settings,
             alternate_signal_settings=alternate_signal_settings,
             timer_interval_s=timer_interval_s,
+            fit_configs=fit_configs,
         )
 

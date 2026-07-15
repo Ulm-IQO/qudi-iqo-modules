@@ -586,6 +586,17 @@ class PulseBlockEnsemble(object):
         self.generation_method_parameters = GenerationMethodParameters()
         return
 
+    def copy(self):
+        """Independent copy: mutating the copy's block_list or its sampling/measurement/
+        generation_method_parameters containers never affects the original."""
+        new_ensemble = PulseBlockEnsemble(
+            name=self.name, block_list=list(self.block_list), rotating_frame=self.rotating_frame
+        )
+        new_ensemble.sampling_information = self.sampling_information.copy()
+        new_ensemble.measurement_information = self.measurement_information.copy()
+        new_ensemble.generation_method_parameters = GenerationMethodParameters(self.generation_method_parameters)
+        return new_ensemble
+
     def get_dict_representation(self):
         dict_repr = dict()
         dict_repr['name'] = self.name
@@ -1000,6 +1011,27 @@ class PulseSequence(object):
         self.measurement_information = MeasurementInformation()
         self.generation_method_parameters = GenerationMethodParameters()
         return
+
+    def copy(self):
+        """Independent copy: mutating the copy's ensemble_list or its sampling/measurement/
+        generation_method_parameters containers never affects the original.
+
+        Unlike PulseBlockEnsemble.block_list (immutable (name, repetitions) tuples),
+        ensemble_list entries are SequenceStep - a mutable dict subclass - and
+        PulseSequence.insert() stores whatever SequenceStep instance it's given by reference
+        (no internal copy, unlike PulseBlock.insert()'s copy.deepcopy). A shallow list() copy
+        here would leave the copy and the original sharing the same SequenceStep objects, so
+        each step is copied individually via its own existing .copy() method instead.
+        """
+        new_sequence = PulseSequence(
+            name=self.name,
+            ensemble_list=[step.copy() for step in self.ensemble_list],
+            rotating_frame=self.rotating_frame,
+        )
+        new_sequence.sampling_information = self.sampling_information.copy()
+        new_sequence.measurement_information = self.measurement_information.copy()
+        new_sequence.generation_method_parameters = GenerationMethodParameters(self.generation_method_parameters)
+        return new_sequence
 
     def get_dict_representation(self):
         dict_repr = dict()

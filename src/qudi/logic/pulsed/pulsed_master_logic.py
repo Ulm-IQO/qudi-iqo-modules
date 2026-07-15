@@ -596,11 +596,27 @@ class PulsedMasterLogic(LogicBase):
     def benchmark_completed(self):
         self.status_dict.benchmark_busy = False
 
+    def get_pulsed_measurement(self):
+        """Full settings+data+sequence snapshot of the current measurement, combining both
+        sub-modules' state - for scripting/notebook use (see this module's own docstring, which
+        already names that as a design goal). PulsedMasterLogic is the only module with
+        Connectors to both PulsedMeasurementLogic and SequenceGeneratorLogic, so it is the only
+        place that can build the combined object.
+
+        @return PulsedMeasurement: snapshot built from independent copies (see
+            PulsedMeasurementLogic.get_pulsed_measurement()) - safe to hold onto, will not change
+            as the measurement continues running or assets get reloaded/edited later.
+        """
+        return self.pulsedmeasurementlogic().get_pulsed_measurement(
+            generator_settings=self.sequencegeneratorlogic().generator_settings
+        )
+
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
                               save_figure=None):
         """ Prepare data to be saved and create a proper plot of the data.
-        This is just handed over to the measurement logic.
+        Combines the current SequenceGeneratorLogic settings with the measurement logic's own
+        settings/data before handing off, since only this module has Connectors to both.
 
         @param str tag: a name tag which will be included in the filename if file_path is None
         @param str file_path: optional, custom full file path including file extension to use.
@@ -630,7 +646,12 @@ class PulsedMasterLogic(LogicBase):
             save_laser_pulses=save_laser_pulses,
             save_pulsed_measurement=save_pulsed_measurement,
             save_figure=save_figure,
-            notes=notes
+            notes=notes,
+            # PulsedMasterLogic is the only module with Connectors to both PulsedMeasurementLogic
+            # and SequenceGeneratorLogic, so it is the one place that can hand the sequence
+            # generator's settings down to be included in the saved measurement metadata (see
+            # PulsedMeasurementLogic.get_pulsed_measurement()/_get_signal_metadata()).
+            generator_settings=self.sequencegeneratorlogic().generator_settings,
         )
 
     #######################################################################
