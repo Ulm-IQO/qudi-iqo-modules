@@ -44,7 +44,6 @@ from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, Puls
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
-from qudi.util.benchmark import BenchmarkTool
 
 from qudi.util.yaml import SafeRepresenter, SafeConstructor
 from qudi.util.yaml_helpers import (
@@ -58,6 +57,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     AnalogLevels,
     DigitalLevels,
     PulseGeneratorSettings,
+    SequenceGeneratorSettings,
     EnsembleAnalysisResult,
     SequenceAnalysisResult,
     SamplingInformation,
@@ -66,6 +66,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     SequenceSamplingState,
     PulserBenchmarks,
 )
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters
 
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
@@ -76,6 +77,39 @@ SafeConstructor.add_constructor("!SamplingInformation", sampling_information_con
 def _dataclass_to_dict(obj, exclude=()):
     """Shallow-flattens a dataclass instance into a plain dict, one level deep."""
     return {f.name: getattr(obj, f.name) for f in fields(obj) if f.name not in exclude}
+
+
+def _default_generator_settings():
+    """Factory for the default SequenceGeneratorSettings, used both as the StatusVar default
+    and as the fallback when restoring a malformed/legacy status value."""
+    return SequenceGeneratorSettings(
+        generation_parameters=GenerationParameters(
+            laser_channel='d_ch1',
+            sync_channel='',
+            gate_channel='',
+            microwave_channel='a_ch1',
+            microwave_frequency=2.87e9,
+            microwave_amplitude=0.0,
+            rabi_period=100e-9,
+            laser_length=3e-6,
+            laser_delay=500e-9,
+            wait_time=1e-6,
+            analog_trigger_voltage=0.0,
+            optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
+            pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
+            pulse_envelope_order=1,
+        ),
+        pulse_generator_settings=PulseGeneratorSettings(
+            activation_config=ActivationConfig(name='', channels=set()),
+            sample_rate=0.0,
+            analog_levels=AnalogLevels(amplitude=dict(), offset=dict()),
+            digital_levels=DigitalLevels(low=dict(), high=dict()),
+            interleave=False,
+            flags=set(),
+            upload_speed=np.nan,
+        ),
+        pulser_benchmarks=PulserBenchmarks(),
+    )
 
 
 class SequenceGeneratorLogic(LogicBase):
@@ -123,43 +157,16 @@ class SequenceGeneratorLogic(LogicBase):
     _disable_bench_prompt = ConfigOption(name='disable_benchmark_prompt', default=False, missing='nothing')
 
     # status vars
-    # Global parameters describing the channel usage and common parameters used during pulsed object
-    # generation for predefined methods.
-    _generation_parameters = StatusVar(
-        default=GenerationParameters(
-            laser_channel='d_ch1',
-            sync_channel='',
-            gate_channel='',
-            microwave_channel='a_ch1',
-            microwave_frequency=2.87e9,
-            microwave_amplitude=0.0,
-            rabi_period=100e-9,
-            laser_length=3e-6,
-            laser_delay=500e-9,
-            wait_time=1e-6,
-            analog_trigger_voltage=0.0,
-            optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
-            pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
-            pulse_envelope_order=1,
-        ),
-        constructor=lambda x: GenerationParameters.from_dict(x)
+    # Bundles the generation parameters (channel usage and common parameters used during
+    # pulsed object generation for predefined methods), the pulse generator hardware settings
+    # (activation config, sample rate, levels, ...) mirrored locally to avoid repeated slow
+    # hardware reads, and the write/load speed benchmarks into a single settings object instead
+    # of independently stored/persisted attributes.
+    _generator_settings = StatusVar(
+        default=_default_generator_settings(),
+        constructor=lambda x: SequenceGeneratorSettings.from_dict(x)
         if isinstance(x, dict)
-        else GenerationParameters(
-            laser_channel='d_ch1',
-            sync_channel='',
-            gate_channel='',
-            microwave_channel='a_ch1',
-            microwave_frequency=2.87e9,
-            microwave_amplitude=0.0,
-            rabi_period=100e-9,
-            laser_length=3e-6,
-            laser_delay=500e-9,
-            wait_time=1e-6,
-            analog_trigger_voltage=0.0,
-            optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
-            pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
-            pulse_envelope_order=1,
-        ),
+        else _default_generator_settings(),
         representer=lambda obj: obj.to_dict(),
     )
 
@@ -168,11 +175,6 @@ class SequenceGeneratorLogic(LogicBase):
     # _saved_pulse_blocks = StatusVar(default=OrderedDict())
     # _saved_pulse_block_ensembles = StatusVar(default=OrderedDict())
     # _saved_pulse_sequences = StatusVar(default=OrderedDict())
-
-    _benchmark_write = BenchmarkTool()
-    _benchmark_write_state = StatusVar(representer=_benchmark_write.save, constructor=_benchmark_write.load_from_dict)
-    _benchmark_load = BenchmarkTool()
-    _benchmark_load_state = StatusVar(representer=_benchmark_load.save, constructor=_benchmark_load.load_from_dict)
 
     # define signals
     sigBlockDictUpdated = QtCore.Signal(dict)
@@ -191,23 +193,6 @@ class SequenceGeneratorLogic(LogicBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
-        # current pulse generator settings that are frequently used by this logic.
-        # Save them here since reading them from device every time they are used may take some time.
-        self.__pulse_generator_settings = PulseGeneratorSettings(
-            activation_config=ActivationConfig(name='', channels=set()),
-            sample_rate=0.0,
-            analog_levels=AnalogLevels(amplitude=dict(), offset=dict()),
-            digital_levels=DigitalLevels(low=dict(), high=dict()),
-            interleave=False,
-            flags=set(),
-            upload_speed=np.nan,
-        )
-
-        # Bundles the write/load BenchmarkTool instances used to estimate pulser upload speed.
-        # Wraps the existing class-level BenchmarkTool instances (not new ones), since those are
-        # bound to the _benchmark_write_state/_benchmark_load_state StatusVar persistence.
-        self.__pulser_benchmarks = PulserBenchmarks(write=self._benchmark_write, load=self._benchmark_load)
 
         # A flag indicating if sampling of a sequence is in progress
         self.__sequence_generation_in_progress = False
@@ -356,8 +341,26 @@ class SequenceGeneratorLogic(LogicBase):
         return self._predefined_path_list
 
     @property
+    def generator_settings(self):
+        """The full SequenceGeneratorSettings object (generation_parameters,
+        pulse_generator_settings, pulser_benchmarks bundled together)."""
+        return self._generator_settings
+
+    def _update_pulse_generator_settings(self, **changes):
+        """Replace one or more fields of the nested PulseGeneratorSettings, preserving the
+        identity of every other field of self._generator_settings (including the shared
+        pulser_benchmarks object)."""
+        self._generator_settings = replace(
+            self._generator_settings,
+            pulse_generator_settings=replace(
+                self._generator_settings.pulse_generator_settings, **changes
+            ),
+        )
+        return
+
+    @property
     def pulse_generator_settings(self):
-        return self.__pulse_generator_settings.to_dict()
+        return self._generator_settings.pulse_generator_settings.to_dict()
 
     @pulse_generator_settings.setter
     def pulse_generator_settings(self, settings_dict):
@@ -381,13 +384,11 @@ class SequenceGeneratorLogic(LogicBase):
 
     @property
     def analog_channels(self):
-        channels = self.__pulse_generator_settings.activation_config.channels
-        return {chnl for chnl in channels if chnl.startswith('a_ch')}
+        return self._generator_settings.pulse_generator_settings.analog_channels
 
     @property
     def digital_channels(self):
-        channels = self.__pulse_generator_settings.activation_config.channels
-        return {chnl for chnl in channels if chnl.startswith('d_ch')}
+        return self._generator_settings.pulse_generator_settings.digital_channels
 
     @property
     def loaded_asset(self):
@@ -439,8 +440,7 @@ class SequenceGeneratorLogic(LogicBase):
                 if isinstance(activation_config, str):
                     if activation_config in available_configs.keys():
                         set_config = self._apply_activation_config(available_configs[activation_config])
-                        self.__pulse_generator_settings = replace(
-                            self.__pulse_generator_settings,
+                        self._update_pulse_generator_settings(
                             activation_config=ActivationConfig(name=activation_config, channels=set_config),
                         )
                     else:
@@ -453,8 +453,7 @@ class SequenceGeneratorLogic(LogicBase):
                     if activation_config in available_configs.values():
                         set_config = self._apply_activation_config(activation_config)
                         config_name = list(available_configs)[list(available_configs.values()).index(activation_config)]
-                        self.__pulse_generator_settings = replace(
-                            self.__pulse_generator_settings,
+                        self._update_pulse_generator_settings(
                             activation_config=ActivationConfig(name=config_name, channels=set_config),
                         )
                     else:
@@ -466,8 +465,7 @@ class SequenceGeneratorLogic(LogicBase):
                 elif isinstance(activation_config, tuple):
                     if activation_config in available_configs.items():
                         set_config = self._apply_activation_config(activation_config[1])
-                        self.__pulse_generator_settings = replace(
-                            self.__pulse_generator_settings,
+                        self._update_pulse_generator_settings(
                             activation_config=ActivationConfig(name=activation_config[0], channels=set_config),
                         )
                     else:
@@ -479,8 +477,7 @@ class SequenceGeneratorLogic(LogicBase):
                 # Check if the ultimately set config is part of the constraints
                 if set_config is not None and set_config not in available_configs.values():
                     self.log.error('Something went wrong while setting new activation config.')
-                    self.__pulse_generator_settings = replace(
-                        self.__pulse_generator_settings,
+                    self._update_pulse_generator_settings(
                         activation_config=ActivationConfig(name='', channels=set_config),
                     )
 
@@ -489,7 +486,7 @@ class SequenceGeneratorLogic(LogicBase):
                 changed_settings = dict()
                 ana_chnls = natural_sort(self.analog_channels)
                 digi_chnls = natural_sort(self.digital_channels)
-                active_channels = self.__pulse_generator_settings.activation_config.channels
+                active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
                 for name in [setting for setting in self.generation_parameters if setting.endswith('_channel')]:
                     channel = self.generation_parameters[name]
                     if isinstance(channel, str) and channel not in active_channels:
@@ -508,34 +505,28 @@ class SequenceGeneratorLogic(LogicBase):
                             changed_settings[name] = new_channel
 
             if 'sample_rate' in settings_dict:
-                self.__pulse_generator_settings = replace(
-                    self.__pulse_generator_settings,
+                self._update_pulse_generator_settings(
                     sample_rate=self.pulsegenerator().set_sample_rate(float(settings_dict['sample_rate'])),
                 )
 
             if 'analog_levels' in settings_dict:
                 amplitude, offset = self.pulsegenerator().set_analog_level(*settings_dict['analog_levels'])
-                self.__pulse_generator_settings = replace(
-                    self.__pulse_generator_settings,
+                self._update_pulse_generator_settings(
                     analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
                 )
 
             if 'digital_levels' in settings_dict:
                 low, high = self.pulsegenerator().set_digital_level(*settings_dict['digital_levels'])
-                self.__pulse_generator_settings = replace(
-                    self.__pulse_generator_settings,
+                self._update_pulse_generator_settings(
                     digital_levels=DigitalLevels(low=low, high=high),
                 )
 
             if 'interleave' in settings_dict:
-                self.__pulse_generator_settings = replace(
-                    self.__pulse_generator_settings,
+                self._update_pulse_generator_settings(
                     interleave=self.pulsegenerator().set_interleave(bool(settings_dict['interleave'])),
                 )
 
-            self.__pulse_generator_settings = replace(
-                self.__pulse_generator_settings, upload_speed=self.get_speed_write_load()
-            )
+            self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
 
         elif len(kwargs) != 0 or isinstance(settings_dict, dict):
             # Only throw warning when arguments have been passed to this method
@@ -615,7 +606,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.error('Can´t load a waveform, because pulser running. Switch off the pulser and try again.')
                 return -1
 
-            t_est_upload = self._benchmark_load.estimate_time(ensemble.sampling_information.number_of_samples)
+            t_est_upload = self._generator_settings.pulser_benchmarks.load.estimate_time(ensemble.sampling_information.number_of_samples)
             if t_est_upload > self._info_on_estimated_upload_time:
                 now = datetime.datetime.now()
                 self.log.info(
@@ -627,7 +618,7 @@ class SequenceGeneratorLogic(LogicBase):
             # Actually load the waveforms to the generic channels
             start_time = time.perf_counter()
             self.pulsegenerator().load_waveform(ensemble.sampling_information.waveforms)
-            self._benchmark_load.add_benchmark(
+            self._generator_settings.pulser_benchmarks.load.add_benchmark(
                 time.perf_counter() - start_time, ensemble.sampling_information.number_of_samples
             )
         else:
@@ -714,8 +705,7 @@ class SequenceGeneratorLogic(LogicBase):
         # Read sample rate, analog/digital levels, interleave flag and available flags from device
         amplitude, offset = self.pulsegenerator().get_analog_level()
         low, high = self.pulsegenerator().get_digital_level()
-        self.__pulse_generator_settings = replace(
-            self.__pulse_generator_settings,
+        self._update_pulse_generator_settings(
             activation_config=activation_config,
             sample_rate=float(self.pulsegenerator().get_sample_rate()),
             analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
@@ -756,7 +746,7 @@ class SequenceGeneratorLogic(LogicBase):
 
     @property
     def generation_parameters(self):
-        return self._generation_parameters.to_dict()
+        return self._generator_settings.generation_parameters.to_dict()
 
     @generation_parameters.setter
     def generation_parameters(self, settings_dict):
@@ -803,7 +793,7 @@ class SequenceGeneratorLogic(LogicBase):
 
             # Discard unknown keys. GenerationParameters has a fixed schema, so (unlike the old
             # plain dict) it cannot store arbitrary additional settings.
-            known_keys = self._generation_parameters.to_dict().keys()
+            known_keys = self._generator_settings.generation_parameters.to_dict().keys()
             for key in list(settings_dict):
                 if key not in known_keys:
                     self.log.warning(
@@ -812,7 +802,7 @@ class SequenceGeneratorLogic(LogicBase):
                     )
                     del settings_dict[key]
             # Sanity checks
-            active_channels = self.__pulse_generator_settings.activation_config.channels
+            active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
             if settings_dict.get('laser_channel'):
                 if settings_dict['laser_channel'] not in active_channels:
                     self.log.error(
@@ -847,7 +837,12 @@ class SequenceGeneratorLogic(LogicBase):
                     del settings_dict['microwave_channel']
 
             # update settings dict
-            self._generation_parameters = self._generation_parameters.update_from_dict(settings_dict)
+            self._generator_settings = replace(
+                self._generator_settings,
+                generation_parameters=self._generator_settings.generation_parameters.update_from_dict(
+                    settings_dict
+                ),
+            )
         else:
             self.log.error(
                 'Unable to apply new sampling settings.\nSequenceGeneratorLogic is busy generating a waveform/sequence.'
@@ -1284,7 +1279,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_block(block)
         for ensemble in ensembles:
             ensemble.sampling_information = SamplingInformation()
-            ensemble.generation_method_parameters = kwargs_dict
+            ensemble.generation_method_parameters = GenerationMethodParameters(kwargs_dict)
             self.save_ensemble(ensemble)
 
         if self.pulse_generator_constraints.sequence_option == SequenceOption.FORCED and len(sequences) < 1:
@@ -1297,7 +1292,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         for sequence in sequences:
             sequence.sampling_information = SamplingInformation()
-            sequence.generation_method_parameters = kwargs_dict
+            sequence.generation_method_parameters = GenerationMethodParameters(kwargs_dict)
             self.save_sequence(sequence)
 
         created_name = gen_params.get('name') if 'name' not in kwargs_dict else kwargs_dict['name']
@@ -1355,7 +1350,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         info = self.analyze_block_ensemble(ensemble=ensemble)
         ens_bins = info.number_of_samples
-        ens_length = ens_bins / self.__pulse_generator_settings.sample_rate
+        ens_length = ens_bins / self._generator_settings.pulse_generator_settings.sample_rate
         ens_lasers = min(len(info.laser_rising_bins), len(info.laser_falling_bins))
         return AssetInfo(length_s=ens_length, length_bins=ens_bins, number_of_lasers=ens_lasers)
 
@@ -1378,7 +1373,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         info = self.analyze_sequence(sequence=sequence)
         length_bins = info.number_of_samples
-        length_s = length_bins / self.__pulse_generator_settings.sample_rate if sequence.is_finite else np.inf
+        length_s = length_bins / self._generator_settings.pulse_generator_settings.sample_rate if sequence.is_finite else np.inf
 
         if len(laser_channel) > 0 and laser_channel[0] == 'd' and sequence.is_finite:
             number_of_lasers = len(info.digital_rising_bins[laser_channel])
@@ -1508,7 +1503,7 @@ class SequenceGeneratorLogic(LogicBase):
                     current_end_time += element.init_length_s + rep_no * element.increment_s
 
                     # Nearest possible match including the discretization in bins
-                    current_end_bin = int(np.rint(current_end_time * self.__pulse_generator_settings.sample_rate))
+                    current_end_bin = int(np.rint(current_end_time * self._generator_settings.pulse_generator_settings.sample_rate))
 
                     # append current element length in discrete bins to temporary array
                     elements_length_bins.append(current_end_bin - current_start_bin)
@@ -1540,7 +1535,7 @@ class SequenceGeneratorLogic(LogicBase):
             analog_channels=analog_channels,
             digital_channels=digital_channels,
             channel_set=analog_channels.union(digital_channels),
-            generation_parameters=self.generation_parameters.copy(),
+            generation_parameters=self._generator_settings.generation_parameters,
             ideal_length=current_end_time,
             laser_rising_bins=laser_rising_bins,
             laser_falling_bins=laser_falling_bins,
@@ -1756,7 +1751,7 @@ class SequenceGeneratorLogic(LogicBase):
             digital_channels=digital_channels,
             analog_channels=analog_channels,
             channel_set=analog_channels.union(digital_channels),
-            generation_parameters=self.generation_parameters.copy(),
+            generation_parameters=self._generator_settings.generation_parameters,
             digital_rising_bins=digital_rising_bins,
             digital_falling_bins=digital_falling_bins,
             number_of_steps=len(sequence),
@@ -1776,7 +1771,7 @@ class SequenceGeneratorLogic(LogicBase):
     def _sampling_ensemble_sanity_check(self, ensemble):
         blocks_missing = set()
         channel_activation_mismatch = False
-        active_channels = self.__pulse_generator_settings.activation_config.channels
+        active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
         for block_name, reps in ensemble.block_list:
             block = self._saved_pulse_blocks.get(block_name)
             # Check if block is present
@@ -1922,7 +1917,7 @@ class SequenceGeneratorLogic(LogicBase):
                 extension_samples = granularity - ensemble_info.number_of_samples % granularity
                 target_total_samples = ensemble_info.number_of_samples + extension_samples
                 extension_seconds = (
-                    target_total_samples / self.__pulse_generator_settings.sample_rate
+                    target_total_samples / self._generator_settings.pulse_generator_settings.sample_rate
                 ) - ensemble_info.ideal_length
 
                 pb_element = PulseBlockElement(
@@ -2007,7 +2002,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
 
-            t_est_upload = self._benchmark_write.estimate_time(ensemble_info.number_of_samples)
+            t_est_upload = self._generator_settings.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples)
             if t_est_upload > self._info_on_estimated_upload_time:
                 now = datetime.datetime.now()
                 self.log.info(
@@ -2047,7 +2042,7 @@ class SequenceGeneratorLogic(LogicBase):
                             if pulse_function:
                                 time_arr = (
                                     offset_bin + np.arange(samples_to_add, dtype='float64')
-                                ) / self.__pulse_generator_settings.sample_rate
+                                ) / self._generator_settings.pulse_generator_settings.sample_rate
 
                             # Calculate respective part of the sample arrays
                             for chnl in digital_high:
@@ -2057,7 +2052,7 @@ class SequenceGeneratorLogic(LogicBase):
                             for chnl in pulse_function:
                                 analog_samples[chnl][array_write_index : array_write_index + samples_to_add] = (
                                     pulse_function[chnl].get_samples(time_arr)
-                                    / (self.__pulse_generator_settings.analog_levels.amplitude[chnl] / 2)
+                                    / (self._generator_settings.pulse_generator_settings.analog_levels.amplitude[chnl] / 2)
                                 )
 
                             # Free memory
@@ -2142,13 +2137,13 @@ class SequenceGeneratorLogic(LogicBase):
             )
             self.log.debug(
                 'Estimated {:.3f} s from current estimated write speed {:.2f} MSa/s from {} benchmarks'.format(
-                    self._benchmark_write.estimate_time(ensemble_info.number_of_samples),
-                    self._benchmark_write.estimate_speed() / 1e6,
-                    self._benchmark_write.n_benchmarks,
+                    self._generator_settings.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples),
+                    self._generator_settings.pulser_benchmarks.write.estimate_speed() / 1e6,
+                    self._generator_settings.pulser_benchmarks.write.n_benchmarks,
                 )
             )
 
-            self._benchmark_write.add_benchmark(time.time() - start_time, ensemble_info.number_of_samples)
+            self._generator_settings.pulser_benchmarks.write.add_benchmark(time.time() - start_time, ensemble_info.number_of_samples)
 
             if ensemble_info.number_of_samples == 0:
                 self.log.warning(
@@ -2394,7 +2389,7 @@ class SequenceGeneratorLogic(LogicBase):
                 granularity = constraints.waveform_length.step
                 return np.ceil(n_samples / granularity) * granularity
 
-            self.__pulser_benchmarks.reset()
+            self._generator_settings.pulser_benchmarks.reset()
 
             n_samples_min = constraints.waveform_length.min
             n_max_fix = max(10e6, n_samples_min)
@@ -2419,7 +2414,7 @@ class SequenceGeneratorLogic(LogicBase):
             while time.perf_counter() - t_start < t_goal and rescode == 0:
                 speed = self.get_speed_write_load()
                 t_left = t_goal - (time.perf_counter() - t_start)
-                if self.__pulser_benchmarks.write.sanity and self.__pulser_benchmarks.load.sanity:
+                if self._generator_settings.pulser_benchmarks.write.sanity and self._generator_settings.pulser_benchmarks.load.sanity:
                     n_samples = speed * t_left / time_fraction
                     n_samples = round_to_granularity(n_samples)
                 else:  # poor speed estimate so far
@@ -2436,8 +2431,8 @@ class SequenceGeneratorLogic(LogicBase):
                     "Running benchmark. Current speed (write/load/tot): "
                     "{:.3f} / {:.3f} / {:.3f} MSa/s): {} samples for"
                     " estimated {:.5f} s, {:.5f} s left".format(
-                        self._benchmark_write.estimate_speed() / 1e6,
-                        self._benchmark_load.estimate_speed() / 1e6,
+                        self._generator_settings.pulser_benchmarks.write.estimate_speed() / 1e6,
+                        self._generator_settings.pulser_benchmarks.load.estimate_speed() / 1e6,
                         speed / 1e6,
                         n_samples,
                         t_est,
@@ -2551,7 +2546,7 @@ class SequenceGeneratorLogic(LogicBase):
             )
 
         if not ignore_datapoint:
-            self._benchmark_write.add_benchmark(
+            self._generator_settings.pulser_benchmarks.write.add_benchmark(
                 time.perf_counter() - start_time, n_samples, is_persistent=persistent_datapoint
             )
 
@@ -2559,7 +2554,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         loaded_dict = self.pulsegenerator().load_waveform(wfm_list)
         if not ignore_datapoint:
-            self._benchmark_load.add_benchmark(
+            self._generator_settings.pulser_benchmarks.load.add_benchmark(
                 time.perf_counter() - start_time, n_samples, is_persistent=persistent_datapoint
             )
 
@@ -2573,14 +2568,14 @@ class SequenceGeneratorLogic(LogicBase):
         return 0, list(), dict()
 
     def has_valid_pg_benchmark(self):
-        return self.__pulser_benchmarks.has_valid_estimate(ignore=self._disable_bench_prompt)
+        return self._generator_settings.pulser_benchmarks.has_valid_estimate(ignore=self._disable_bench_prompt)
 
     def get_speed_write_load(self):
         """
         Get the estimated speed of the pulse generator for writing and loading a waveform.
         :return: speed (Sa/s)
         """
-        return self.__pulser_benchmarks.estimate_combined_speed()
+        return self._generator_settings.pulser_benchmarks.estimate_combined_speed()
     
     def _migrate_legacy_sampling_information(self, loaded_object):
         """

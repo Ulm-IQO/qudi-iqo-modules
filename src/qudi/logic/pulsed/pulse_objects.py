@@ -30,6 +30,8 @@ import warnings
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import MeasurementInformation, GenerationMethodParameters
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 
 
 class PulseBlockElement(object):
@@ -419,21 +421,21 @@ class PulseBlockEnsemble(object):
         else:
             self.block_list = list()
 
-        # Dictionary container to store information related to the actually sampled
-        # Waveform like pulser settings used during sampling (sample_rate, activation_config etc.)
-        # and additional information about the discretization of the waveform (timebin positions of
-        # the PulseBlockElement transitions etc.) as well as the names of the created waveforms.
+        # Container to store information related to the actually sampled Waveform like pulser
+        # settings used during sampling (sample_rate, activation_config etc.) and additional
+        # information about the discretization of the waveform (timebin positions of the
+        # PulseBlockElement transitions etc.) as well as the names of the created waveforms.
         # This container will be populated during sampling and will be emptied upon deletion of the
         # corresponding waveforms from the pulse generator
-        self.sampling_information = dict()
-        # Dictionary container to store additional information about for measurement settings
+        self.sampling_information = SamplingInformation()
+        # Container to store additional information about for measurement settings
         # (ignore_lasers, controlled_variable, alternating etc.).
         # This container needs to be populated by the script creating the PulseBlockEnsemble
         # before saving it. (e.g. in generate methods in PulsedObjectGenerator class)
-        self.measurement_information = dict()
-        # Dictionary container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
+        self.measurement_information = MeasurementInformation()
+        # Container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
         # generated the pulse block ensemble.
-        self.generation_method_parameters = dict()
+        self.generation_method_parameters = GenerationMethodParameters()
 
     def __repr__(self):
         repr_str = 'PulseBlockEnsemble(name=\'{0}\', block_list={1}, rotating_frame={2})'.format(
@@ -495,9 +497,9 @@ class PulseBlockEnsemble(object):
         else:
             raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
         self.block_list[key] = tuple(value)
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def __delitem__(self, key):
@@ -505,9 +507,9 @@ class PulseBlockEnsemble(object):
             raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
 
         del self.block_list[key]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def pop(self, position=None):
@@ -515,8 +517,8 @@ class PulseBlockEnsemble(object):
             raise IndexError('pop from empty PulseBlockEnsemble')
 
         if position is None:
-            self.sampling_information = dict()
-            self.measurement_information = dict()
+            self.sampling_information = SamplingInformation()
+            self.measurement_information = MeasurementInformation()
             return self.block_list.pop()
 
         if not isinstance(position, int):
@@ -528,9 +530,9 @@ class PulseBlockEnsemble(object):
         if len(self.block_list) <= position or position < 0:
             raise IndexError('PulseBlockEnsemble block list index out of range')
 
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return self.block_list.pop(position)
 
     def insert(self, position, element):
@@ -555,9 +557,9 @@ class PulseBlockEnsemble(object):
             raise IndexError('PulseBlockEnsemble block list index out of range')
 
         self.block_list.insert(position, tuple(element))
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def append(self, element):
@@ -572,16 +574,16 @@ class PulseBlockEnsemble(object):
 
     def clear(self):
         del self.block_list[:]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def reverse(self):
         self.block_list.reverse()
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def get_dict_representation(self):
@@ -589,9 +591,9 @@ class PulseBlockEnsemble(object):
         dict_repr['name'] = self.name
         dict_repr['rotating_frame'] = self.rotating_frame
         dict_repr['block_list'] = self.block_list
-        dict_repr['sampling_information'] = self.sampling_information
-        dict_repr['measurement_information'] = self.measurement_information
-        dict_repr['generation_method_parameters'] = self.generation_method_parameters
+        dict_repr['sampling_information'] = self.sampling_information.to_dict()
+        dict_repr['measurement_information'] = self.measurement_information.to_dict()
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters.to_dict()
         return dict_repr
 
     @staticmethod
@@ -601,9 +603,11 @@ class PulseBlockEnsemble(object):
             block_list=ensemble_dict['block_list'],
             rotating_frame=ensemble_dict['rotating_frame'],
         )
-        new_ens.sampling_information = ensemble_dict['sampling_information']
-        new_ens.measurement_information = ensemble_dict['measurement_information']
-        new_ens.generation_method_parameters = ensemble_dict['generation_method_parameters']
+        new_ens.sampling_information = SamplingInformation.from_dict(ensemble_dict['sampling_information'])
+        new_ens.measurement_information = MeasurementInformation.from_dict(ensemble_dict['measurement_information'])
+        new_ens.generation_method_parameters = GenerationMethodParameters.from_dict(
+            ensemble_dict['generation_method_parameters']
+        )
         return new_ens
 
 
@@ -763,19 +767,19 @@ class PulseSequence(object):
         self.refresh_parameters()
 
         # self.sampled_ensembles = OrderedDict()
-        # Dictionary container to store information related to the actually sampled
-        # Waveforms like pulser settings used during sampling (sample_rate, activation_config etc.)
-        # and additional information about the discretization of the waveform (timebin positions of
-        # the PulseBlockElement transitions etc.)
+        # Container to store information related to the actually sampled Waveforms like pulser
+        # settings used during sampling (sample_rate, activation_config etc.) and additional
+        # information about the discretization of the waveform (timebin positions of the
+        # PulseBlockElement transitions etc.)
         # This container is not necessary for the sampling process but serves only the purpose of
         # holding optional information for different modules.
-        self.sampling_information = dict()
-        # Dictionary container to store additional information about for measurement settings
+        self.sampling_information = SamplingInformation()
+        # Container to store additional information about for measurement settings
         # (ignore_lasers, controlled_values, alternating etc.).
         # This container needs to be populated by the script creating the PulseSequence
         # before saving it.
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def refresh_parameters(self):
@@ -879,9 +883,9 @@ class PulseSequence(object):
         else:
             raise TypeError('PulseSequence indices must be int or slice, not {0}'.format(type(key)))
         self.ensemble_list[key] = value
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -898,8 +902,8 @@ class PulseSequence(object):
         else:
             raise TypeError('PulseSequence indices must be int or slice, not {0}'.format(type(key)))
         del self.ensemble_list[key]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -921,9 +925,9 @@ class PulseSequence(object):
         if len(self.ensemble_list) <= position or position < 0:
             raise IndexError('PulseSequence ensemble list index out of range')
 
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         if self.ensemble_list[position].repetitions < 0:
             stage_refresh = True
         popped_element = self.ensemble_list.pop(position)
@@ -967,9 +971,9 @@ class PulseSequence(object):
         self.ensemble_list.insert(position, element)
         if element.repetitions < 0:
             self.is_finite = False
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def append(self, element):
@@ -984,17 +988,17 @@ class PulseSequence(object):
 
     def clear(self):
         del self.ensemble_list[:]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         self.is_finite = True
         return
 
     def reverse(self):
         self.ensemble_list.reverse()
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def get_dict_representation(self):
@@ -1002,9 +1006,9 @@ class PulseSequence(object):
         dict_repr['name'] = self.name
         dict_repr['rotating_frame'] = self.rotating_frame
         dict_repr['ensemble_list'] = self.ensemble_list
-        dict_repr['sampling_information'] = self.sampling_information
-        dict_repr['measurement_information'] = self.measurement_information
-        dict_repr['generation_method_parameters'] = self.generation_method_parameters
+        dict_repr['sampling_information'] = self.sampling_information.to_dict()
+        dict_repr['measurement_information'] = self.measurement_information.to_dict()
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters.to_dict()
         return dict_repr
 
     @staticmethod
@@ -1014,9 +1018,11 @@ class PulseSequence(object):
             ensemble_list=sequence_dict['ensemble_list'],
             rotating_frame=sequence_dict['rotating_frame'],
         )
-        new_seq.sampling_information = sequence_dict['sampling_information']
-        new_seq.measurement_information = sequence_dict['measurement_information']
-        new_seq.generation_method_parameters = sequence_dict['generation_method_parameters']
+        new_seq.sampling_information = SamplingInformation.from_dict(sequence_dict['sampling_information'])
+        new_seq.measurement_information = MeasurementInformation.from_dict(sequence_dict['measurement_information'])
+        new_seq.generation_method_parameters = GenerationMethodParameters.from_dict(
+            sequence_dict['generation_method_parameters']
+        )
         return new_seq
 
 
@@ -1049,8 +1055,10 @@ class PredefinedGeneratorBase:
         return self.__sequencegeneratorlogic.analyze_sequence
 
     @property
-    def pulse_generator_settings(self):
-        return self.__sequencegeneratorlogic.pulse_generator_settings
+    def generator_settings(self):
+        """The full SequenceGeneratorSettings object (generation_parameters,
+        pulse_generator_settings, pulser_benchmarks bundled together)."""
+        return self.__sequencegeneratorlogic.generator_settings
 
     @property
     def save_block(self):
@@ -1066,7 +1074,7 @@ class PredefinedGeneratorBase:
 
     @property
     def generation_parameters(self):
-        return self.__sequencegeneratorlogic.generation_parameters
+        return self.generator_settings.generation_parameters.to_dict()
 
     @generation_parameters.setter
     def generation_parameters(self, param_dict):
@@ -1083,77 +1091,74 @@ class PredefinedGeneratorBase:
 
     @property
     def channel_set(self):
-        channels = self.pulse_generator_settings.get('activation_config')
-        if channels is None:
-            channels = ('', set())
-        return channels[1]
+        return self.generator_settings.pulse_generator_settings.activation_config.channels
 
     @property
     def analog_channels(self):
-        return {chnl for chnl in self.channel_set if chnl.startswith('a')}
+        return self.generator_settings.pulse_generator_settings.analog_channels
 
     @property
     def digital_channels(self):
-        return {chnl for chnl in self.channel_set if chnl.startswith('d')}
+        return self.generator_settings.pulse_generator_settings.digital_channels
 
     @property
     def laser_channel(self):
-        return self.generation_parameters.get('laser_channel')
+        return self.generator_settings.generation_parameters.laser_channel
 
     @property
     def sync_channel(self):
-        channel = self.generation_parameters.get('sync_channel')
+        channel = self.generator_settings.generation_parameters.sync_channel
         return None if channel == '' else channel
 
     @property
     def gate_channel(self):
-        channel = self.generation_parameters.get('gate_channel')
+        channel = self.generator_settings.generation_parameters.gate_channel
         return None if channel == '' else channel
 
     @property
     def analog_trigger_voltage(self):
-        return self.generation_parameters.get('analog_trigger_voltage')
+        return self.generator_settings.generation_parameters.analog_trigger_voltage
 
     @property
     def laser_delay(self):
-        return self.generation_parameters.get('laser_delay')
+        return self.generator_settings.generation_parameters.laser_delay
 
     @property
     def microwave_channel(self):
-        channel = self.generation_parameters.get('microwave_channel')
+        channel = self.generator_settings.generation_parameters.microwave_channel
         return None if channel == '' else channel
 
     @property
     def microwave_frequency(self):
-        return self.generation_parameters.get('microwave_frequency')
+        return self.generator_settings.generation_parameters.microwave_frequency
 
     @property
     def microwave_amplitude(self):
-        return self.generation_parameters.get('microwave_amplitude')
+        return self.generator_settings.generation_parameters.microwave_amplitude
 
     @property
     def laser_length(self):
-        return self.generation_parameters.get('laser_length')
+        return self.generator_settings.generation_parameters.laser_length
 
     @property
     def wait_time(self):
-        return self.generation_parameters.get('wait_time')
+        return self.generator_settings.generation_parameters.wait_time
 
     @property
     def rabi_period(self):
-        return self.generation_parameters.get('rabi_period')
+        return self.generator_settings.generation_parameters.rabi_period
 
     @property
     def sample_rate(self):
-        return self.pulse_generator_settings.get('sample_rate')
+        return self.generator_settings.pulse_generator_settings.sample_rate
 
     @property
     def optimal_control_assets_path(self) -> str:
-        return self.generation_parameters.get('optimal_control_assets_path')
+        return self.generator_settings.generation_parameters.optimal_control_assets_path
 
     @property
     def pulse_envelope(self) -> PulseEnvelope:
-        return self.generation_parameters.get("pulse_envelope")
+        return self.generator_settings.generation_parameters.pulse_envelope
 
     ################################################################################################
     #                                   Helper methods                                          ####

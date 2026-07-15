@@ -87,10 +87,10 @@ class PulseExtractor(PulseExtractorBase):
         # Dictionaries holding references to the extraction methods
         self._gated_extraction_methods = dict()
         self._ungated_extraction_methods = dict()
-        # dictionary containing all possible parameters that can be used by the extraction methods
-        self._parameters = dict()
-        # Currently selected extraction method
-        self._current_extraction_method = None
+        # The real, shared ExtractionParameters instance held by PulsedMeasurementLogic's
+        # settings - not a copy. Mutated in place (dict item assignment) as this class's real,
+        # live, authoritative state; nothing else needs to be kept in sync with it.
+        self._parameters = pulsedmeasurementlogic.extraction_parameters
 
         # import extraction modules from default namespace package
         # "qudi.logic.pulse_extraction_methods"
@@ -134,24 +134,24 @@ class PulseExtractor(PulseExtractorBase):
         # add references to all extraction methods in each instance to a dict
         self.__populate_method_dicts(instance_list=extractor_instances)
 
-        # populate "_parameters" dictionary from extraction method signatures
+        # Drop any persisted parameter that no longer corresponds to a real method (e.g.
+        # removed or renamed since last session)
+        valid_parameter_names = set()
+        for method in list(self._ungated_extraction_methods.values()) + list(self._gated_extraction_methods.values()):
+            valid_parameter_names.update(inspect.signature(method).parameters.keys())
+        valid_parameter_names.discard('count_data')
+        for param in [p for p in list(self._parameters) if p not in valid_parameter_names and p != 'method']:
+            del self._parameters[param]
+
+        # Fill in defaults (from method signatures) for any valid parameter name not already
+        # present in the shared, persisted self._parameters dict (e.g. a newly discovered
+        # method). Never overwrites an already-persisted value.
         self.__populate_parameter_dict()
 
-        # Set default extraction method
-        if self.is_gated:
-            self._current_extraction_method = natural_sort(self._gated_extraction_methods)[0]
-        else:
-            self._current_extraction_method = natural_sort(self._ungated_extraction_methods)[0]
-
-        # Update from parameter_dict if handed over
-        if isinstance(pulsedmeasurementlogic.extraction_parameters, dict):
-            # Delete unused parameters
-            params = [p for p in pulsedmeasurementlogic.extraction_parameters if
-                      p not in self._parameters and p != 'method']
-            for param in params:
-                del pulsedmeasurementlogic.extraction_parameters[param]
-            # Update parameter dict and current method
-            self.extraction_settings = pulsedmeasurementlogic.extraction_parameters
+        # Ensure a valid current method is selected for the current gated/ungated mode
+        available_methods = self._gated_extraction_methods if self.is_gated else self._ungated_extraction_methods
+        if self._parameters.get('method') not in available_methods:
+            self._parameters['method'] = natural_sort(available_methods)[0]
         return
 
     @property
@@ -162,17 +162,18 @@ class PulseExtractor(PulseExtractorBase):
 
         @return dict: dictionary with keys being the parameter name and values being the parameter
         """
+        current_method = self._parameters.get('method')
         # Get reference to the extraction method
         if self.is_gated:
-            method = self._gated_extraction_methods.get(self._current_extraction_method)
+            method = self._gated_extraction_methods.get(current_method)
         else:
-            method = self._ungated_extraction_methods.get(self._current_extraction_method)
+            method = self._ungated_extraction_methods.get(current_method)
 
         # Get keyword arguments for the currently selected method
         settings_dict = self._get_extraction_method_kwargs(method)
 
         # Attach current extraction method name
-        settings_dict['method'] = self._current_extraction_method
+        settings_dict['method'] = current_method
         return settings_dict
 
     @extraction_settings.setter
@@ -187,13 +188,14 @@ class PulseExtractor(PulseExtractorBase):
         if not isinstance(settings_dict, dict):
             return
 
-        # go through all key-value pairs in settings_dict and update self._parameters and
-        # self._current_extraction_method accordingly. Ignore unknown parameters.
+        # go through all key-value pairs in settings_dict and update self._parameters
+        # (including the current method, stored under the 'method' key) accordingly. Ignore
+        # unknown parameters.
         for parameter, value in settings_dict.items():
             if parameter == 'method':
                 if (value in self._gated_extraction_methods and self.is_gated) or (
                         value in self._ungated_extraction_methods and not self.is_gated):
-                    self._current_extraction_method = value
+                    self._parameters['method'] = value
                 else:
                     self.log.error('Extraction method "{0}" could not be found in PulseExtractor.'
                                    ''.format(value))
@@ -216,18 +218,6 @@ class PulseExtractor(PulseExtractorBase):
         else:
             return self._ungated_extraction_methods
 
-    @property
-    def full_settings_dict(self):
-        """
-        Returns the full set of parameters for all methods as well as the currently selected method
-        in order to store them in a StatusVar in PulsedMeasurementLogic.
-
-        @return dict: full set of parameters and currently selected extraction method.
-        """
-        settings_dict = self._parameters.copy()
-        settings_dict['method'] = self._current_extraction_method
-        return settings_dict
-
     def extract_laser_pulses(self, count_data):
         """
         Wrapper method to call the currently selected extraction method with count_data and the
@@ -244,10 +234,11 @@ class PulseExtractor(PulseExtractorBase):
             self.log.error('"is_gated" flag is set to True but the count data to extract laser '
                            'pulses from is in the format of an ungated timetrace (1D numpy array).')
 
+        current_method = self._parameters.get('method')
         if self.is_gated:
-            extraction_method = self._gated_extraction_methods[self._current_extraction_method]
+            extraction_method = self._gated_extraction_methods[current_method]
         else:
-            extraction_method = self._ungated_extraction_methods[self._current_extraction_method]
+            extraction_method = self._ungated_extraction_methods[current_method]
         kwargs = self._get_extraction_method_kwargs(extraction_method)
         return extraction_method(count_data=count_data, **kwargs)
 
@@ -325,14 +316,16 @@ class PulseExtractor(PulseExtractorBase):
 
     def __populate_parameter_dict(self):
         """
-        Helper method to populate the dictionary containing all possible keyword arguments from all
-        extraction methods.
+        Helper method to fill in default values (from method signatures) for any extraction
+        method keyword argument not already present in the shared self._parameters dict. Never
+        overwrites an already-present (e.g. persisted) value.
         """
-        self._parameters = dict()
         for method in self._ungated_extraction_methods.values():
-            self._parameters.update(self._get_extraction_method_kwargs(method=method))
+            for name, default in self._get_extraction_method_kwargs(method=method).items():
+                self._parameters.setdefault(name, default)
         for method in self._gated_extraction_methods.values():
-            self._parameters.update(self._get_extraction_method_kwargs(method=method))
+            for name, default in self._get_extraction_method_kwargs(method=method).items():
+                self._parameters.setdefault(name, default)
         return
 
     @staticmethod

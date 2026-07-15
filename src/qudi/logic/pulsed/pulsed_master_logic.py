@@ -27,11 +27,6 @@ from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
-from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
-    MeasurementInformation,
-    GenerationMethodParameters,
-)
-from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 from qudi.logic.pulsed.pulsed_data.pulsed_master_logic_data import PulsedMasterStatus, FitContainers
 
 
@@ -617,6 +612,16 @@ class PulsedMasterLogic(LogicBase):
         @param bool save_figure: select whether a thumbnail plot should be saved
         @param str notes: optional, string that is included in the metadata "as-is" without a field
         """
+        still_busy = (self.status_dict.loading_busy
+                      or self.status_dict.sampload_busy
+                      or self.status_dict.sampling_ensemble_busy
+                      or self.status_dict.sampling_sequence_busy)
+        if still_busy:
+            self.log.error('Can not save measurement data while a load/sample operation is still '
+                           'in progress. The currently loaded asset\'s settings have not fully '
+                           'propagated yet - saving now would save stale data from the previously '
+                           'loaded asset. Wait for loading/sampling to finish and try again.')
+            return
         return self.pulsedmeasurementlogic().save_measurement_data(
             tag=tag,
             file_path=file_path,
@@ -822,14 +827,7 @@ class PulsedMasterLogic(LogicBase):
         else:
             object_instance = None
 
-        if object_instance is None:
-            self.pulsedmeasurementlogic().sampling_information = SamplingInformation()
-            self.pulsedmeasurementlogic().measurement_information = MeasurementInformation()
-            self.pulsedmeasurementlogic().generation_method_parameters = GenerationMethodParameters()
-        else:
-            self.pulsedmeasurementlogic().sampling_information = object_instance.sampling_information
-            self.pulsedmeasurementlogic().measurement_information = object_instance.measurement_information
-            self.pulsedmeasurementlogic().generation_method_parameters = object_instance.generation_method_parameters
+        self.pulsedmeasurementlogic().loaded_asset = object_instance
         return
 
     @QtCore.Slot(object)

@@ -19,7 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass, replace, field
+from dataclasses import dataclass, replace, field, fields
 from typing import ClassVar, Optional
 import time
 import numpy as np
@@ -107,7 +107,7 @@ class MicrowaveSettings:
 
 
 @dataclass(frozen=True)
-class PulsedMeasurementSettings:
+class ReadoutSettings:
     """User-facing settings that define how a pulsed measurement is analyzed."""
 
     invoke_settings: bool
@@ -274,7 +274,6 @@ class ExecutionState:
     start_time: float = 0.0
     time_of_pause: float = 0.0
     elapsed_pause: float = 0.0
-    timer_interval_s: float = 5.0  # default 5 seconds
 
     @property
     def elapsed_time(self) -> float:
@@ -336,6 +335,72 @@ class MeasurementInformation:
 
     def __bool__(self):
         return self.is_valid
+
+    def __eq__(self, other):
+        """Custom equality: the auto-generated dataclass __eq__ would compare
+        controlled_variable with plain '==', which raises "truth value of an array is
+        ambiguous" once it holds a populated numpy array (the normal case)."""
+        if not isinstance(other, MeasurementInformation):
+            return NotImplemented
+        if not np.array_equal(self.controlled_variable, other.controlled_variable):
+            return False
+        return (
+            self.number_of_lasers,
+            self.laser_ignore_list,
+            self.alternating,
+            self.counting_length,
+            self.units,
+            self.labels,
+        ) == (
+            other.number_of_lasers,
+            other.laser_ignore_list,
+            other.alternating,
+            other.counting_length,
+            other.units,
+            other.labels,
+        )
+
+    def _field_names(self):
+        return {f.name for f in fields(self)}
+
+    def __contains__(self, key):
+        return key in self._field_names()
+
+    def __getitem__(self, key):
+        if key in self._field_names():
+            return getattr(self, key)
+        raise KeyError(key)
+
+    def __setitem__(self, key, value):
+        """Allows dict-item-assignment (e.g. block_ensemble.measurement_information['alternating']
+        = False), used throughout predefined_generate_methods/*.py, on this typed dataclass."""
+        if key not in self._field_names():
+            raise KeyError(
+                'MeasurementInformation has no field "{0}". Valid fields: {1}'.format(
+                    key, sorted(self._field_names())
+                )
+            )
+        setattr(self, key, value)
+
+    def get(self, key, default=None):
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def update(self, other=(), **kwargs):
+        items = other.items() if hasattr(other, 'items') else other
+        for key, value in items:
+            self[key] = value
+        for key, value in kwargs.items():
+            self[key] = value
+
+    def copy(self):
+        return replace(
+            self,
+            laser_ignore_list=None if self.laser_ignore_list is None else list(self.laser_ignore_list),
+            controlled_variable=None if self.controlled_variable is None else self.controlled_variable.copy(),
+        )
 
     def to_dict(self) -> dict:
         if not self.is_valid:
@@ -434,4 +499,110 @@ class GenerationMethodParameters(dict):
     @classmethod
     def from_dict(cls, data):
         return cls(data) if isinstance(data, dict) else cls()
+
+
+@dataclass(frozen=True)
+class PulsedMeasurementSettings:
+    """Single settings container bundling everything PulsedMeasurementLogic persists as
+    user-configurable settings: external microwave, fast counter, readout (controlled
+    variable/units/labels/...), alternative signal processing, extraction/analysis parameters,
+    and the analysis-loop timer interval.
+
+    Note: extraction_parameters and analysis_parameters are SHARED objects, not independently
+    owned copies. PulseExtractor/PulseAnalyzer hold a reference to the exact same
+    ExtractionParameters/AnalysisParameters instance stored here and mutate it in place
+    (dict.__setitem__) as their real, live, authoritative state - see pulse_extractor.py/
+    pulse_analyzer.py. Because dataclasses.replace() leaves the object identity of any field it
+    doesn't touch untouched, swapping out some other field of this container (e.g. via
+    _apply_fast_counter_settings) never disturbs that shared reference. update_from_dict()
+    mirrors this: it mutates these two fields' dicts in place (dict.update()) rather than
+    replacing them with a freshly-constructed instance, precisely so PulseExtractor/
+    PulseAnalyzer's reference stays valid.
+
+    Note: sampling_information/measurement_information/generation_method_parameters are
+    intentionally NOT part of this container - they live on whichever PulseBlockEnsemble/
+    PulseSequence is currently loaded (owned/persisted by SequenceGeneratorLogic), and
+    PulsedMeasurementLogic exposes them as properties over a live `loaded_asset` reference
+    rather than an independently persisted copy - this is what actually eliminates the
+    save/load race that used to exist when that data was copied on every load instead.
+    """
+
+    microwave_settings: MicrowaveSettings
+    fast_counter_settings: FastCounterSettings
+    readout_settings: ReadoutSettings
+    alternate_signal_settings: AlternativeSignalSettings
+    extraction_parameters: ExtractionParameters
+    analysis_parameters: AnalysisParameters
+    timer_interval_s: float
+
+    def to_dict(self):
+        return {
+            'microwave_settings': self.microwave_settings.to_dict(),
+            'fast_counter_settings': self.fast_counter_settings.to_dict(),
+            'readout_settings': self.readout_settings.to_dict(),
+            'alternate_signal_settings': self.alternate_signal_settings.to_dict(),
+            'extraction_parameters': self.extraction_parameters.to_dict(),
+            'analysis_parameters': self.analysis_parameters.to_dict(),
+            'timer_interval_s': float(self.timer_interval_s),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            microwave_settings=MicrowaveSettings.from_dict(data['microwave_settings']),
+            fast_counter_settings=FastCounterSettings.from_dict(data['fast_counter_settings']),
+            readout_settings=ReadoutSettings.from_dict(data['readout_settings']),
+            alternate_signal_settings=AlternativeSignalSettings.from_dict(data['alternate_signal_settings']),
+            extraction_parameters=ExtractionParameters.from_dict(data['extraction_parameters']),
+            analysis_parameters=AnalysisParameters.from_dict(data['analysis_parameters']),
+            timer_interval_s=float(data['timer_interval_s']),
+        )
+
+    def update_from_dict(self, data):
+        microwave_settings = self.microwave_settings
+        if 'microwave_settings' in data:
+            value = data['microwave_settings']
+            microwave_settings = value if isinstance(value, MicrowaveSettings) else self.microwave_settings.update_from_dict(value)
+
+        fast_counter_settings = self.fast_counter_settings
+        if 'fast_counter_settings' in data:
+            value = data['fast_counter_settings']
+            fast_counter_settings = (
+                value if isinstance(value, FastCounterSettings) else self.fast_counter_settings.update_from_dict(value)
+            )
+
+        readout_settings = self.readout_settings
+        if 'readout_settings' in data:
+            value = data['readout_settings']
+            readout_settings = value if isinstance(value, ReadoutSettings) else self.readout_settings.update_from_dict(value)
+
+        alternate_signal_settings = self.alternate_signal_settings
+        if 'alternate_signal_settings' in data:
+            value = data['alternate_signal_settings']
+            alternate_signal_settings = (
+                value
+                if isinstance(value, AlternativeSignalSettings)
+                else self.alternate_signal_settings.update_from_dict(value)
+            )
+
+        # extraction_parameters/analysis_parameters are shared objects (see class docstring):
+        # mutate the existing dict in place, never replace the reference.
+        if 'extraction_parameters' in data:
+            value = data['extraction_parameters']
+            self.extraction_parameters.update(value if isinstance(value, dict) else ExtractionParameters.from_dict(value))
+
+        if 'analysis_parameters' in data:
+            value = data['analysis_parameters']
+            self.analysis_parameters.update(value if isinstance(value, dict) else AnalysisParameters.from_dict(value))
+
+        timer_interval_s = float(data.get('timer_interval_s', self.timer_interval_s))
+
+        return replace(
+            self,
+            microwave_settings=microwave_settings,
+            fast_counter_settings=fast_counter_settings,
+            readout_settings=readout_settings,
+            alternate_signal_settings=alternate_signal_settings,
+            timer_interval_s=timer_interval_s,
+        )
 

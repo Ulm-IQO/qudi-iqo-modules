@@ -164,7 +164,7 @@ class AnalogLevels:
 
     @property
     def as_tuple(self):
-        return (self.amplitude, self.offset)
+        return (dict(self.amplitude), dict(self.offset))
 
     def to_dict(self):
         return {'amplitude': dict(self.amplitude), 'offset': dict(self.offset)}
@@ -195,7 +195,7 @@ class DigitalLevels:
 
     @property
     def as_tuple(self):
-        return (self.low, self.high)
+        return (dict(self.low), dict(self.high))
 
     def to_dict(self):
         return {'low': dict(self.low), 'high': dict(self.high)}
@@ -229,6 +229,14 @@ class PulseGeneratorSettings:
     interleave: bool
     flags: set
     upload_speed: float
+
+    @property
+    def analog_channels(self):
+        return {chnl for chnl in self.activation_config.channels if chnl.startswith('a_ch')}
+
+    @property
+    def digital_channels(self):
+        return {chnl for chnl in self.activation_config.channels if chnl.startswith('d_ch')}
 
     def to_dict(self):
         return {
@@ -385,6 +393,17 @@ class PulserBenchmarks:
             return True
         return not np.isnan(self.estimate_combined_speed())
 
+    def to_dict(self):
+        return {'write': self.write.save(), 'load': self.load.save()}
+
+    @classmethod
+    def from_dict(cls, data):
+        write = BenchmarkTool()
+        write.load_from_dict(saved_dict=data['write'])
+        load = BenchmarkTool()
+        load.load_from_dict(saved_dict=data['load'])
+        return cls(write=write, load=load)
+
 
 @dataclass(frozen=True)
 class EnsembleAnalysisResult:
@@ -514,6 +533,13 @@ class SamplingInformation:
     def copy(self):
         return replace(self, _legacy_data=dict(self._legacy_data))
 
+    def to_dict(self) -> dict:
+        """Inverse of from_dict(): flattens the known dataclass fields plus any legacy/unknown
+        keys back into a plain dict."""
+        data = {name: getattr(self, name) for name in self._field_names()}
+        data.update(self._legacy_data)
+        return data
+
     @classmethod
     def from_dict(cls, data: dict):
         """Safely parses a legacy dictionary into the dataclass."""
@@ -575,3 +601,71 @@ class LoadedAsset:
     @classmethod
     def empty(cls):
         return cls(name='', asset_type='')
+
+
+@dataclass(frozen=True)
+class SequenceGeneratorSettings:
+    """Single settings container bundling everything SequenceGeneratorLogic persists as
+    user-configurable settings: the generation parameters (laser/microwave channels, timings,
+    ...), the pulse generator hardware settings (activation config, sample rate, levels, ...),
+    and the write/load speed benchmarks.
+
+    Note: pulser_benchmarks is a SHARED object, not an independently owned copy.
+    SequenceGeneratorLogic mutates the BenchmarkTool instances held here directly (via
+    add_benchmark()/reset()) as their real, live, authoritative state - there are no more
+    class-level singleton BenchmarkTool instances or bound-method StatusVar hooks; this
+    container's own to_dict()/from_dict() is the only persistence path. Because
+    dataclasses.replace() leaves the object identity of any field it doesn't touch alone,
+    swapping out some other field of this container never disturbs this reference.
+    """
+
+    generation_parameters: GenerationParameters
+    pulse_generator_settings: PulseGeneratorSettings
+    pulser_benchmarks: PulserBenchmarks
+
+    def to_dict(self):
+        return {
+            'generation_parameters': self.generation_parameters.to_dict(),
+            'pulse_generator_settings': self.pulse_generator_settings.to_dict(),
+            'pulser_benchmarks': self.pulser_benchmarks.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        return cls(
+            generation_parameters=GenerationParameters.from_dict(data['generation_parameters']),
+            pulse_generator_settings=PulseGeneratorSettings.from_dict(data['pulse_generator_settings']),
+            pulser_benchmarks=PulserBenchmarks.from_dict(data['pulser_benchmarks']),
+        )
+
+    def update_from_dict(self, data):
+        generation_parameters = self.generation_parameters
+        if 'generation_parameters' in data:
+            value = data['generation_parameters']
+            generation_parameters = (
+                value if isinstance(value, GenerationParameters) else self.generation_parameters.update_from_dict(value)
+            )
+
+        pulse_generator_settings = self.pulse_generator_settings
+        if 'pulse_generator_settings' in data:
+            value = data['pulse_generator_settings']
+            pulse_generator_settings = (
+                value
+                if isinstance(value, PulseGeneratorSettings)
+                else self.pulse_generator_settings.update_from_dict(value)
+            )
+
+        # pulser_benchmarks is a shared object (see class docstring): mutate the existing
+        # BenchmarkTool instances in place, never replace the reference.
+        if 'pulser_benchmarks' in data:
+            value = data['pulser_benchmarks']
+            write_data = value.write.save() if isinstance(value, PulserBenchmarks) else value['write']
+            load_data = value.load.save() if isinstance(value, PulserBenchmarks) else value['load']
+            self.pulser_benchmarks.write.load_from_dict(saved_dict=write_data)
+            self.pulser_benchmarks.load.load_from_dict(saved_dict=load_data)
+
+        return replace(
+            self,
+            generation_parameters=generation_parameters,
+            pulse_generator_settings=pulse_generator_settings,
+        )
