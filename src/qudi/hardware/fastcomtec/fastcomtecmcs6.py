@@ -1,37 +1,30 @@
 # -*- coding: utf-8 -*-
+
 """
-Qudi hardware driver for the FAST ComTec MCS8 photon-counting card.
+This file contains the Qudi hardware file implementation for FastComtec MCS6.
 
-This module controls the FAST ComTec DLL through ctypes.  The ctypes
-structures mirror the vendor DLL memory layout and must remain binary
-compatible with the header definitions used by the hardware library.
-
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the
-top-level directory of this distribution and on
-<https://github.com/Ulm-IQO/qudi-iqo-modules/>
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
-Qudi is free software: you can redistribute it and/or modify it under the
-terms of the GNU Lesser General Public License as published by the Free
-Software Foundation, either version 3 of the License, or (at your option) any
-later version.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Qudi is distributed in the hope that it will be useful, but WITHOUT ANY
-WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
-A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
-details.
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
 
-You should have received a copy of the GNU Lesser General Public License along
-with qudi. If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 #TODO: start stop works but pause does not work, i guess gui/logic problem
 #TODO: Check if there are more modules which are missing, and more settings for FastComtec which need to be put, should we include voltage threshold?
 
-import ctypes
 import time
-
+import ctypes
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
@@ -42,7 +35,9 @@ from qudi.interface.fast_counter_interface import FastCounterInterface
 # ctypes / DLL constants
 # ============================================================================
 
-DLL_PATH = r"C:\Windows\System32\DMCS8.dll"
+DMCS8_DLL_PATH = r"C:\Windows\System32\DMCS8.dll"
+DMCS6_DLL_PATH = r"C:\Windows\System32\DMCS6.dll"
+FALLBACK_DLL_PATHS = (DMCS8_DLL_PATH, DMCS6_DLL_PATH)
 ASCII_ENCODING = "ascii"
 
 
@@ -105,16 +100,55 @@ CMD_MPA_NAME = "mpaname=%s"
 CMD_SAVE_DATA = "savedata={0}"
 CMD_SAVE_MPA = "savempa"
 
+"""
+Remark to the usage of ctypes:
+All Python types except integers (int), strings (str), and bytes (byte) objects
+have to be wrapped in their corresponding ctypes type, so that they can be
+converted to the required C data type.
+
+ctypes type     C type                  Python type
+----------------------------------------------------------------
+c_bool          _Bool                   bool (1)
+c_char          char                    1-character bytes object
+c_wchar         wchar_t                 1-character string
+c_byte          char                    int
+c_ubyte         unsigned char           int
+c_short         short                   int
+c_ushort        unsigned short          int
+c_int           int                     int
+c_uint          unsigned int            int
+c_long          long                    int
+c_ulong         unsigned long           int
+c_longlong      __int64 or
+                long long               int
+c_ulonglong     unsigned __int64 or
+                unsigned long long      int
+c_size_t        size_t                  int
+c_ssize_t       ssize_t or
+                Py_ssize_t              int
+c_float         float                   float
+c_double        double                  float
+c_longdouble    long double             float
+c_char_p        char *
+                (NUL terminated)        bytes object or None
+c_wchar_p       wchar_t *
+                (NUL terminated)        string or None
+c_void_p        void *                  int or None
+
+"""
 
 # ============================================================================
 # ctypes structures
 # ============================================================================
 
-class AcqStatus(ctypes.Structure):
-    """Acquisition status structure written by the FAST ComTec DLL.
+# Reconstruct the proper structure of the variables, which can be extracted
+# from the header file 'struct.h'.
 
-    The field layout is safety-critical and must stay byte-compatible with the
-    vendor DLL:
+class AcqStatus(ctypes.Structure):
+    """ Create a structured Data type with ctypes where the dll can write into.
+
+    This object handles and retrieves the acquisition status data from the
+    Fastcomtec.
 
     int started;                // acquisition status: 1 if running, 0 else
     double runtime;             // running time in seconds
@@ -227,7 +261,7 @@ class FastComtec(FastCounterInterface):
             trigger_safety: 400e-9
             aom_delay: 390e-9
             minimal_binwidth: 0.2e-9
-            dll_path: 'C:\Windows\System32\DMCS8.dll'
+            dll_path: 'C:\\Windows\\System32\\DMCS8.dll'
     """
 
     gated = ConfigOption("gated", DEFAULT_GATED, missing="warn")
@@ -238,6 +272,7 @@ class FastComtec(FastCounterInterface):
     minimal_binwidth = ConfigOption(
         "minimal_binwidth", DEFAULT_MINIMAL_BINWIDTH_S, missing="warn"
     )
+    dll_path = ConfigOption("dll_path", None, missing="nothing")
 
     # ------------------------------------------------------------------
     # lifecycle methods
@@ -251,19 +286,39 @@ class FastComtec(FastCounterInterface):
         # FastComtec status between "stopped" and "halt".
         self.stopped_or_halt = STATE_STOPPED
         self.timetrace_tmp = []
+        self.loaded_dll_path = None
 
     def on_activate(self):
-        """Load the FAST ComTec DLL and apply the configured sweep mode."""
-        self.dll = ctypes.windll.LoadLibrary(DLL_PATH)
-        if self.gated:
-            self.change_sweep_mode(gated=True)
-        else:
-            self.change_sweep_mode(gated=False)
+        """Load the FAST ComTec DLL without changing software settings."""
+        self.dll = self._load_dll()
         return
 
     def on_deactivate(self):
         """Deactivate the module without sending additional hardware commands."""
         return
+
+    def _load_dll(self):
+        """Load the configured FAST ComTec DLL or fall back to known defaults."""
+        dll_paths = []
+        if self.dll_path:
+            dll_paths.append(self.dll_path)
+        dll_paths.extend(path for path in FALLBACK_DLL_PATHS if path not in dll_paths)
+
+        errors = []
+        for dll_path in dll_paths:
+            try:
+                dll = ctypes.windll.LoadLibrary(dll_path)
+            except OSError as exc:
+                errors.append("{0}: {1}".format(dll_path, exc))
+            else:
+                self.loaded_dll_path = dll_path
+                return dll
+
+        raise OSError(
+            "Could not load FAST ComTec DLL. Tried: {0}. Errors: {1}".format(
+                ", ".join(dll_paths), "; ".join(errors)
+            )
+        )
 
     # ------------------------------------------------------------------
     # FastCounterInterface methods
@@ -553,6 +608,68 @@ class FastComtec(FastCounterInterface):
     # ------------------------------------------------------------------
     # length / delay helpers
     # ------------------------------------------------------------------
+
+
+
+    # def set_length(self, length_bins, preset=None, cycles=None, sequences=None):
+    #     """ Sets the length of the length of the actual measurement.
+    #
+    #     @param int length_bins: Length of the measurement in bins
+    #
+    #     @return float: Red out length of measurement
+    #     """
+    #     constraints = self.get_constraints()
+    #     if length_bins * self.get_binwidth() < constraints['max_sweep_len']:
+    #         # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
+    #         if self.gated:
+    #             length_bins = int(64 * int(length_bins / 64))
+    #             cmd = 'RANGE={0}'.format(int(length_bins))
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             cmd = 'roimax={0}'.format(int(length_bins))
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             if preset != None:
+    #                 cmd = 'swpreset={0}'.format(preset)
+    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             if cycles != None and cycles != 0:
+    #                 cmd = 'cycles={0}'.format(cycles)
+    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #                 # Fastcomtec crashes for big number of cycles without waiting time
+    #                 if cycles > 1000:
+    #                     time.sleep(10)
+    #             if sequences != None and sequences != 0:
+    #                 cmd = 'sequences={0}'.format(sequences)
+    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             return self.get_length()
+    #         else:
+    #             if preset != None:
+    #                 cmd = 'swpreset={0}'.format(preset)
+    #             else:
+    #                 cmd = 'swpreset={0}'.format(1)
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             if cycles != None and cycles != 0:
+    #                 cmd = 'cycles={0}'.format(cycles)
+    #             else:
+    #                 cmd = 'cycles={0}'.format(1)
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             # Fastcomtec crashes for big number of cycles without waiting time
+    #             if cycles > 1000:
+    #                 time.sleep(10)
+    #             if sequences != None and sequences != 0:
+    #                 cmd = 'sequences={0}'.format(sequences)
+    #             else:
+    #                 cmd = 'sequences={0}'.format(1)
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             length_bins = int(64 * int(length_bins / 64))
+    #             cmd = 'RANGE={0}'.format(int(length_bins))
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             cmd = 'roimax={0}'.format(int(length_bins))
+    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+    #             return self.get_length()
+    #
+    #     else:
+    #         self.log.error(
+    #             'Length of sequence is too high: %s' % (str(length_bins * self.get_binwidth())))
+    #         return -1
 
     def set_length(self, length_bins):
         """Set the length of the actual measurement.
@@ -907,6 +1024,8 @@ class FastComtec(FastCounterInterface):
 
     # ------------------------------------------------------------------
     # compatibility methods
+    # Methods to fulfill gated counter interface
+    # (NOT TESTED SINCE GATED COUNTER IS NOT WORKING PROBABLY YET)
     # ------------------------------------------------------------------
 
     def get_2D_trace(self):
