@@ -19,7 +19,6 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
 #TODO: start stop works but pause does not work, i guess gui/logic problem
 #TODO: Check if there are more modules which are missing, and more settings for FastComtec which need to be put, should we include voltage threshold?
 
