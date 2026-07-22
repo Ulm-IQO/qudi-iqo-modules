@@ -33,33 +33,33 @@ from qudi.logic.pulsed.pulse_alt_plot import AltPlotMethodBase
 
 
 class FourierTransformAltPlot(AltPlotMethodBase):
-    """ Fourier transform of the measured data trace(s). FFT parameters are exposed as configurable,
-    persisted parameters via the keyword arguments of :meth:`compute`. """
+    """Fourier transform of the measured data trace(s). FFT parameters are exposed as configurable,
+    persisted parameters via the keyword arguments of :meth:`compute`."""
 
     name = 'FFT'
 
-    def compute(self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none',
-                base_corr: bool = True, psd: bool = False) -> np.ndarray | None:
+    def compute(
+        self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none', base_corr: bool = True, psd: bool = False
+    ) -> np.ndarray | None:
         if signal_data.shape[1] < 2:
             return None
 
-        fft_x, fft_y = compute_ft(x_val=signal_data[0],
-                                  y_val=signal_data[1],
-                                  zeropad_num=zeropad,
-                                  window=window,
-                                  base_corr=base_corr,
-                                  psd=psd)
+        fft_x, fft_y = compute_ft(
+            x_val=signal_data[0], y_val=signal_data[1], zeropad_num=zeropad, window=window, base_corr=base_corr, psd=psd
+        )
 
         alt_data = np.empty((len(signal_data), len(fft_x)), dtype=float)
         alt_data[0] = fft_x
         alt_data[1] = fft_y
         for dim in range(2, len(signal_data)):
-            _, alt_data[dim] = compute_ft(x_val=signal_data[0],
-                                          y_val=signal_data[dim],
-                                          zeropad_num=zeropad,
-                                          window=window,
-                                          base_corr=base_corr,
-                                          psd=psd)
+            _, alt_data[dim] = compute_ft(
+                x_val=signal_data[0],
+                y_val=signal_data[dim],
+                zeropad_num=zeropad,
+                window=window,
+                base_corr=base_corr,
+                psd=psd,
+            )
         return alt_data
 
     # FFT swaps the x-axis to the inverse domain and renders the y-axis in arbitrary units.
@@ -88,8 +88,8 @@ class FourierTransformAltPlot(AltPlotMethodBase):
 
 
 class DeltaAltPlot(AltPlotMethodBase):
-    """ Difference of the two traces of an alternating measurement (trace 1 - trace 2). Only
-    available for alternating measurements; uses the default (primary) axis labels. """
+    """Difference of the two traces of an alternating measurement (trace 1 - trace 2). Only
+    available for alternating measurements; uses the default (primary) axis labels."""
 
     name = 'Delta'
 
@@ -106,12 +106,14 @@ class DeltaAltPlot(AltPlotMethodBase):
 
 
 class DeltaFourierTransformAltPlot(FourierTransformAltPlot):
-    """ Fourier Transform of the difference of the two traces of an alternating measurement (trace 1 - trace 2). Only
-    available for alternating measurements. """
+    """Fourier Transform of the difference of the two traces of an alternating measurement (trace 1 - trace 2). Only
+    available for alternating measurements."""
+
     name = 'Delta FFT'
 
-    def compute(self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none',
-                base_corr: bool = True, psd: bool = False) -> np.ndarray | None:
+    def compute(
+        self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none', base_corr: bool = True, psd: bool = False
+    ) -> np.ndarray | None:
         if len(signal_data) != 3:
             return None
         delta = np.empty((2, signal_data.shape[1]), dtype=float)
@@ -124,4 +126,3 @@ class DeltaFourierTransformAltPlot(FourierTransformAltPlot):
 
     def is_available(self) -> bool:
         return self.is_alternating
-
