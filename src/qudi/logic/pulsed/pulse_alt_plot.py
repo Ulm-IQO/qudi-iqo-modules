@@ -268,5 +268,4 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     @staticmethod
     def is_alt_plot_class(obj: Any) -> bool:
-        """ True if obj inherits exclusively from AltPlotMethodBase. """
-        return inspect.isclass(obj) and obj.__bases__ == (AltPlotMethodBase,)
+        return inspect.isclass(obj) and AltPlotMethodBase in obj.mro() and obj is not AltPlotMethodBase
