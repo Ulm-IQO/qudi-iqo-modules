@@ -104,3 +104,24 @@ class DeltaAltPlot(AltPlotMethodBase):
     def is_available(self) -> bool:
         return self.is_alternating
 
+
+class DeltaFourierTransformAltPlot(FourierTransformAltPlot):
+    """ Fourier Transform of the difference of the two traces of an alternating measurement (trace 1 - trace 2). Only
+    available for alternating measurements. """
+    name = 'Delta FFT'
+
+    def compute(self, signal_data: np.ndarray, zeropad: int = 0, window: str = 'none',
+                base_corr: bool = True, psd: bool = False) -> np.ndarray | None:
+        if len(signal_data) != 3:
+            return None
+        delta = np.empty((2, signal_data.shape[1]), dtype=float)
+        delta[0] = signal_data[0]
+        delta[1] = signal_data[1] - signal_data[2]
+
+        alt_data = super().compute(delta, zeropad, window, base_corr, psd)
+
+        return alt_data
+
+    def is_available(self) -> bool:
+        return self.is_alternating
+
