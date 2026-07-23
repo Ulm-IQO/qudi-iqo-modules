@@ -151,6 +151,12 @@ class PulseExtractor(PulseExtractorBase):
         # Ensure a valid current method is selected for the current gated/ungated mode
         available_methods = self._gated_extraction_methods if self.is_gated else self._ungated_extraction_methods
         if self._parameters.get('method') not in available_methods:
+            invalid_method = self._parameters.get('method')
+            if invalid_method is not None:
+                self.log.warning(
+                    'Extraction method "{0}" could not be found in PulseExtractor. '
+                    'Falling back to default.'.format(invalid_method)
+                )
             self._parameters['method'] = natural_sort(available_methods)[0]
         return
 

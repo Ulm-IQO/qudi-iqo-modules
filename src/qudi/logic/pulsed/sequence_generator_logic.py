@@ -20,12 +20,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from dataclasses import replace, fields
+from dataclasses import replace, fields, is_dataclass, MISSING
 from enum import Enum
 from typing import Optional, Union
 import numpy as np
 import os
 import pickle
+import shutil
 import time
 import copy
 import traceback
@@ -36,7 +37,7 @@ from PySide6 import QtCore
 from qudi.core.statusvariable import StatusVar
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_home_dir
+from qudi.util.paths import get_home_dir, get_module_app_data_path
 from qudi.util.helpers import natural_sort
 from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
@@ -45,7 +46,7 @@ from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElem
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 
-from qudi.util.yaml import SafeRepresenter, SafeConstructor
+from qudi.util.yaml import SafeRepresenter, SafeConstructor, yaml_load
 from qudi.util.yaml_helpers import (
     dataclass_representer,
     pulse_envelope_constructor,
@@ -68,7 +69,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     _DEFAULT_GENERATION_PARAMETERS,
     _DEFAULT_PULSE_GENERATOR_SETTINGS,
 )
-from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters, MeasurementInformation
 
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
@@ -94,8 +95,75 @@ def _default_generator_settings():
     return SequenceGeneratorSettings(
         generation_parameters=_DEFAULT_GENERATION_PARAMETERS,
         pulse_generator_settings=_DEFAULT_PULSE_GENERATOR_SETTINGS,
-        pulser_benchmarks=PulserBenchmarks(),
     )
+
+
+def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_blocks, log):
+    """Walk `asset`'s block/ensemble NAME references and return independent copies of everything
+    it points to - see PulseObjects (pulsed_data/pulsed_measurement.py) for why this exists.
+
+    Missing referenced names are logged as a combined warning and skipped rather than raising -
+    a best-effort, partially-resolved snapshot is still useful for saving/inspection.
+
+    @param asset: the currently loaded PulseBlockEnsemble or PulseSequence, or None if nothing is
+        loaded.
+    @param dict saved_pulse_block_ensembles: SequenceGeneratorLogic._saved_pulse_block_ensembles
+    @param dict saved_pulse_blocks: SequenceGeneratorLogic._saved_pulse_blocks
+    @param log: logger to warn through (SequenceGeneratorLogic.log)
+    @return (ensembles, blocks): {name: independent copy}. `ensembles` is empty if `asset` is a
+        bare PulseBlockEnsemble or None. `blocks` covers every PulseBlock referenced by
+        `ensembles`, or referenced directly by `asset` if it is a bare PulseBlockEnsemble.
+    """
+
+    def _resolve_blocks(ensemble, missing_out, blocks_out):
+        for block_name, _reps in ensemble.block_list:
+            if block_name in blocks_out or block_name in missing_out:
+                continue
+            block = saved_pulse_blocks.get(block_name)
+            if block is None:
+                missing_out.add(block_name)
+            else:
+                blocks_out[block_name] = block.copy()
+
+    if asset is None:
+        return {}, {}
+
+    blocks = {}
+    missing_blocks = set()
+
+    if isinstance(asset, PulseSequence):
+        ensembles = {}
+        missing_ensembles = set()
+        for seq_step in asset.ensemble_list:
+            name = seq_step.ensemble
+            if name in ensembles or name in missing_ensembles:
+                continue
+            ensemble = saved_pulse_block_ensembles.get(name)
+            if ensemble is None:
+                missing_ensembles.add(name)
+                continue
+            ensembles[name] = ensemble.copy()
+            _resolve_blocks(ensemble, missing_blocks, blocks)
+        if missing_ensembles:
+            log.warning(
+                'Could not resolve the following PulseBlockEnsemble(s) referenced by PulseSequence '
+                '"{0}" while building its closure (they may have been deleted from the library '
+                'since this sequence was generated): {1}'.format(asset.name, missing_ensembles)
+            )
+    elif isinstance(asset, PulseBlockEnsemble):
+        ensembles = {}
+        _resolve_blocks(asset, missing_blocks, blocks)
+    else:
+        log.error('Cannot resolve closure for unsupported loaded asset type "{0}".'.format(type(asset)))
+        return {}, {}
+
+    if missing_blocks:
+        log.warning(
+            'Could not resolve the following PulseBlock(s) referenced by "{0}" while building its '
+            'closure (they may have been deleted from the library since generation): {1}'
+            ''.format(asset.name, missing_blocks)
+        )
+    return ensembles, blocks
 
 
 class SequenceGeneratorLogic(LogicBase):
@@ -144,16 +212,28 @@ class SequenceGeneratorLogic(LogicBase):
 
     # status vars
     # Bundles the generation parameters (channel usage and common parameters used during
-    # pulsed object generation for predefined methods), the pulse generator hardware settings
+    # pulsed object generation for predefined methods) and the pulse generator hardware settings
     # (activation config, sample rate, levels, ...) mirrored locally to avoid repeated slow
-    # hardware reads, and the write/load speed benchmarks into a single settings object instead
-    # of independently stored/persisted attributes.
+    # hardware reads into a single settings object instead of independently stored/persisted
+    # attributes.
     _generator_settings = StatusVar(
         default=_default_generator_settings(),
         constructor=lambda x: SequenceGeneratorSettings.from_dict(x)
         if isinstance(x, dict)
         else _default_generator_settings(),
         representer=lambda obj: obj.to_dict(),
+    )
+
+    # pulser_benchmarks is deliberately an independent StatusVar, NOT part of
+    # SequenceGeneratorSettings/_generator_settings above - it's runtime telemetry (hardware
+    # upload/download speed statistics), not a measurement-defining setting. `value` here already
+    # *is* the live PulserBenchmarks object (a genuinely per-instance attribute, unlike the
+    # pre-refactor class-level singleton BenchmarkTool instances this replaces), so the
+    # representer/constructor need no `self` at all.
+    pulser_benchmarks = StatusVar(
+        default=None,
+        constructor=lambda value: PulserBenchmarks.from_dict(value) if isinstance(value, dict) else PulserBenchmarks(),
+        representer=lambda value: value.to_dict(),
     )
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
@@ -192,8 +272,62 @@ class SequenceGeneratorLogic(LogicBase):
         self._saved_pulse_block_ensembles = dict()
         self._saved_pulse_sequences = dict()
 
+    def _migrate_legacy_settings_if_needed(self):
+        """One-time upgrade path for a status file saved by either the pre-refactor version of
+        this module (separate '_generation_parameters'/'_benchmark_write_state'/
+        '_benchmark_load_state' StatusVars instead of one '_generator_settings' key), or a later
+        format with pulser_benchmarks nested inside '_generator_settings' instead of its own
+        independent StatusVar. See PulsedMeasurementLogic._migrate_legacy_settings_if_needed()
+        for the full explanation - same mechanism here.
+        """
+        file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
+        try:
+            raw_status = yaml_load(file_path, ignore_missing=True)
+        except Exception:
+            self.log.exception('Failed to read status file while checking for legacy settings format:')
+            return
+
+        if '_generator_settings' not in raw_status and SequenceGeneratorSettings.LEGACY_STATUS_VAR_KEYS.intersection(raw_status):
+            self.log.warning(
+                'Found generator settings saved by a pre-refactor version of this module '
+                '(individually-keyed generation parameters/benchmark StatusVars instead of the '
+                'current consolidated format). Migrating them now instead of silently resetting to '
+                'defaults. The original file has been backed up to "{0}.legacy_backup".'.format(file_path)
+            )
+            try:
+                backup_path = file_path + '.legacy_backup'
+                if not os.path.exists(backup_path):
+                    shutil.copy2(file_path, backup_path)
+            except Exception:
+                self.log.exception(
+                    'Failed to back up legacy status file before migrating (continuing anyway):'
+                )
+
+            try:
+                self._generator_settings = SequenceGeneratorSettings.from_legacy_dict(raw_status)
+            except Exception:
+                self.log.exception('Failed to migrate legacy generator settings - keeping defaults:')
+
+            self.pulser_benchmarks = PulserBenchmarks.from_dict({
+                'write': raw_status.get('_benchmark_write_state'),
+                'load': raw_status.get('_benchmark_load_state'),
+            })
+            return
+
+        # A status file saved by this session's brief in-between "everything in one dataclass"
+        # format has pulser_benchmarks nested one level deeper (inside '_generator_settings') than
+        # either the pre-refactor or the current independent-StatusVar format expects - back-fill
+        # it so upgrading from that format doesn't silently reset the benchmark history either.
+        nested = raw_status.get('_generator_settings')
+        if isinstance(nested, dict) and nested.get('pulser_benchmarks'):
+            self.pulser_benchmarks = PulserBenchmarks.from_dict(nested['pulser_benchmarks'])
+
     def on_activate(self):
         """Initialisation performed during activation of the module."""
+        # Must run first - self._generator_settings has already been restored (or defaulted) by
+        # qudi-core's StatusVar machinery by this point; see this method's docstring for why.
+        self._migrate_legacy_settings_if_needed()
+
         if not os.path.exists(self._assets_storage_dir):
             os.makedirs(self._assets_storage_dir)
 
@@ -592,7 +726,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.error('Can´t load a waveform, because pulser running. Switch off the pulser and try again.')
                 return -1
 
-            t_est_upload = self._generator_settings.pulser_benchmarks.load.estimate_time(ensemble.sampling_information.number_of_samples)
+            t_est_upload = self.pulser_benchmarks.load.estimate_time(ensemble.sampling_information.number_of_samples)
             if t_est_upload > self._info_on_estimated_upload_time:
                 now = datetime.datetime.now()
                 self.log.info(
@@ -604,7 +738,7 @@ class SequenceGeneratorLogic(LogicBase):
             # Actually load the waveforms to the generic channels
             start_time = time.perf_counter()
             self.pulsegenerator().load_waveform(ensemble.sampling_information.waveforms)
-            self._generator_settings.pulser_benchmarks.load.add_benchmark(
+            self.pulser_benchmarks.load.add_benchmark(
                 time.perf_counter() - start_time, ensemble.sampling_information.number_of_samples
             )
         else:
@@ -997,7 +1131,7 @@ class SequenceGeneratorLogic(LogicBase):
             try:
                 with open(filepath, 'rb') as file:
                     ensemble = pickle.load(file)
-                self._migrate_legacy_sampling_information(ensemble)   
+                self._migrate_legacy_info_containers(ensemble)
             except pickle.UnpicklingError:
                 self.log.error(
                     'Failed to de-serialize PulseBlockEnsemble "{0}" from file. Deleting broken file.'.format(
@@ -1080,6 +1214,18 @@ class SequenceGeneratorLogic(LogicBase):
             )
         return self._saved_pulse_sequences.get(name)
 
+    def resolve_asset_closure(self, asset):
+        """Independent copies of every PulseBlockEnsemble/PulseBlock `asset` (a loaded
+        PulseBlockEnsemble or PulseSequence, or None) actually references by name. Used by
+        PulsedMasterLogic to build a self-contained PulsedMeasurement.objects (see
+        pulsed_data/pulsed_measurement.py's PulseObjects) - see _resolve_asset_closure() for the
+        full traversal/missing-reference contract.
+
+        @param asset: the currently loaded PulseBlockEnsemble or PulseSequence, or None.
+        @return (ensembles, blocks): {name: independent copy}, see _resolve_asset_closure().
+        """
+        return _resolve_asset_closure(asset, self._saved_pulse_block_ensembles, self._saved_pulse_blocks, self.log)
+
     def delete_sequence(self, name):
         """
         Remove the sequence with 'name' from the sequence dict and all associated waveforms
@@ -1120,7 +1266,7 @@ class SequenceGeneratorLogic(LogicBase):
                 # Restored it here but a better way needs to be found.
                 for step in range(len(sequence)):
                     sequence[step].__dict__ = sequence[step]
-                self._migrate_legacy_sampling_information(sequence)
+                self._migrate_legacy_info_containers(sequence)
             except pickle.UnpicklingError:
                 self.log.error('Failed to de-serialize PulseSequence "{0}" from file.'.format(sequence_name))
                 os.remove(filepath)
@@ -1988,7 +2134,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
 
-            t_est_upload = self._generator_settings.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples)
+            t_est_upload = self.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples)
             if t_est_upload > self._info_on_estimated_upload_time:
                 now = datetime.datetime.now()
                 self.log.info(
@@ -2123,13 +2269,13 @@ class SequenceGeneratorLogic(LogicBase):
             )
             self.log.debug(
                 'Estimated {:.3f} s from current estimated write speed {:.2f} MSa/s from {} benchmarks'.format(
-                    self._generator_settings.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples),
-                    self._generator_settings.pulser_benchmarks.write.estimate_speed() / 1e6,
-                    self._generator_settings.pulser_benchmarks.write.n_benchmarks,
+                    self.pulser_benchmarks.write.estimate_time(ensemble_info.number_of_samples),
+                    self.pulser_benchmarks.write.estimate_speed() / 1e6,
+                    self.pulser_benchmarks.write.n_benchmarks,
                 )
             )
 
-            self._generator_settings.pulser_benchmarks.write.add_benchmark(time.time() - start_time, ensemble_info.number_of_samples)
+            self.pulser_benchmarks.write.add_benchmark(time.time() - start_time, ensemble_info.number_of_samples)
 
             if ensemble_info.number_of_samples == 0:
                 self.log.warning(
@@ -2148,7 +2294,7 @@ class SequenceGeneratorLogic(LogicBase):
                 try:
                     self.module_state.unlock()
                 except:
-                    pass
+                    self.log.exception('Failed to unlock module state after sampling error:')
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
         return offset_bin, natural_sort(written_waveforms), ensemble_info
@@ -2309,7 +2455,7 @@ class SequenceGeneratorLogic(LogicBase):
             try:
                 self.module_state.unlock()
             except:
-                pass
+                self.log.exception('Failed to unlock module state after sampling error:')
             self.__sequence_generation_in_progress = False
             self.sigSampleSequenceComplete.emit(None)
             return -1, list(), dict()
@@ -2375,7 +2521,7 @@ class SequenceGeneratorLogic(LogicBase):
                 granularity = constraints.waveform_length.step
                 return np.ceil(n_samples / granularity) * granularity
 
-            self._generator_settings.pulser_benchmarks.reset()
+            self.pulser_benchmarks.reset()
 
             n_samples_min = constraints.waveform_length.min
             n_max_fix = max(10e6, n_samples_min)
@@ -2400,7 +2546,7 @@ class SequenceGeneratorLogic(LogicBase):
             while time.perf_counter() - t_start < t_goal and rescode == 0:
                 speed = self.get_speed_write_load()
                 t_left = t_goal - (time.perf_counter() - t_start)
-                if self._generator_settings.pulser_benchmarks.write.sanity and self._generator_settings.pulser_benchmarks.load.sanity:
+                if self.pulser_benchmarks.write.sanity and self.pulser_benchmarks.load.sanity:
                     n_samples = speed * t_left / time_fraction
                     n_samples = round_to_granularity(n_samples)
                 else:  # poor speed estimate so far
@@ -2417,8 +2563,8 @@ class SequenceGeneratorLogic(LogicBase):
                     "Running benchmark. Current speed (write/load/tot): "
                     "{:.3f} / {:.3f} / {:.3f} MSa/s): {} samples for"
                     " estimated {:.5f} s, {:.5f} s left".format(
-                        self._generator_settings.pulser_benchmarks.write.estimate_speed() / 1e6,
-                        self._generator_settings.pulser_benchmarks.load.estimate_speed() / 1e6,
+                        self.pulser_benchmarks.write.estimate_speed() / 1e6,
+                        self.pulser_benchmarks.load.estimate_speed() / 1e6,
                         speed / 1e6,
                         n_samples,
                         t_est,
@@ -2532,7 +2678,7 @@ class SequenceGeneratorLogic(LogicBase):
             )
 
         if not ignore_datapoint:
-            self._generator_settings.pulser_benchmarks.write.add_benchmark(
+            self.pulser_benchmarks.write.add_benchmark(
                 time.perf_counter() - start_time, n_samples, is_persistent=persistent_datapoint
             )
 
@@ -2540,7 +2686,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         loaded_dict = self.pulsegenerator().load_waveform(wfm_list)
         if not ignore_datapoint:
-            self._generator_settings.pulser_benchmarks.load.add_benchmark(
+            self.pulser_benchmarks.load.add_benchmark(
                 time.perf_counter() - start_time, n_samples, is_persistent=persistent_datapoint
             )
 
@@ -2554,35 +2700,57 @@ class SequenceGeneratorLogic(LogicBase):
         return 0, list(), dict()
 
     def has_valid_pg_benchmark(self):
-        return self._generator_settings.pulser_benchmarks.has_valid_estimate(ignore=self._disable_bench_prompt)
+        return self.pulser_benchmarks.has_valid_estimate(ignore=self._disable_bench_prompt)
 
     def get_speed_write_load(self):
         """
         Get the estimated speed of the pulse generator for writing and loading a waveform.
         :return: speed (Sa/s)
         """
-        return self._generator_settings.pulser_benchmarks.estimate_combined_speed()
+        return self.pulser_benchmarks.estimate_combined_speed()
     
-    def _migrate_legacy_sampling_information(self, loaded_object):
+    def _migrate_legacy_info_containers(self, loaded_object):
+        """Normalizes sampling_information/measurement_information/generation_method_parameters
+        on an unpickled PulseBlockEnsemble/PulseSequence - see _migrate_legacy_info_container()
+        for the two failure modes this guards against (both confirmed on real saved assets)."""
+        self._migrate_legacy_info_container(loaded_object, 'sampling_information', SamplingInformation)
+        self._migrate_legacy_info_container(loaded_object, 'measurement_information', MeasurementInformation)
+        self._migrate_legacy_info_container(loaded_object, 'generation_method_parameters', GenerationMethodParameters)
+
+    def _migrate_legacy_info_container(self, loaded_object, attr_name, container_cls):
+        """Normalizes a single `attr_name` on an unpickled PulseBlockEnsemble/PulseSequence back
+        to a complete, current `container_cls` instance. pickle.load() bypasses __init__, so an
+        older saved file can come back as either: (a) `attr_name` pickled as a plain dict, from
+        before `container_cls` was used consistently - converted via `from_dict()`; or (b) the
+        right class but missing fields added since it was saved - backfilled in place with each
+        field's declared default, since to_dict()/from_dict() would hit the same AttributeError.
         """
-        Detects legacy dict-based sampling_information in unpickled objects 
-        and converts them to the SamplingInformation dataclass.
-        """
-        if not hasattr(loaded_object, 'sampling_information'):
+        if not hasattr(loaded_object, attr_name):
+            setattr(loaded_object, attr_name, container_cls())
             return
 
-        # If it's already the new dataclass, do nothing
-        if isinstance(loaded_object.sampling_information, SamplingInformation):
-            return
+        value = getattr(loaded_object, attr_name)
 
-        # If it's a legacy dictionary, convert it
-        if isinstance(loaded_object.sampling_information, dict):
-            if not loaded_object.sampling_information:
-                # Replace empty dict with an empty dataclass (evaluates to False due to __bool__)
-                loaded_object.sampling_information = SamplingInformation()
+        if isinstance(value, dict) and not isinstance(value, container_cls):
+            if not value:
+                setattr(loaded_object, attr_name, container_cls())
             else:
-                # Convert populated dict
-                self.log.debug(f'Migrating legacy sampling_information for {loaded_object.name}')
-                loaded_object.sampling_information = SamplingInformation.from_dict(
-                    loaded_object.sampling_information
+                self.log.debug('Migrating legacy {0} for {1}'.format(attr_name, loaded_object.name))
+                setattr(loaded_object, attr_name, container_cls.from_dict(value))
+            return
+
+        if is_dataclass(value):
+            backfilled = []
+            for f in fields(value):
+                if not hasattr(value, f.name):
+                    if f.default_factory is not MISSING:
+                        setattr(value, f.name, f.default_factory())
+                    elif f.default is not MISSING:
+                        setattr(value, f.name, f.default)
+                    backfilled.append(f.name)
+            if backfilled:
+                self.log.debug(
+                    'Backfilled missing field(s) {0} on legacy {1} for {2}'.format(
+                        backfilled, attr_name, loaded_object.name
+                    )
                 )

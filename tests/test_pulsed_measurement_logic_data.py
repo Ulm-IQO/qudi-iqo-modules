@@ -1,19 +1,20 @@
 import numpy as np
 
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
-    AnalysisSettings,
+    AnalysisParameters,
     DataStashCache,
     ExecutionState,
-    ExtractionSettings,
+    ExtractionParameters,
 )
 
 
 def test_execution_state_tracks_pause_and_timing():
+    # elapsed_sweeps is not part of ExecutionState - it's tracked exclusively on
+    # PulsedMeasurementData (the acquired-data side), not here (the timing/pause-state side).
     state = ExecutionState()
     state.start()
     assert state.is_paused is False
     assert state.elapsed_time == 0.0
-    assert state.elapsed_sweeps == 0
 
     state.pause()
     assert state.is_paused is True
@@ -35,8 +36,8 @@ def test_data_stash_cache_round_trip():
 
 
 def test_analysis_and_extraction_settings_round_trip():
-    analysis = AnalysisSettings.from_dict({'foo': 'bar'})
-    extraction = ExtractionSettings.from_dict({'baz': 3})
+    analysis = AnalysisParameters.from_dict({'foo': 'bar'})
+    extraction = ExtractionParameters.from_dict({'baz': 3})
 
     assert analysis.to_dict() == {'foo': 'bar'}
     assert extraction.to_dict() == {'baz': 3}

@@ -274,3 +274,6 @@ class PulseEnvelope:
     def from_dict(cls, parameters: dict) -> "PulseEnvelope":
         return PulseEnvelope(parameters["type"], parameters["parameters"])
 
+    def to_dict(self) -> dict:
+        return {"type": self.type, "parameters": self.parameters}
+

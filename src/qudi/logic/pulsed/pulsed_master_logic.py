@@ -232,6 +232,13 @@ class PulsedMasterLogic(LogicBase):
             self.sigGeneratorSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
             self.sigSamplingSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
+        # Step 3 of the PulsedMeasurement consolidation: keep PulsedMeasurementLogic's held
+        # generator_settings fresh without giving SequenceGeneratorLogic a Connector to it -
+        # PulsedMasterLogic already has connectors to both, so it relays the push instead.
+        self.sequencegeneratorlogic().sigGeneratorSettingsUpdated.connect(
+            self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
+            self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.connect(
             self.predefined_sequence_generated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.connect(
@@ -597,23 +604,29 @@ class PulsedMasterLogic(LogicBase):
         self.status_dict.benchmark_busy = False
 
     def get_pulsed_measurement(self):
-        """Full settings+data+sequence snapshot of the current measurement, combining both
+        """Full settings+data+objects snapshot of the current measurement, combining both
         sub-modules' state - for scripting/notebook use (see this module's own docstring, which
         already names that as a design goal). PulsedMasterLogic is the only module with
         Connectors to both PulsedMeasurementLogic and SequenceGeneratorLogic, so it is the only
-        place that can build the combined object.
+        place that can build the combined object - including resolving the loaded asset's
+        ensemble/block closure, which requires SequenceGeneratorLogic's saved-asset registries.
 
         @return PulsedMeasurement: snapshot built from independent copies (see
             PulsedMeasurementLogic.get_pulsed_measurement()) - safe to hold onto, will not change
             as the measurement continues running or assets get reloaded/edited later.
         """
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(
+            self.pulsedmeasurementlogic().loaded_asset
+        )
         return self.pulsedmeasurementlogic().get_pulsed_measurement(
-            generator_settings=self.sequencegeneratorlogic().generator_settings
+            generator_settings=self.sequencegeneratorlogic().generator_settings,
+            ensembles=ensembles,
+            blocks=blocks,
         )
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
-                              save_figure=None):
+                              save_figure=None, save_measurement_snapshot=False):
         """ Prepare data to be saved and create a proper plot of the data.
         Combines the current SequenceGeneratorLogic settings with the measurement logic's own
         settings/data before handing off, since only this module has Connectors to both.
@@ -627,6 +640,9 @@ class PulsedMasterLogic(LogicBase):
         @param bool save_pulsed_measurement: select whether final measurement should be saved
         @param bool save_figure: select whether a thumbnail plot should be saved
         @param str notes: optional, string that is included in the metadata "as-is" without a field
+        @param bool save_measurement_snapshot: optional, additionally pickle the complete
+            PulsedMeasurement snapshot (settings + data + the loaded sequence/ensemble) to a
+            single '.pulsedmeasurement' file - see PulsedMeasurementLogic.save_measurement_data().
         """
         still_busy = (self.status_dict.loading_busy
                       or self.status_dict.sampload_busy
@@ -638,6 +654,13 @@ class PulsedMasterLogic(LogicBase):
                            'propagated yet - saving now would save stale data from the previously '
                            'loaded asset. Wait for loading/sampling to finish and try again.')
             return
+        # Resolve the ensemble/block closure unconditionally - it's embedded in every
+        # raw/laser/signal .dat file's metadata now (see
+        # PulsedMeasurementLogic._get_loaded_asset_metadata()), not just the optional full
+        # snapshot, so it's needed on every save, not only when save_measurement_snapshot=True.
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(
+            self.pulsedmeasurementlogic().loaded_asset
+        )
         return self.pulsedmeasurementlogic().save_measurement_data(
             tag=tag,
             file_path=file_path,
@@ -647,6 +670,9 @@ class PulsedMasterLogic(LogicBase):
             save_pulsed_measurement=save_pulsed_measurement,
             save_figure=save_figure,
             notes=notes,
+            save_measurement_snapshot=save_measurement_snapshot,
+            ensembles=ensembles,
+            blocks=blocks,
             # PulsedMasterLogic is the only module with Connectors to both PulsedMeasurementLogic
             # and SequenceGeneratorLogic, so it is the one place that can hand the sequence
             # generator's settings down to be included in the saved measurement metadata (see
@@ -825,6 +851,15 @@ class PulsedMasterLogic(LogicBase):
         return
 
     @QtCore.Slot(str, str)
+    def _refresh_measurement_logic_generator_settings(self, _changed_dict=None):
+        """Slot for SequenceGeneratorLogic.sigGeneratorSettingsUpdated/sigSamplingSettingsUpdated -
+        pushes the current generator_settings into PulsedMeasurementLogic's held PulsedMeasurement
+        (see PulsedMeasurementLogic.refresh_generator_settings()). The emitted dict itself isn't
+        used - both signals just indicate "something changed", so this always re-fetches the
+        current, complete generator_settings rather than trying to patch in only what changed.
+        """
+        self.pulsedmeasurementlogic().refresh_generator_settings(self.sequencegeneratorlogic().generator_settings)
+
     def loaded_asset_updated(self, asset_name, asset_type):
         """
 
@@ -849,6 +884,11 @@ class PulsedMasterLogic(LogicBase):
             object_instance = None
 
         self.pulsedmeasurementlogic().loaded_asset = object_instance
+        # Step 3 of the PulsedMeasurement consolidation: keep the held PulsedMeasurement's
+        # resolved ensembles/blocks fresh too, reusing the same closure-resolution helper the
+        # on-demand get_pulsed_measurement()/save_measurement_data() snapshot paths already use.
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(object_instance)
+        self.pulsedmeasurementlogic().refresh_loaded_asset_closure(ensembles, blocks)
         return
 
     @QtCore.Slot(object)

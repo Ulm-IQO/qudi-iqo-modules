@@ -307,6 +307,9 @@ class AssetInfo:
     def __len__(self):
         return len(self.as_tuple)
 
+    def __getitem__(self, index):
+        return self.as_tuple[index]
+
     def to_dict(self):
         return {
             'length_s': self.length_s,
@@ -539,7 +542,20 @@ class SamplingInformation:
             self[key] = value
 
     def copy(self):
-        return replace(self, _legacy_data=dict(self._legacy_data))
+        """Independent copy: mutating any mutable field on the copy never affects the original."""
+        return replace(
+            self,
+            waveforms=list(self.waveforms),
+            pulse_generator_settings=(
+                None if self.pulse_generator_settings is None else dict(self.pulse_generator_settings)
+            ),
+            elements_length_bins=self.elements_length_bins.copy(),
+            laser_rising_bins=self.laser_rising_bins.copy(),
+            laser_falling_bins=self.laser_falling_bins.copy(),
+            step_waveform_list=list(self.step_waveform_list),
+            ensemble_info=dict(self.ensemble_info),
+            _legacy_data=dict(self._legacy_data),
+        )
 
     def to_dict(self) -> dict:
         """Inverse of from_dict(): flattens the known dataclass fields plus any legacy/unknown
@@ -647,27 +663,21 @@ _DEFAULT_PULSE_GENERATOR_SETTINGS = PulseGeneratorSettings(
 class SequenceGeneratorSettings:
     """Single settings container bundling everything SequenceGeneratorLogic persists as
     user-configurable settings: the generation parameters (laser/microwave channels, timings,
-    ...), the pulse generator hardware settings (activation config, sample rate, levels, ...),
-    and the write/load speed benchmarks.
+    ...) and the pulse generator hardware settings (activation config, sample rate, levels, ...).
 
-    Note: pulser_benchmarks is a SHARED object, not an independently owned copy.
-    SequenceGeneratorLogic mutates the BenchmarkTool instances held here directly (via
-    add_benchmark()/reset()) as their real, live, authoritative state - there are no more
-    class-level singleton BenchmarkTool instances or bound-method StatusVar hooks; this
-    container's own to_dict()/from_dict() is the only persistence path. Because
-    dataclasses.replace() leaves the object identity of any field it doesn't touch alone,
-    swapping out some other field of this container never disturbs this reference.
+    Note: pulser_benchmarks is intentionally NOT part of this container - it's runtime telemetry
+    (hardware upload/download speed statistics), not a measurement-defining setting, and is
+    persisted as its own independent, per-instance StatusVar directly on SequenceGeneratorLogic
+    instead (see `pulser_benchmarks` there).
     """
 
     generation_parameters: GenerationParameters
     pulse_generator_settings: PulseGeneratorSettings
-    pulser_benchmarks: PulserBenchmarks
 
     def to_dict(self):
         return {
             'generation_parameters': self.generation_parameters.to_dict(),
             'pulse_generator_settings': self.pulse_generator_settings.to_dict(),
-            'pulser_benchmarks': self.pulser_benchmarks.to_dict(),
         }
 
     @classmethod
@@ -685,11 +695,40 @@ class SequenceGeneratorSettings:
                 if 'pulse_generator_settings' in data
                 else _DEFAULT_PULSE_GENERATOR_SETTINGS
             ),
-            pulser_benchmarks=(
-                PulserBenchmarks.from_dict(data['pulser_benchmarks'])
-                if 'pulser_benchmarks' in data
-                else PulserBenchmarks()
+        )
+
+    #: Top-level status-file key names used by the 3 individually-declared StatusVars that
+    #: existed on SequenceGeneratorLogic before this class was introduced (one file-level key
+    #: per StatusVar, instead of everything nested under a single '_generator_settings' key).
+    #: Used only to detect a pre-refactor status file - see
+    #: SequenceGeneratorLogic._migrate_legacy_settings_if_needed().
+    LEGACY_STATUS_VAR_KEYS = frozenset({
+        '_generation_parameters',
+        '_benchmark_write_state',
+        '_benchmark_load_state',
+    })
+
+    @classmethod
+    def from_legacy_dict(cls, raw):
+        """Reconstruct settings from the pre-refactor format, where '_generation_parameters' was
+        its own StatusVar holding the same flat dict shape GenerationParameters.from_dict() expects.
+
+        pulse_generator_settings is deliberately not migrated - the old format never persisted it
+        either, and on_activate() always re-derives it fresh from hardware regardless.
+
+        '_benchmark_write_state'/'_benchmark_load_state' stay in LEGACY_STATUS_VAR_KEYS (valid
+        legacy-format signals) but aren't reconstructed here - pulser_benchmarks is no longer a
+        field of this class (see the class docstring); SequenceGeneratorLogic.
+        _migrate_legacy_settings_if_needed() migrates it directly into its own StatusVar instead.
+        """
+        generation_parameters = raw.get('_generation_parameters')
+        return cls(
+            generation_parameters=(
+                GenerationParameters.from_dict(generation_parameters)
+                if isinstance(generation_parameters, dict)
+                else _DEFAULT_GENERATION_PARAMETERS
             ),
+            pulse_generator_settings=_DEFAULT_PULSE_GENERATOR_SETTINGS,
         )
 
     def update_from_dict(self, data):
@@ -708,15 +747,6 @@ class SequenceGeneratorSettings:
                 if isinstance(value, PulseGeneratorSettings)
                 else self.pulse_generator_settings.update_from_dict(value)
             )
-
-        # pulser_benchmarks is a shared object (see class docstring): mutate the existing
-        # BenchmarkTool instances in place, never replace the reference.
-        if 'pulser_benchmarks' in data:
-            value = data['pulser_benchmarks']
-            write_data = value.write.save() if isinstance(value, PulserBenchmarks) else value['write']
-            load_data = value.load.save() if isinstance(value, PulserBenchmarks) else value['load']
-            self.pulser_benchmarks.write.load_from_dict(saved_dict=write_data)
-            self.pulser_benchmarks.load.load_from_dict(saved_dict=load_data)
 
         return replace(
             self,

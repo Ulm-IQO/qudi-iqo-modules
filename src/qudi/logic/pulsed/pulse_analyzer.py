@@ -149,6 +149,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
 
         # Ensure a valid current method is selected
         if self._parameters.get('method') not in self._analysis_methods:
+            invalid_method = self._parameters.get('method')
+            if invalid_method is not None:
+                self.log.warning(
+                    'Analysis method "{0}" could not be found in PulseAnalyzer. '
+                    'Falling back to default.'.format(invalid_method)
+                )
             self._parameters['method'] = natural_sort(self._analysis_methods)[0]
         return
 

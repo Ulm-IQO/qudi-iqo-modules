@@ -19,8 +19,9 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass, replace, field, fields
+from dataclasses import dataclass, replace, field, fields, asdict
 from typing import ClassVar, Optional
+import pprint
 import time
 import numpy as np
 
@@ -119,6 +120,9 @@ class ReadoutSettings:
     labels: tuple[str, str]
 
     def __post_init__(self):
+        # Copy first so freezing this array's writeable flag never affects a shared/live array
+        # some future caller might construct this with directly.
+        object.__setattr__(self, 'controlled_variable', self.controlled_variable.copy())
         self.controlled_variable.flags.writeable = False
 
     
@@ -434,16 +438,9 @@ class MeasurementInformation:
 
 
 class AnalysisParameters(dict):
-    """dict-based structured container for the persisted PulseAnalyzer settings: the keyword
-    argument values collected for all known analysis methods, plus the name of the currently
-    selected method under the 'method' key.
-
-    This stays a dict subclass (the same pattern as SequenceStep in pulse_objects.py) rather
-    than a plain dataclass because PulseAnalyzer reads and mutates it directly as an ordinary
-    dict (isinstance(..., dict) checks, "del container[param]", "for p in container" - see
-    pulse_analyzer.py). Subclassing dict keeps that code working unchanged while giving the
-    container a name, a docstring, and named read access via .method/.parameters.
-    """
+    """Persisted PulseAnalyzer settings: analysis method kwargs plus the selected method under
+    'method'. Stays a dict subclass (not a plain dataclass) because pulse_analyzer.py reads/
+    mutates it directly as an ordinary dict."""
 
     @property
     def method(self):
@@ -501,6 +498,23 @@ class GenerationMethodParameters(dict):
         return cls(data) if isinstance(data, dict) else cls()
 
 
+class MetadataDictRepresentation(dict):
+    """A dict whose repr() is pretty-printed (multi-line, indented) instead of the default
+    single-line dict repr.
+
+    qudi's DataStorage header writer (qudi.util.datastorage) renders every saved-file metadata
+    value via plain repr() and then prefixes each resulting physical line with the file's
+    comment marker. A plain dict's repr() never inserts line breaks no matter how deeply nested
+    it is, so a big settings dict ends up as one unreadable wall-of-text line. Wrapping such a
+    dict in this class instead makes repr() return pprint-formatted text - which does contain
+    real line breaks - so the existing line-by-line comment-prefixing already handles it, with
+    no changes needed to DataStorage itself.
+    """
+
+    def __repr__(self):
+        return pprint.pformat(dict(self), indent=2, sort_dicts=False, width=100)
+
+
 # Default sub-settings for PulsedMeasurementSettings.from_dict()'s per-field fallbacks (a saved
 # settings file predating a given field) and for pulsed_measurement_logic.py's
 # _default_measurement_settings() (a brand new settings object). Defined once, here, since
@@ -524,36 +538,19 @@ _DEFAULT_ALTERNATE_SIGNAL_SETTINGS = AlternativeSignalSettings(alternative_data_
 
 @dataclass(frozen=True)
 class PulsedMeasurementSettings:
-    """Single settings container bundling everything PulsedMeasurementLogic persists as
-    user-configurable settings: external microwave, fast counter, readout (controlled
-    variable/units/labels/...), alternative signal processing, extraction/analysis parameters,
-    the analysis-loop timer interval, and the available data-fit configurations.
+    """Settings PulsedMeasurementLogic persists: microwave, fast counter, readout, alternative
+    signal processing, extraction/analysis parameters.
 
-    Note: extraction_parameters and analysis_parameters are SHARED objects, not independently
-    owned copies. PulseExtractor/PulseAnalyzer hold a reference to the exact same
-    ExtractionParameters/AnalysisParameters instance stored here and mutate it in place
-    (dict.__setitem__) as their real, live, authoritative state - see pulse_extractor.py/
-    pulse_analyzer.py. Because dataclasses.replace() leaves the object identity of any field it
-    doesn't touch untouched, swapping out some other field of this container (e.g. via
-    _apply_fast_counter_settings) never disturbs that shared reference. update_from_dict()
-    mirrors this: it mutates these two fields' dicts in place (dict.update()) rather than
-    replacing them with a freshly-constructed instance, precisely so PulseExtractor/
-    PulseAnalyzer's reference stays valid.
+    extraction_parameters/analysis_parameters are SHARED, live objects - PulseExtractor/
+    PulseAnalyzer mutate them in place, so update_from_dict() mutates them in place too rather
+    than replacing the reference.
 
-    Note: fit_configs is NOT a shared object like the two fields above - it's a plain value
-    (a tuple of FitConfiguration.to_dict()-shaped dicts). PulsedMeasurementLogic's
-    FitConfigurationsModel (from qudi.util.datafitting, in the separately-installed qudi-core
-    package) keeps its own internal storage behind Qt's row-based model API, which this
-    dataclass cannot hold a live reference into - instead, PulsedMeasurementLogic listens for
-    FitConfigurationsModel.sigFitConfigurationsChanged and replaces this field wholesale via
-    _apply_fit_configs() whenever the model's contents change (e.g. from GUI edits).
+    timer_interval_s/fit_configs/pulser_benchmarks are deliberately NOT here - they're
+    operational bookkeeping, persisted as independent StatusVars on their owning logic module.
 
-    Note: sampling_information/measurement_information/generation_method_parameters are
-    intentionally NOT part of this container - they live on whichever PulseBlockEnsemble/
-    PulseSequence is currently loaded (owned/persisted by SequenceGeneratorLogic), and
-    PulsedMeasurementLogic exposes them as properties over a live `loaded_asset` reference
-    rather than an independently persisted copy - this is what actually eliminates the
-    save/load race that used to exist when that data was copied on every load instead.
+    sampling_information/measurement_information/generation_method_parameters live on the loaded
+    asset (SequenceGeneratorLogic) and are exposed as properties here, not copied - avoids a
+    save/load race that existed when this data was copied on every load.
     """
 
     microwave_settings: MicrowaveSettings
@@ -562,8 +559,6 @@ class PulsedMeasurementSettings:
     alternate_signal_settings: AlternativeSignalSettings
     extraction_parameters: ExtractionParameters
     analysis_parameters: AnalysisParameters
-    timer_interval_s: float
-    fit_configs: tuple
 
     def to_dict(self):
         return {
@@ -573,14 +568,12 @@ class PulsedMeasurementSettings:
             'alternate_signal_settings': self.alternate_signal_settings.to_dict(),
             'extraction_parameters': self.extraction_parameters.to_dict(),
             'analysis_parameters': self.analysis_parameters.to_dict(),
-            'timer_interval_s': float(self.timer_interval_s),
-            'fit_configs': tuple(self.fit_configs),
         }
 
     @classmethod
     def from_dict(cls, data):
         """Tolerant of a saved dict missing keys added after it was written (e.g. an older save
-        file that predates fit_configs being added to this class) - falls back to that field's
+        file that predates a field being added to this class) - falls back to that field's
         own default rather than raising KeyError. extraction_parameters/analysis_parameters
         don't need an explicit fallback here: ExtractionParameters.from_dict()/
         AnalysisParameters.from_dict() already return an empty container for non-dict input
@@ -610,13 +603,81 @@ class PulsedMeasurementSettings:
             ),
             extraction_parameters=ExtractionParameters.from_dict(data.get('extraction_parameters')),
             analysis_parameters=AnalysisParameters.from_dict(data.get('analysis_parameters')),
-            timer_interval_s=float(data.get('timer_interval_s', 5.0)),
-            # A missing key here means an older save file that predates fit_configs - it
-            # genuinely had zero fit configs of its own, so the correct fallback is an empty
-            # tuple, NOT qudi's shipped default fit configs (that fuller default belongs in
-            # _default_measurement_settings(), for a brand new settings object).
-            fit_configs=tuple(data.get('fit_configs', ())),
         )
+
+    #: Top-level status-file key names used by the ~20 individually-declared StatusVars that
+    #: existed on PulsedMeasurementLogic before this class was introduced (one file-level key
+    #: per StatusVar, instead of everything nested under a single '_settings' key). Used only to
+    #: detect a pre-refactor status file - see PulsedMeasurementLogic._migrate_legacy_settings_if_needed().
+    LEGACY_STATUS_VAR_KEYS = frozenset({
+        '_PulsedMeasurementLogic__microwave_power',
+        '_PulsedMeasurementLogic__microwave_freq',
+        '_PulsedMeasurementLogic__use_ext_microwave',
+        '_PulsedMeasurementLogic__fast_counter_record_length',
+        '_PulsedMeasurementLogic__fast_counter_binwidth',
+        '_PulsedMeasurementLogic__fast_counter_gates',
+        '_PulsedMeasurementLogic__timer_interval',
+        '_invoke_settings_from_sequence',
+        '_number_of_lasers',
+        '_controlled_variable',
+        '_alternating',
+        '_laser_ignore_list',
+        '_data_units',
+        '_data_labels',
+        'extraction_parameters',
+        'analysis_parameters',
+        'fit_configs',
+        '_alternative_data_type',
+        'zeropad',
+        'psd',
+        'window',
+        'base_corr',
+    })
+
+    @classmethod
+    def from_legacy_dict(cls, raw):
+        """Reconstruct settings from the pre-refactor flat, individually-StatusVar'd format
+        (key names below are the exact, name-mangled-where-applicable old StatusVar names).
+
+        is_gated stays at its default: the old format never persisted it (always a live hardware
+        query), and on_activate() re-syncs it from hardware right after this runs anyway.
+
+        '_PulsedMeasurementLogic__timer_interval'/'fit_configs' are still in
+        LEGACY_STATUS_VAR_KEYS (valid legacy-format signals) but deliberately not reconstructed
+        here - PulsedMeasurementLogic._migrate_legacy_settings_if_needed() migrates those two
+        directly into its own independent StatusVars instead.
+        """
+        return cls.from_dict({
+            'microwave_settings': {
+                'power': raw.get('_PulsedMeasurementLogic__microwave_power', -30.0),
+                'frequency': raw.get('_PulsedMeasurementLogic__microwave_freq', 2870e6),
+                'use_ext_microwave': raw.get('_PulsedMeasurementLogic__use_ext_microwave', False),
+            },
+            'fast_counter_settings': {
+                'bin_width': raw.get('_PulsedMeasurementLogic__fast_counter_binwidth', 1.0e-9),
+                'record_length': raw.get('_PulsedMeasurementLogic__fast_counter_record_length', 3.0e-6),
+                'number_of_gates': raw.get('_PulsedMeasurementLogic__fast_counter_gates', 0),
+                'is_gated': False,
+            },
+            'readout_settings': {
+                'invoke_settings': raw.get('_invoke_settings_from_sequence', False),
+                'controlled_variable': raw.get('_controlled_variable', list(range(50))),
+                'number_of_lasers': raw.get('_number_of_lasers', 50),
+                'laser_ignore_list': raw.get('_laser_ignore_list', []),
+                'alternating': raw.get('_alternating', False),
+                'units': raw.get('_data_units', ('s', '')),
+                'labels': raw.get('_data_labels', ('Tau', 'Signal')),
+            },
+            'alternate_signal_settings': {
+                'alternative_data_type': raw.get('_alternative_data_type'),
+                'zeropad': raw.get('zeropad', 0),
+                'psd': raw.get('psd', False),
+                'window': raw.get('window', 'none'),
+                'base_corr': raw.get('base_corr', True),
+            },
+            'extraction_parameters': raw.get('extraction_parameters'),
+            'analysis_parameters': raw.get('analysis_parameters'),
+        })
 
     def update_from_dict(self, data):
         microwave_settings = self.microwave_settings
@@ -655,16 +716,11 @@ class PulsedMeasurementSettings:
             value = data['analysis_parameters']
             self.analysis_parameters.update(value if isinstance(value, dict) else AnalysisParameters.from_dict(value))
 
-        timer_interval_s = float(data.get('timer_interval_s', self.timer_interval_s))
-        fit_configs = tuple(data.get('fit_configs', self.fit_configs))
-
         return replace(
             self,
             microwave_settings=microwave_settings,
             fast_counter_settings=fast_counter_settings,
             readout_settings=readout_settings,
             alternate_signal_settings=alternate_signal_settings,
-            timer_interval_s=timer_interval_s,
-            fit_configs=fit_configs,
         )
 

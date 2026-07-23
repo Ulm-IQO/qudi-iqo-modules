@@ -120,7 +120,7 @@ class PulseBlockElement(object):
             return False
         if set(self.digital_high.items()) != set(other.digital_high.items()):
             return False
-        for chnl, func in self.pulse_function:
+        for chnl, func in self.pulse_function.items():
             if func != other.pulse_function[chnl]:
                 return False
         return True
@@ -381,6 +381,11 @@ class PulseBlock(object):
         self.element_list.reverse()
         return
 
+    def copy(self):
+        """Independent copy: mutating the copy's element_list never affects the original (each
+        element is deep-copied, matching PulseBlock.insert()'s existing behavior)."""
+        return PulseBlock(name=self.name, element_list=[copy.deepcopy(e) for e in self.element_list])
+
     def get_dict_representation(self):
         dict_repr = dict()
         dict_repr['name'] = self.name
@@ -594,7 +599,7 @@ class PulseBlockEnsemble(object):
         )
         new_ensemble.sampling_information = self.sampling_information.copy()
         new_ensemble.measurement_information = self.measurement_information.copy()
-        new_ensemble.generation_method_parameters = GenerationMethodParameters(self.generation_method_parameters)
+        new_ensemble.generation_method_parameters = copy.deepcopy(self.generation_method_parameters)
         return new_ensemble
 
     def get_dict_representation(self):
@@ -711,7 +716,7 @@ class SequenceStep(dict):
         return
 
     def copy(self):
-        return SequenceStep(super().copy())
+        return SequenceStep(copy.deepcopy(dict(self)))
 
 
 class PulseSequence(object):
@@ -1014,15 +1019,10 @@ class PulseSequence(object):
 
     def copy(self):
         """Independent copy: mutating the copy's ensemble_list or its sampling/measurement/
-        generation_method_parameters containers never affects the original.
-
-        Unlike PulseBlockEnsemble.block_list (immutable (name, repetitions) tuples),
-        ensemble_list entries are SequenceStep - a mutable dict subclass - and
-        PulseSequence.insert() stores whatever SequenceStep instance it's given by reference
-        (no internal copy, unlike PulseBlock.insert()'s copy.deepcopy). A shallow list() copy
-        here would leave the copy and the original sharing the same SequenceStep objects, so
-        each step is copied individually via its own existing .copy() method instead.
-        """
+        generation_method_parameters containers never affects the original. Unlike
+        PulseBlockEnsemble.block_list (immutable tuples), ensemble_list entries are mutable
+        SequenceStep dicts stored by reference, so a shallow list() copy would still share them -
+        each step is copied individually via its own .copy() instead."""
         new_sequence = PulseSequence(
             name=self.name,
             ensemble_list=[step.copy() for step in self.ensemble_list],
@@ -1030,7 +1030,7 @@ class PulseSequence(object):
         )
         new_sequence.sampling_information = self.sampling_information.copy()
         new_sequence.measurement_information = self.measurement_information.copy()
-        new_sequence.generation_method_parameters = GenerationMethodParameters(self.generation_method_parameters)
+        new_sequence.generation_method_parameters = copy.deepcopy(self.generation_method_parameters)
         return new_sequence
 
     def get_dict_representation(self):
