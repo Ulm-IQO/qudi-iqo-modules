@@ -315,20 +315,76 @@ $Shortcut.Save()
     else:
         qudi_iconname = "logo-qudi.svg"
         QUDI_ICON_URL += qudi_iconname
-        iconfile = qudi_iconfile / qudi_iconname
+        qudi_iconfile = qudi_iconfile / qudi_iconname
+
+        # Qudi
         QUDI_DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
         QUDI_DESKTOP_FILE.write_text(f"""[Desktop Entry]
-Version=1.0
-Type=Application
-Name=Qudi
-Comment=Start Qudi Measurement Software
-Exec="{INSTALL_DIR}/qudi.sh"
-Icon={iconfile}
-Terminal=true
-Categories=Science;Education;
-StartupNotify=true
-""")
+    Version=1.0
+    Type=Application
+    Name=Qudi
+    Comment=Start Qudi Measurement Software
+    Exec="{INSTALL_DIR}/qudi.sh"
+    Path={INSTALL_DIR}
+    Icon={qudi_iconfile}
+    Terminal=true
+    Categories=Science;Education;
+    StartupNotify=true
+    """)
         QUDI_DESKTOP_FILE.chmod(0o755)
+
+        # Jupyter
+        jupyter_iconfile = (
+            VENV_DIR
+            / "lib"
+            / f"python{sys.version_info.major}.{sys.version_info.minor}"
+            / "site-packages"
+            / "jupyter_server"
+            / "static"
+            / "favicons"
+            / "favicon.ico"
+        )
+
+        JUPYTER_DESKTOP_FILE = INSTALL_DIR / "qudi_jupyter.desktop"
+        JUPYTER_DESKTOP_FILE.write_text(f"""[Desktop Entry]
+    Version=1.0
+    Type=Application
+    Name=Qudi Jupyter
+    Comment=Start Jupyter Notebook in the Qudi environment
+    Exec="{INSTALL_DIR}/qudi_jupyter.sh"
+    Path={INSTALL_DIR}
+    Icon={jupyter_iconfile}
+    Terminal=true
+    Categories=Science;Education;
+    StartupNotify=true
+    """)
+        JUPYTER_DESKTOP_FILE.chmod(0o755)
+
+        # Environment shell
+        environment_iconfile = (
+            VENV_DIR
+            / "lib"
+            / f"python{sys.version_info.major}.{sys.version_info.minor}"
+            / "site-packages"
+            / "idlelib"
+            / "Icons"
+            / "idle_48.png"
+        )
+
+        ENVIRONMENT_DESKTOP_FILE = INSTALL_DIR / "qudi_environment.desktop"
+        ENVIRONMENT_DESKTOP_FILE.write_text(f"""[Desktop Entry]
+    Version=1.0
+    Type=Application
+    Name=Qudi Environment
+    Comment=Open a shell with the Qudi environment activated
+    Exec=bash -i -c 'source "{INSTALL_DIR}/qudi_environment.sh"; exec bash'
+    Path={INSTALL_DIR}
+    Icon={environment_iconfile}
+    Terminal=true
+    Categories=Development;
+    StartupNotify=true
+    """)
+        ENVIRONMENT_DESKTOP_FILE.chmod(0o755)
 
     print(f"Downloading Qudi icon from {QUDI_ICON_URL}")
     with urlopen(QUDI_ICON_URL) as response:
