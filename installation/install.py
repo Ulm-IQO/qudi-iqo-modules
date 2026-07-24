@@ -9,22 +9,109 @@ from urllib.request import urlopen
 from urllib.error import URLError
 import json
 import re
+from dataclasses import dataclass, asdict
+import json
 
-INSTALL_DIR = Path.home() / "qudi"
+from enum import Enum
 
-VENV_DIR = INSTALL_DIR / "qudi-env"
 
-CORE_REPO = "https://github.com/Ulm-IQO/qudi-core.git"
-IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
+class InstallationMode(Enum):
+    NONE = "None"
+    EDITABLE = "Editable"
+    PYPI = "PyPi"
 
-CORE_DIR: Optional[Path] = None
-IQO_MODULES_DIR: Optional[Path] = None
-CONFIG_DIR: Path = INSTALL_DIR / "config/"
-SCRIPTS_DIR: Path = INSTALL_DIR / "scripts/"
+@dataclass
+class InstallationConfig:
+    install_dir: Path = Path.home() / "qudi"
+    venv_name: str = "qudi-env"
 
-QUDI_ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
-MANIFEST_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
-PYPROJECT_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/pyproject.toml"
+    # Installation mode
+    installation_mode: dict[str, InstallationMode] = {
+        "core": InstallationMode.PYPI,
+        "iqo": InstallationMode.EDITABLE,
+        "scripts": InstallationMode.NONE,
+    }
+
+    # repositories
+    core_repo: str = "https://github.com/Ulm-IQO/qudi-core.git"
+    iqo_repo: str = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
+
+    # cloned repositories (None means pip install from PyPI)
+    core_dir: Optional[Path] = None
+    iqo_modules_dir: Optional[Path] = None
+
+    # URLs
+    qudi_icon_url: str = (
+        "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/"
+        "refs/heads/main/src/qudi/artwork/logo/"
+    )
+    manifest_url: str = (
+        "https://raw.githubusercontent.com/actions/python-versions/"
+        "main/versions-manifest.json"
+    )
+    pyproject_url: str = (
+        "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/"
+        "refs/heads/main/pyproject.toml"
+    )
+
+    @property
+    def venv_dir(self):
+        return self.install_dir / self.venv_name
+
+    @property
+    def config_dir(self):
+        return self.install_dir / "config"
+
+    @property
+    def scripts_dir(self):
+        return self.install_dir / "scripts"
+
+    @property
+    def config_file(self):
+        return self.install_dir / "installation.json"
+
+    @property
+    def qudi_script(self):
+        return self.install_dir / "qudi.sh"
+
+    @property
+    def jupyter_script(self):
+        return self.install_dir / "qudi_jupyter.sh"
+
+    @property
+    def environment_script(self):
+        return self.install_dir / "qudi_environment.sh"
+
+    def save(self):
+        data = asdict(self)
+
+        for key, value in data.items():
+            if isinstance(value, Path):
+                data[key] = str(value)
+            elif isinstance(value, Enum):
+                data[key] = value.value
+
+
+        self.config_file.write_text(json.dumps(data, indent=4))
+
+    @classmethod
+    def load(cls, filename: Path):
+        data = json.loads(filename.read_text())
+
+        for key in [
+            "install_dir",
+            "core_dir",
+            "iqo_modules_dir",
+        ]:
+            if data.get(key):
+                data[key] = Path(data[key])
+
+        for key, value in data["installation_mode"].items():
+            data["installation_mode"][key] = InstallationMode(value)
+
+        return cls(**data)
+
+CONFIG = InstallationConfig()
 
 
 def read_requires_python() -> str:
@@ -438,7 +525,7 @@ def installation_choice():
 
 
 def main():
-    global CORE_DIR, IQO_MODULES_DIR
+    global CONFIG
     check_python()
     check_git()
 
