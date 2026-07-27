@@ -474,7 +474,7 @@ class PoiManagerGui(GuiBase):
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
             lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.ConnectionType.QueuedConnection)
-        self._mw.active_poi_ComboBox.activated[int].connect(
+        self._mw.active_poi_ComboBox.textActivated.connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
             self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -506,7 +506,7 @@ class PoiManagerGui(GuiBase):
         self._mw.manual_update_poi_PushButton.clicked.disconnect()
         self._mw.move_poi_PushButton.clicked.disconnect()
         self._mw.delete_poi_PushButton.clicked.disconnect()
-        self._mw.active_poi_ComboBox.activated[int].disconnect()
+        self._mw.active_poi_ComboBox.textActivated.disconnect()
         self._mw.goto_poi_after_update_checkBox.stateChanged.disconnect()
         self._mw.track_poi_Action.triggered.disconnect()
         self.sigTrackPeriodChanged.disconnect()

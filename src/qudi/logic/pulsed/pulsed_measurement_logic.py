@@ -50,6 +50,7 @@ from qudi.util.units import ScaledFloat
 from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.pulsed.pulse_alt_plot import AltPlotAnalyzer
 
 from qudi.interface.pulser_interface import PulserInterface
 from qudi.interface.fast_counter_interface import FastCounterInterface
@@ -522,6 +523,8 @@ class PulsedMeasurementLogic(LogicBase):
         # Create an instance of PulseExtractor
         self._pulseextractor = PulseExtractor(pulsedmeasurementlogic=self)
         self._pulseanalyzer = PulseAnalyzer(pulsedmeasurementlogic=self)
+        # Create an instance of the alternative (second) plot manager
+        self._altplotanalyzer = AltPlotAnalyzer(pulsedmeasurementlogic=self)
 
         # QTimer must be created here instead of __init__ because otherwise the timer will not run
         # in this logic's thread but in the manager instead.
@@ -1062,6 +1065,16 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @property
+    def alt_plot_methods(self):
+        """ Naturally sorted list of available alternative (second) plot method names. """
+        return self._altplotanalyzer.alt_plot_methods
+
+    @property
+    def alt_plot_labels(self):
+        """ Axis labels for every alternative plot method (dict of primitive strings). """
+        return self._altplotanalyzer.alt_plot_labels
+
+    @property
     def analysis_methods(self):
         return self._pulseanalyzer.analysis_methods
 
@@ -1397,11 +1410,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
-        """
-
-        @param alt_data_type:
-        @return:
-        """
+        """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
         with self._threadlock:
             if alt_data_type != self._settings.alternate_signal_settings.alternative_data_type:
                 self.do_fit('No Fit', True)

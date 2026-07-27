@@ -2398,6 +2398,15 @@ class PulsedMeasurementGui(GuiBase):
         # apply hardware constraints
         self._pa_apply_hardware_constraints()
 
+        # Dynamically populate the alternative (second) plot selection from the available methods
+        # discovered by the logic (AltPlotAnalyzer). 'None' is always offered to disable the plot.
+        self._pa.second_plot_ComboBox.blockSignals(True)
+        self._pa.second_plot_ComboBox.clear()
+        self._pa.second_plot_ComboBox.addItem('None')
+        for method_name in natural_sort(self.pulsedmasterlogic().alt_plot_methods):
+            self._pa.second_plot_ComboBox.addItem(method_name)
+        self._pa.second_plot_ComboBox.blockSignals(False)
+
         # Recall StatusVars into widgets
         self._pa.ana_param_errorbars_CheckBox.blockSignals(True)
         self._pa.ana_param_errorbars_CheckBox.setChecked(self._ana_param_errorbars)
@@ -2875,11 +2884,15 @@ class PulsedMeasurementGui(GuiBase):
         if second_plot != self.pulsedmasterlogic().alternative_data_type:
             self.pulsedmasterlogic().set_alternative_data_type(second_plot)
 
-        if self.pulsedmasterlogic().alternative_data_type == 'Delta':
-            self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_x_axis_name_LineEdit.text()
-            self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_x_axis_unit_LineEdit.text()
-            self._ana_param_second_plot_y_axis_name_text = self._as.ana_param_y_axis_name_LineEdit.text()
-            self._ana_param_second_plot_y_axis_unit_text = self._as.ana_param_y_axis_unit_LineEdit.text()
+        # Axis labels for the selected method are provided by the logic (computed from the active
+        # measurement settings), 
+        current_type = self.pulsedmasterlogic().alternative_data_type
+        method_labels = self.pulsedmasterlogic().alt_plot_labels.get(current_type)
+        if method_labels:
+            self._ana_param_second_plot_x_axis_name_text = method_labels.get('x_label', '')
+            self._ana_param_second_plot_x_axis_unit_text = method_labels.get('x_unit', '')
+            self._ana_param_second_plot_y_axis_name_text = method_labels.get('y_label', '')
+            self._ana_param_second_plot_y_axis_unit_text = method_labels.get('y_unit', '')
         else:
             self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_second_plot_x_axis_name_LineEdit.text()
             self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_second_plot_x_axis_unit_LineEdit.text()
