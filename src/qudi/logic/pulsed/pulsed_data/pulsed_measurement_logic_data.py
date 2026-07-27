@@ -233,42 +233,40 @@ class DataStashCache:
     def get_active(self):
         return self.cache.get(self.active_tag, None)
 
-@dataclass(frozen=True)
+@dataclass
 class AlternativeSignalSettings:
-    """Settings for alternative signal processing methods."""
-    alternative_data_type: Optional[str]
-    zeropad:int=0
-    psd: bool=False
-    window: str='none'
-    base_corr: bool=True
+    """Settings for the alternative (second) plot: which AltPlotAnalyzer method is selected, plus
+    every loaded method's parameter values.
+
+    `parameters` stays a plain dict (not fixed fields) because AltPlotAnalyzer discovers parameter
+    names dynamically from whichever AltPlotMethodBase subclasses are loaded - built-in ones plus
+    any lab-supplied ones via `alt_plot_import_path` - so the valid key set isn't known at
+    class-definition time.
+
+    Deliberately NOT frozen (unlike its sibling *Settings dataclasses): AltPlotAnalyzer holds this
+    exact instance and mutates it in place as its live state, the same pattern
+    PulseExtractor/PulseAnalyzer already use for ExtractionParameters/AnalysisParameters.
+    """
+    method: Optional[str] = None
+    parameters: dict = field(default_factory=dict)
+
     def to_dict(self) -> dict:
-        return {
-            'alternative_data_type': self.alternative_data_type,
-            'zeropad': self.zeropad,
-            'psd': self.psd,
-            'window': self.window,
-            'base_corr': self.base_corr,
-        }
+        return {'method': self.method, **self.parameters}
 
     @classmethod
     def from_dict(cls, data: dict):
-        return cls(
-            alternative_data_type=data.get('alternative_data_type', None),
-            zeropad=int(data.get('zeropad', 0)),
-            psd=_as_bool(data.get('psd', False)),
-            window=str(data.get('window', 'none')),
-            base_corr=_as_bool(data.get('base_corr', True)),
-        )
+        if not isinstance(data, dict):
+            return cls()
+        data = dict(data)
+        method = data.pop('method', None)
+        return cls(method=method, parameters=data)
 
     def update_from_dict(self, data: dict):
-        return replace(
-            self,
-            alternative_data_type=data.get('alternative_data_type', self.alternative_data_type),
-            zeropad=int(data.get('zeropad', self.zeropad)),
-            psd=_as_bool(data.get('psd', self.psd)),
-            window=str(data.get('window', self.window)),
-            base_corr=_as_bool(data.get('base_corr', self.base_corr)),
-        )
+        data = dict(data)
+        if 'method' in data:
+            self.method = data.pop('method')
+        self.parameters.update(data)
+        return self
 
 @dataclass
 class ExecutionState:
@@ -533,7 +531,6 @@ _DEFAULT_READOUT_SETTINGS = ReadoutSettings(
     units=('s', ''),
     labels=('Tau', 'Signal'),
 )
-_DEFAULT_ALTERNATE_SIGNAL_SETTINGS = AlternativeSignalSettings(alternative_data_type=None)
 
 
 @dataclass(frozen=True)
@@ -596,11 +593,7 @@ class PulsedMeasurementSettings:
                 if 'readout_settings' in data
                 else _DEFAULT_READOUT_SETTINGS
             ),
-            alternate_signal_settings=(
-                AlternativeSignalSettings.from_dict(data['alternate_signal_settings'])
-                if 'alternate_signal_settings' in data
-                else _DEFAULT_ALTERNATE_SIGNAL_SETTINGS
-            ),
+            alternate_signal_settings=AlternativeSignalSettings.from_dict(data.get('alternate_signal_settings')),
             extraction_parameters=ExtractionParameters.from_dict(data.get('extraction_parameters')),
             analysis_parameters=AnalysisParameters.from_dict(data.get('analysis_parameters')),
         )
@@ -669,7 +662,7 @@ class PulsedMeasurementSettings:
                 'labels': raw.get('_data_labels', ('Tau', 'Signal')),
             },
             'alternate_signal_settings': {
-                'alternative_data_type': raw.get('_alternative_data_type'),
+                'method': raw.get('_alternative_data_type'),
                 'zeropad': raw.get('zeropad', 0),
                 'psd': raw.get('psd', False),
                 'window': raw.get('window', 'none'),
@@ -697,13 +690,13 @@ class PulsedMeasurementSettings:
             value = data['readout_settings']
             readout_settings = value if isinstance(value, ReadoutSettings) else self.readout_settings.update_from_dict(value)
 
+        # alternate_signal_settings is a shared object too (AltPlotAnalyzer holds this exact
+        # instance, see its class docstring): mutate it in place, never replace the reference.
         alternate_signal_settings = self.alternate_signal_settings
         if 'alternate_signal_settings' in data:
             value = data['alternate_signal_settings']
-            alternate_signal_settings = (
-                value
-                if isinstance(value, AlternativeSignalSettings)
-                else self.alternate_signal_settings.update_from_dict(value)
+            alternate_signal_settings.update_from_dict(
+                value.to_dict() if isinstance(value, AlternativeSignalSettings) else value
             )
 
         # extraction_parameters/analysis_parameters are shared objects (see class docstring):

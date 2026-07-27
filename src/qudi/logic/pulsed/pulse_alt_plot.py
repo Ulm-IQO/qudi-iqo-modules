@@ -126,14 +126,19 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     Methods are imported from the ``qudi.logic.pulsed.alt_plot_methods`` namespace package and from
     the optional ``PulsedMeasurementLogic.alt_plot_import_path`` directory. The selected method and
-    all parameters are persisted by the measurement logic in a single StatusVar.
+    all parameters are held on ``PulsedMeasurementLogic.alternate_signal_settings`` (an
+    ``AlternativeSignalSettings`` instance) - mutated in place as this class's live state, and
+    persisted automatically as part of the measurement logic's regular settings StatusVar.
     """
 
     def __init__(self, pulsedmeasurementlogic):
         super().__init__(pulsedmeasurementlogic)
         self._methods: dict[str, AltPlotMethodBase] = dict()      # {name: instance}
-        self._parameters: dict[str, Any] = dict()   # union of all compute() kwargs
-        self._current_method: str | None = None  # None => no alternative plot
+        # The real, shared AlternativeSignalSettings instance held by PulsedMeasurementLogic's
+        # settings - not a copy. Mutated in place (attribute/dict assignment) as this class's
+        # real, live, authoritative state, the same pattern PulseExtractor/PulseAnalyzer already
+        # use for their own ExtractionParameters/AnalysisParameters.
+        self.__settings = pulsedmeasurementlogic.alternate_signal_settings
 
         # Import from the default namespace package
         import qudi.logic.pulsed.alt_plot_methods as default_ns
@@ -162,13 +167,29 @@ class AltPlotAnalyzer(AltPlotMethodBase):
                 self.log.warning(f'Duplicate alternative plot method name "{method_name}". '
                                  f'Overwriting the previously registered one.')
             self._methods[method_name] = instance
-            self._parameters.update(self._get_method_kwargs(instance.compute))
+            # Values already persisted in self.__settings.parameters (e.g. from a previous
+            # session) win over compute()'s own signature defaults - see _get_method_kwargs().
+            self.__settings.parameters.update(self._get_method_kwargs(instance.compute))
 
-        # Restore persisted selection and parameters if handed over
-        stored = getattr(pulsedmeasurementlogic, 'alt_plot_parameters', None)
-        if isinstance(stored, dict):
-            self.alt_plot_settings = {k: v for k, v in stored.items()
-                                      if k == 'method' or k in self._parameters}
+        # Drop any persisted parameter that no longer corresponds to a real method (e.g. removed
+        # or renamed since last session) - mirrors PulseExtractor/PulseAnalyzer's same cleanup, so
+        # a stale value can't accumulate forever or get silently adopted by an unrelated future
+        # method that happens to reuse the same parameter name.
+        valid_parameter_names = set()
+        for instance in self._methods.values():
+            valid_parameter_names.update(inspect.signature(instance.compute).parameters.keys())
+        valid_parameter_names.discard('signal_data')
+        for param in [p for p in list(self.__settings.parameters) if p not in valid_parameter_names]:
+            del self.__settings.parameters[param]
+
+        # A persisted selection that no longer matches any loaded method (e.g. its plugin file
+        # was removed, or this is the very first activation) must not be kept as "selected".
+        if self.__settings.method not in self._methods:
+            if self.__settings.method is not None:
+                self.log.warning(f'Previously selected alternative plot method '
+                                 f'"{self.__settings.method}" is no longer available. Disabling '
+                                 f'alternative plot.')
+            self.__settings.method = None
 
     @property
     def alt_plot_methods(self) -> list[str]:
@@ -177,23 +198,23 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     @property
     def current_method(self) -> str | None:
-        return self._current_method
+        return self.__settings.method
 
     @current_method.setter
     def current_method(self, name: str | None) -> None:
         if name in (None, '', 'None'):
-            self._current_method = None
+            self.__settings.method = None
         elif name in self._methods:
-            self._current_method = name
+            self.__settings.method = name
         else:
             self.log.error(f'Alternative plot method "{name}" not found in AltPlotAnalyzer.')
 
     @property
     def alt_plot_settings(self) -> dict[str, Any]:
         """ Current method's parameters plus the selected method name (key "method"). """
-        method = self._methods.get(self._current_method)
+        method = self._methods.get(self.__settings.method)
         settings = self._get_method_kwargs(method.compute) if method is not None else dict()
-        settings['method'] = self._current_method
+        settings['method'] = self.__settings.method
         return settings
 
     @alt_plot_settings.setter
@@ -203,18 +224,11 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         for parameter, value in settings_dict.items():
             if parameter == 'method':
                 self.current_method = value
-            elif parameter in self._parameters:
-                self._parameters[parameter] = value
+            elif parameter in self.__settings.parameters:
+                self.__settings.parameters[parameter] = value
             else:
                 self.log.warning(f'No alternative plot parameter "{parameter}" in AltPlotAnalyzer. '
                                  f'Ignoring it.')
-
-    @property
-    def full_settings_dict(self) -> dict[str, Any]:
-        """ All parameters plus the current method, for persisting in a StatusVar. """
-        settings = self._parameters.copy()
-        settings['method'] = self._current_method
-        return settings
 
     @property
     def alt_plot_labels(self) -> dict[str, dict[str, str]]:
@@ -223,12 +237,12 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     @property
     def current_labels(self) -> dict[str, str]:
-        method = self._methods.get(self._current_method)
+        method = self._methods.get(self.__settings.method)
         return method.labels_dict if method is not None else dict()
 
     def is_available(self, name: str | None = None) -> bool:
         """ Whether the given (default: current) method can be used for the active settings. """
-        method = self._methods.get(self._current_method if name is None else name)
+        method = self._methods.get(self.__settings.method if name is None else name)
         if method is None:
             return False
         try:
@@ -239,9 +253,9 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     def compute_alt_data(self, signal_data: np.ndarray) -> np.ndarray | None:
         """ Evaluate the current method, or return None if none selected/unavailable/not evaluable. """
-        if self._current_method is None or not self.is_available(self._current_method):
+        if self.__settings.method is None or not self.is_available(self.__settings.method):
             return None
-        method = self._methods[self._current_method]
+        method = self._methods[self.__settings.method]
         return method.compute(signal_data=signal_data, **self._get_method_kwargs(method.compute))
 
     # --- helpers ---
@@ -252,7 +266,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         for name, param in inspect.signature(compute_method).parameters.items():
             if name == 'signal_data':
                 continue
-            stored = self._parameters.get(name)
+            stored = self.__settings.parameters.get(name)
             kwargs[name] = stored if type(stored) == type(param.default) else param.default
         return kwargs
 

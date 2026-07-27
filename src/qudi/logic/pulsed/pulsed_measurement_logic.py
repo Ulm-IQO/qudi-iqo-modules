@@ -36,7 +36,6 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
-from qudi.util.math import compute_ft
 from qudi.util.datastorage import (
     TextDataStorage,
     CsvDataStorage,
@@ -58,6 +57,7 @@ from qudi.interface.microwave_interface import MicrowaveInterface
 
 #IMPORT ALL CLASSES FROM DATA CLASS
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
+    AlternativeSignalSettings,
     AnalysisParameters,
     DataStashCache,
     ExecutionState,
@@ -74,7 +74,6 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     _DEFAULT_MICROWAVE_SETTINGS,
     _DEFAULT_FAST_COUNTER_SETTINGS,
     _DEFAULT_READOUT_SETTINGS,
-    _DEFAULT_ALTERNATE_SIGNAL_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement import PulsedMeasurement, PulsedData, PulseObjects, Settings
@@ -164,17 +163,20 @@ def _default_measurement_settings():
     """Factory for the default PulsedMeasurementSettings, used both as the StatusVar default
     and as the fallback when restoring a malformed/legacy status value.
 
-    microwave_settings/fast_counter_settings/readout_settings/alternate_signal_settings reuse
-    the single shared default instances defined in pulsed_measurement_logic_data.py (that file
-    can't import back from this one, so it owns these literals rather than duplicating them
-    here) - PulsedMeasurementSettings.from_dict() falls back to the exact same instances when a
-    saved settings file is missing one of these keys.
+    microwave_settings/fast_counter_settings/readout_settings reuse the single shared default
+    instances defined in pulsed_measurement_logic_data.py (that file can't import back from this
+    one, so it owns these literals rather than duplicating them here) - PulsedMeasurementSettings.
+    from_dict() falls back to the exact same instances when a saved settings file is missing one
+    of these keys. alternate_signal_settings/extraction_parameters/analysis_parameters are mutable
+    (AltPlotAnalyzer/PulseExtractor/PulseAnalyzer hold and mutate them in place as live state), so
+    - unlike the frozen settings above - each one is built fresh here rather than sharing a single
+    module-level instance, to avoid one measurement's live state leaking into another's defaults.
     """
     return PulsedMeasurementSettings(
         microwave_settings=_DEFAULT_MICROWAVE_SETTINGS,
         fast_counter_settings=_DEFAULT_FAST_COUNTER_SETTINGS,
         readout_settings=_DEFAULT_READOUT_SETTINGS,
-        alternate_signal_settings=_DEFAULT_ALTERNATE_SIGNAL_SETTINGS,
+        alternate_signal_settings=AlternativeSignalSettings(),
         extraction_parameters=ExtractionParameters(),
         analysis_parameters=AnalysisParameters(),
     )
@@ -206,6 +208,8 @@ class PulsedMeasurementLogic(LogicBase):
     # Optional additional paths to import from
     extraction_import_path = ConfigOption(name='additional_extraction_path', default=None)
     analysis_import_path = ConfigOption(name='additional_analysis_path', default=None)
+    # Optional additional path to import alternative (second) plot methods from
+    alt_plot_import_path = ConfigOption(name='additional_alt_plot_path', default=None)
     # Optional file type descriptor for saving raw data to file.
     # todo: doesn't warn if checker not satisfied
     _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
@@ -365,9 +369,6 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _apply_readout_settings(self, new_settings):
         self._settings = replace(self._settings, readout_settings=new_settings)
-
-    def _apply_alternate_signal_settings(self, new_settings):
-        self._settings = replace(self._settings, alternate_signal_settings=new_settings)
 
     def _apply_timer_interval(self, new_interval):
         self._timer_interval_s = float(new_interval)
@@ -601,6 +602,12 @@ class PulsedMeasurementLogic(LogicBase):
         """The real, shared AnalysisParameters object (not a copy/dict) - PulseAnalyzer holds
         a reference to this exact instance and mutates it in place as its live state."""
         return self._settings.analysis_parameters
+
+    @property
+    def alternate_signal_settings(self):
+        """The real, shared AlternativeSignalSettings object (not a copy/dict) - AltPlotAnalyzer
+        holds a reference to this exact instance and mutates it in place as its live state."""
+        return self._settings.alternate_signal_settings
 
     @property
     def fit_configs(self):
@@ -1056,7 +1063,8 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def alternative_data_type(self):
-        return str(self._settings.alternate_signal_settings.alternative_data_type)
+        method = self._altplotanalyzer.current_method
+        return str(method) if method is not None else 'None'
 
     @alternative_data_type.setter
     def alternative_data_type(self, alt_data_type):
@@ -1412,25 +1420,21 @@ class PulsedMeasurementLogic(LogicBase):
     def set_alternative_data_type(self, alt_data_type):
         """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
         with self._threadlock:
-            if alt_data_type != self._settings.alternate_signal_settings.alternative_data_type:
+            if alt_data_type != self.alternative_data_type:
                 self.do_fit('No Fit', True)
-            if alt_data_type == 'Delta' and not self._settings.readout_settings.alternating:
-                if self._settings.alternate_signal_settings.alternative_data_type == 'Delta':
-                    self._apply_alternate_signal_settings(
-                        replace(self._settings.alternate_signal_settings, alternative_data_type=None)
-                    )
-                self.log.error('Can not set "Delta" as alternative data calculation if measurement is '
-                           'not alternating.\n'
-                           'Setting to previous type "{0}".'.format(
-                               self._settings.alternate_signal_settings.alternative_data_type))
-            elif alt_data_type == 'None':
-                self._apply_alternate_signal_settings(
-                    replace(self._settings.alternate_signal_settings, alternative_data_type=None)
-                )
+
+            if alt_data_type in (None, 'None', ''):
+                self._altplotanalyzer.current_method = None
+            elif alt_data_type not in self._altplotanalyzer.alt_plot_methods:
+                self.log.error('Unknown alternative plot method "{0}". Keeping previous type "{1}".'
+                               ''.format(alt_data_type, self.alternative_data_type))
+            elif not self._altplotanalyzer.is_available(alt_data_type):
+                self.log.error('Alternative plot method "{0}" is not available for the current '
+                               'measurement settings. Disabling alternative plot.'
+                               ''.format(alt_data_type))
+                self._altplotanalyzer.current_method = None
             else:
-                self._apply_alternate_signal_settings(
-                    replace(self._settings.alternate_signal_settings, alternative_data_type=alt_data_type)
-                )
+                self._altplotanalyzer.current_method = alt_data_type
 
             self._compute_alt_data()
             self.sigMeasurementDataUpdated.emit()
@@ -2180,29 +2184,24 @@ class PulsedMeasurementLogic(LogicBase):
             x_axis_prefix = scaled_float.scale
             x_axis_ft_scaled = data.signal_alt_data[0] / scaled_float.scale_val
 
-            if alt_type == 'FFT':
-                if settings.units[0] == 's':
-                    inverse_cont_var = 'Hz'
-                elif settings.units[0] == 'Hz':
-                    inverse_cont_var = 's'
-                else:
-                    inverse_cont_var = '(1/{0})'.format(settings.units[0])
-                x_axis_ft_label = 'FT {0} ({1}{2})'.format(
-                    settings.labels[0], x_axis_prefix, inverse_cont_var)
-                y_axis_ft_label = 'FT({0}) (arb. u.)'.format(settings.labels[1])
-                ft_label = 'FT of data trace 1'
-            else:
-                if settings.units[0]:
-                    x_axis_ft_label = '{0} ({1}{2})'.format(settings.labels[0], x_axis_prefix,
-                                                            settings.units[0])
-                else:
-                    x_axis_ft_label = '{0}'.format(settings.labels[0])
-                if settings.units[1]:
-                    y_axis_ft_label = '{0} ({1})'.format(settings.labels[1], settings.units[1])
-                else:
-                    y_axis_ft_label = '{0}'.format(settings.labels[1])
+            # Axis labels are provided by the selected alternative plot method. The x-axis unit is
+            # prefixed with the SI scale of the (scaled) x-axis; the y-axis is not scaled.
+            alt_labels = self._altplotanalyzer.current_labels
+            x_alt_label = alt_labels.get('x_label', '')
+            x_alt_unit = alt_labels.get('x_unit', '')
+            y_alt_label = alt_labels.get('y_label', '')
+            y_alt_unit = alt_labels.get('y_unit', '')
 
-                ft_label = '{0} of data traces'.format(alt_type)
+            if x_alt_unit:
+                x_axis_ft_label = '{0} ({1}{2})'.format(x_alt_label, x_axis_prefix, x_alt_unit)
+            else:
+                x_axis_ft_label = '{0}'.format(x_alt_label)
+            if y_alt_unit:
+                y_axis_ft_label = '{0} ({1})'.format(y_alt_label, y_alt_unit)
+            else:
+                y_axis_ft_label = '{0}'.format(y_alt_label)
+
+            ft_label = '{0} of data trace 1'.format(alt_type)
 
             ax2.plot(x_axis_ft_scaled, data.signal_alt_data[1],
                      linestyle=':', linewidth=0.5, color=colors[0],
@@ -2241,24 +2240,22 @@ class PulsedMeasurementLogic(LogicBase):
         return fig
 
     def _compute_alt_data(self):
-        alt = self._settings.alternate_signal_settings
+        """
+        Compute the alternative (second) plot data via the selected alternative plot method. Falls
+        back to a flat default plot if no method is selected, it is unavailable, or it fails.
+        """
         md = self.measurement_data
-        if alt.alternative_data_type == 'Delta' and len(md.signal_data) == 3:
-            md.signal_alt_data = np.empty((2, md.signal_data.shape[1]), dtype=float)
-            md.signal_alt_data[0] = md.signal_data[0]
-            md.signal_alt_data[1] = md.signal_data[1] - md.signal_data[2]
-        elif alt.alternative_data_type == 'FFT' and md.signal_data.shape[1] >= 2:
-            fft_x, fft_y = compute_ft(x_val=md.signal_data[0], y_val=md.signal_data[1],
-                                  zeropad_num=alt.zeropad, window=alt.window,
-                                  base_corr=alt.base_corr, psd=alt.psd)
-            md.signal_alt_data = np.empty((len(md.signal_data), len(fft_x)), dtype=float)
-            md.signal_alt_data[0] = fft_x
-            md.signal_alt_data[1] = fft_y
-            for dim in range(2, len(md.signal_data)):
-                dummy, md.signal_alt_data[dim] = compute_ft(x_val=md.signal_data[0], y_val=md.signal_data[dim],
-                                                        zeropad_num=alt.zeropad, window=alt.window,
-                                                        base_corr=alt.base_corr, psd=alt.psd)
-        else:
+        alt_data = None
+        try:
+            alt_data = self._altplotanalyzer.compute_alt_data(md.signal_data)
+        except:
+            self.log.exception('Error while computing alternative plot data:')
+            alt_data = None
+
+        if alt_data is None:
             md.signal_alt_data = np.zeros(md.signal_data.shape, dtype=float)
-            md.signal_alt_data[0] = md.signal_data[0]
+            if md.signal_data.shape[1] > 0:
+                md.signal_alt_data[0] = md.signal_data[0]
+        else:
+            md.signal_alt_data = alt_data
         return

@@ -222,10 +222,11 @@ def test_pulsed_measurement_settings_migrates_legacy_status_dict():
     assert migrated.readout_settings.laser_ignore_list == [0, 1]
     assert migrated.readout_settings.units == ('s', 'a.u.')
     assert migrated.readout_settings.labels == ('Time', 'Contrast')
-    assert migrated.alternate_signal_settings.zeropad == 2
-    assert migrated.alternate_signal_settings.psd is True
-    assert migrated.alternate_signal_settings.window == 'hann'
-    assert migrated.alternate_signal_settings.base_corr is False
+    assert migrated.alternate_signal_settings.method is None
+    assert migrated.alternate_signal_settings.parameters['zeropad'] == 2
+    assert migrated.alternate_signal_settings.parameters['psd'] is True
+    assert migrated.alternate_signal_settings.parameters['window'] == 'hann'
+    assert migrated.alternate_signal_settings.parameters['base_corr'] is False
     assert migrated.extraction_parameters == {'method': 'gated_conv_deriv', 'conv_std_dev': 15.0}
     assert migrated.analysis_parameters == {'method': 'mean_norm'}
     # timer_interval_s/fit_configs are no longer fields of PulsedMeasurementSettings (see its
