@@ -81,6 +81,7 @@ PRESET_MODE_SWEEP = 4
 PRESET_MODE_START = 16
 
 SWEEPMODE_RAW_BYTES_DEC = 35528836
+SWEEPMODE_INPUT_MASK = 0x00FF0000
 
 
 # ============================================================================
@@ -290,6 +291,14 @@ class FastComtec(FastCounterInterface):
     def on_activate(self):
         """Load the FAST ComTec DLL without changing software settings."""
         self.dll = self._load_dll()
+        board_setting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(board_setting), 0)
+        hardware_gated = bool((int(board_setting.sweepmode) & 0xF) == 0x4)
+        if hardware_gated != self.gated:
+            self.log.warning(
+                "Config gated={0} does not match hardware (gated={1}). "
+                "Call configure() to apply.".format(self.gated, hardware_gated)
+            )
         return
 
     def on_deactivate(self):
@@ -390,29 +399,80 @@ class FastComtec(FastCounterInterface):
                     number_of_gates: the number of gated, which are accepted,
                     None if not-gated
         """
-        # When not gated, record length = total sequence length. When gated,
-        # record length = laser length. Subtract time to make sure no sequence
-        # trigger is missed.
-        self.set_binwidth(bin_width_s)
+        bitshift = int(np.log2(bin_width_s / self.minimal_binwidth))
 
         if self.gated:
-            # Sequential acquisition, new line on every "sync" trigger.
-            self.configure_gated_counter(
-                bin_width_s, record_length_s, cycles=number_of_gates, preset=1
+            no_of_bins = int((record_length_s + self.aom_delay) / bin_width_s)
+            self._write_configuration(
+                bitshift=bitshift,
+                no_of_bins=no_of_bins,
+                gated=True,
+                cycles=number_of_gates,
+                sequences=1,
+                preset=1,
             )
         else:
-            # One acquisition for all taus, one sync trigger per acquisition.
             no_of_bins = int((record_length_s - self.trigger_safety) / bin_width_s)
-            self.change_sweep_mode(False, cycles=None, preset=None)
-            self.set_length(no_of_bins)
-
-        self.set_cycles(number_of_gates)
+            self._write_configuration(
+                bitshift=bitshift,
+                no_of_bins=no_of_bins,
+                gated=False,
+                cycles=number_of_gates,
+                sequences=1,
+                preset=None,
+            )
 
         return (
             self.get_binwidth(),
             self.get_length() * self.get_binwidth(),
             number_of_gates,
         )
+
+    def _write_configuration(
+        self, bitshift, no_of_bins, gated, cycles, sequences, preset
+    ):
+        """Apply a complete counter configuration with one server refresh."""
+        constraints = self.get_constraints()
+        if cycles is None or cycles == 0:
+            cycles = 1
+        effective_cycles = cycles if gated else 1
+        no_of_bins = int(
+            RANGE_BIN_INCREMENT * int(no_of_bins / RANGE_BIN_INCREMENT)
+        )
+        if no_of_bins * effective_cycles >= constraints["max_bins"]:
+            self.log.error("Dimensions too large for fast counter")
+            return -1
+
+        board_setting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(board_setting), 0)
+        acquisition_setting = AcqSettings()
+        self.dll.GetSettingData(ctypes.byref(acquisition_setting), 0)
+
+        if gated:
+            board_setting.sweepmode = (
+                int(board_setting.sweepmode) & ~0xF
+            ) | 0x4
+            board_setting.prena = PRESET_MODE_START
+            board_setting.swpreset = (
+                float(preset) if preset is not None else 1.0
+            )
+        else:
+            board_setting.sweepmode = int(board_setting.sweepmode) & ~0xF
+            board_setting.prena = PRESET_MODE_OFF
+            board_setting.swpreset = 0.0
+
+        board_setting.cycles = int(cycles)
+        if sequences is not None:
+            board_setting.sequences = int(sequences)
+        acquisition_setting.bitshift = int(bitshift)
+        acquisition_setting.range = int(no_of_bins * effective_cycles)
+
+        self.dll.StoreMCSSetting(ctypes.byref(board_setting), 0)
+        self.dll.StoreSettingData(ctypes.byref(acquisition_setting), 0)
+        self.dll.NewSetting(0)
+
+        self.gated = gated
+        return no_of_bins
 
     def get_status(self):
         """Return the current fast counter status.
@@ -765,18 +825,20 @@ class FastComtec(FastCounterInterface):
                     preset: Number of preset
                     sequences: Number of sequences
         """
-        self.set_binwidth(bin_width_s)
-        # Change to gated sweep mode.
-        self.change_sweep_mode(True, cycles, preset)
-
+        bitshift = int(np.log2(bin_width_s / self.minimal_binwidth))
         no_of_bins = int((record_length_s + self.aom_delay) / bin_width_s)
-        self.set_length(no_of_bins)
-        if sequences is not None:
-            self.set_sequences(sequences)
+        self._write_configuration(
+            bitshift=bitshift,
+            no_of_bins=no_of_bins,
+            gated=True,
+            cycles=cycles,
+            sequences=sequences,
+            preset=preset,
+        )
 
         return (
             self.get_binwidth(),
-            no_of_bins,
+            self.get_length(),
             self.get_cycles(),
             self.get_preset(),
             self.get_sequences(),
@@ -791,15 +853,30 @@ class FastComtec(FastCounterInterface):
         @param int preset: Optional, change number of preset. If gated,
                            typically = 1.
         """
-        # Reduce length to prevent crashes.
+        board_setting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(board_setting), 0)
+        use_cycles = (
+            cycles
+            if cycles is not None and cycles != 0
+            else (board_setting.cycles if board_setting.cycles != 0 else 1)
+        )
+
         if gated:
-            self.set_cycle_mode(sequential_mode=True, cycles=cycles)
-            self.set_preset_mode(mode=PRESET_MODE_START, preset=preset)
+            board_setting.sweepmode = (
+                int(board_setting.sweepmode) & ~0xF
+            ) | 0x4
+            board_setting.prena = PRESET_MODE_START
+            if preset is not None:
+                board_setting.swpreset = float(preset)
             self.gated = True
         else:
-            self.set_cycle_mode(sequential_mode=False, cycles=cycles)
-            self.set_preset_mode(mode=PRESET_MODE_OFF, preset=preset)
+            board_setting.sweepmode = int(board_setting.sweepmode) & ~0xF
+            board_setting.prena = PRESET_MODE_OFF
             self.gated = False
+
+        board_setting.cycles = int(use_cycles)
+        self.dll.StoreMCSSetting(ctypes.byref(board_setting), 0)
+        self.dll.NewSetting(0)
         return gated
 
     def set_preset_mode(self, mode=16, preset=None):
@@ -853,30 +930,7 @@ class FastComtec(FastCounterInterface):
 
         @return: just the input
         """
-        # First set cycles to 1 to prevent crashes.
-        cycles_old = self.get_cycles() if cycles is None else cycles
-        self.set_cycles(1)
-
-        # Turn on or off sequential cycle mode.
-        if sequential_mode:
-            self.log.debug(
-                "Sequential mode enabled. Make sure to set 'checksync=0' and "
-                "'nomessages=1' in mcs6a.ini."
-            )
-            # old standard setting: 1978500
-            # old settings + disable "sweep counter not needed"
-            # + disable "allow 6 byte words"
-            raw_bytes_dec = SWEEPMODE_RAW_BYTES_DEC
-        else:
-            # NOTE: This preserves the original value. Sequential and
-            # non-sequential modes both used the same sweepmode value.
-            raw_bytes_dec = SWEEPMODE_RAW_BYTES_DEC
-
-        cmd = CMD_SWEEP_MODE.format(hex(raw_bytes_dec))
-        self.dll.RunCmd(0, bytes(cmd, ASCII_ENCODING))
-
-        self.set_cycles(cycles_old)
-
+        self.change_sweep_mode(gated=sequential_mode, cycles=cycles)
         return sequential_mode, cycles
 
     def set_cycles(self, cycles):
