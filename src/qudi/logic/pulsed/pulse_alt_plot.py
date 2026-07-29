@@ -24,13 +24,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import sys
 import inspect
-import importlib
 
-from qudi.util.helpers import natural_sort, iter_modules_recursive
-
+from qudi.util.helpers import natural_sort
+from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
 
 class AltPlotMethodBase:
     """ Base class for alternative plot methods. Must be inherited from *exclusively*.
@@ -132,20 +129,13 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
         # Import from the default namespace package
         import qudi.logic.pulsed.alt_plot_methods as default_ns
-        method_classes = list()
-        for mod_finder in iter_modules_recursive(default_ns.__path__, default_ns.__name__ + '.'):
-            try:
-                module = importlib.import_module(mod_finder.name)
-                method_classes.extend(c for _, c in inspect.getmembers(module, self.is_alt_plot_class))
-            except:
-                self.log.exception(f'Exception while importing alt_plot_methods sub-module '
-                                   f'"{mod_finder.name}":')
-
+        method_classes = list(get_modules_from_ns(default_ns, self.is_alt_plot_class,
+                                                    logger=self.log).values())
         # Import from the optional additional directory
         import_path = getattr(pulsedmeasurementlogic, 'alt_plot_import_path', None)
         if isinstance(import_path, str):
             try:
-                method_classes.extend(self.__import_external_methods(import_path))
+                method_classes.extend(get_modules_from_path(import_path, self.is_alt_plot_class))
             except:
                 self.log.exception(f'Unable to import alternative plot methods from '
                                    f'"{import_path}":')
@@ -250,16 +240,6 @@ class AltPlotAnalyzer(AltPlotMethodBase):
             stored = self._parameters.get(name)
             kwargs[name] = stored if type(stored) == type(param.default) else param.default
         return kwargs
-
-    def __import_external_methods(self, path):
-        if path not in sys.path:
-            sys.path.append(path)
-        class_list = list()
-        for name in os.listdir(path):
-            if name.endswith('.py') and os.path.isfile(os.path.join(path, name)):
-                module = importlib.reload(importlib.import_module(name[:-3]))
-                class_list.extend(c for _, c in inspect.getmembers(module, self.is_alt_plot_class))
-        return class_list
 
     @staticmethod
     def is_alt_plot_class(obj):
