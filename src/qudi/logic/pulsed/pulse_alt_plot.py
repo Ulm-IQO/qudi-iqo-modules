@@ -24,7 +24,12 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 import inspect
+from collections.abc import Callable
+from typing import Any
+import numpy as np
 
 from qudi.util.helpers import natural_sort
 from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
@@ -79,13 +84,13 @@ class AltPlotMethodBase:
         return self.__pulsedmeasurementlogic.log
 
     # --- interface to implement ---
-    def compute(self, signal_data):
+    def compute(self, signal_data: np.ndarray) -> np.ndarray | None:
         """ Transform ``signal_data`` (row 0: x-axis, rows 1..: trace(s); row 2 is the alternating
         trace) into a 2D array with the same layout. Return None if it cannot be evaluated; the
         caller then falls back to a flat default plot. """
         raise NotImplementedError('Alternative plot methods must implement "compute".')
 
-    def is_available(self):
+    def is_available(self) -> bool:
         """ Whether the method may be selected/computed for the active measurement settings. """
         return True
 
@@ -123,9 +128,9 @@ class AltPlotAnalyzer(AltPlotMethodBase):
 
     def __init__(self, pulsedmeasurementlogic):
         super().__init__(pulsedmeasurementlogic)
-        self._methods = dict()      # {name: instance}
-        self._parameters = dict()   # union of all compute() kwargs
-        self._current_method = None  # None => no alternative plot
+        self._methods: dict[str, AltPlotMethodBase] = dict()      # {name: instance}
+        self._parameters: dict[str, Any] = dict()   # union of all compute() kwargs
+        self._current_method: str | None = None  # None => no alternative plot
 
         # Import from the default namespace package
         import qudi.logic.pulsed.alt_plot_methods as default_ns
@@ -156,16 +161,16 @@ class AltPlotAnalyzer(AltPlotMethodBase):
                                       if k == 'method' or k in self._parameters}
 
     @property
-    def alt_plot_methods(self):
+    def alt_plot_methods(self) -> list[str]:
         """ Naturally sorted list of all available method names. """
         return natural_sort(self._methods)
 
     @property
-    def current_method(self):
+    def current_method(self) -> str | None:
         return self._current_method
 
     @current_method.setter
-    def current_method(self, name):
+    def current_method(self, name: str | None) -> None:
         if name in (None, '', 'None'):
             self._current_method = None
         elif name in self._methods:
@@ -174,7 +179,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
             self.log.error(f'Alternative plot method "{name}" not found in AltPlotAnalyzer.')
 
     @property
-    def alt_plot_settings(self):
+    def alt_plot_settings(self) -> dict[str, Any]:
         """ Current method's parameters plus the selected method name (key "method"). """
         method = self._methods.get(self._current_method)
         settings = self._get_method_kwargs(method.compute) if method is not None else dict()
@@ -182,7 +187,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         return settings
 
     @alt_plot_settings.setter
-    def alt_plot_settings(self, settings_dict):
+    def alt_plot_settings(self, settings_dict: dict[str, Any]) -> None:
         if not isinstance(settings_dict, dict):
             return
         for parameter, value in settings_dict.items():
@@ -195,23 +200,23 @@ class AltPlotAnalyzer(AltPlotMethodBase):
                                  f'Ignoring it.')
 
     @property
-    def full_settings_dict(self):
+    def full_settings_dict(self) -> dict[str, Any]:
         """ All parameters plus the current method, for persisting in a StatusVar. """
         settings = self._parameters.copy()
         settings['method'] = self._current_method
         return settings
 
     @property
-    def alt_plot_labels(self):
+    def alt_plot_labels(self) -> dict[str, dict[str, str]]:
         """ {method_name: labels_dict} for every method (primitive strings; rpyc-safe). """
         return {name: instance.labels_dict for name, instance in self._methods.items()}
 
     @property
-    def current_labels(self):
+    def current_labels(self) -> dict[str, str]:
         method = self._methods.get(self._current_method)
         return method.labels_dict if method is not None else dict()
 
-    def is_available(self, name=None):
+    def is_available(self, name: str | None = None) -> bool:
         """ Whether the given (default: current) method can be used for the active settings. """
         method = self._methods.get(self._current_method if name is None else name)
         if method is None:
@@ -222,7 +227,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
             self.log.exception(f'Error checking availability of alternative plot method "{name}":')
             return False
 
-    def compute_alt_data(self, signal_data):
+    def compute_alt_data(self, signal_data: np.ndarray) -> np.ndarray | None:
         """ Evaluate the current method, or return None if none selected/unavailable/not evaluable. """
         if self._current_method is None or not self.is_available(self._current_method):
             return None
@@ -230,7 +235,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         return method.compute(signal_data=signal_data, **self._get_method_kwargs(method.compute))
 
     # --- helpers ---
-    def _get_method_kwargs(self, compute_method):
+    def _get_method_kwargs(self, compute_method: Callable) -> dict[str, Any]:
         """ Build the kwargs (other than ``signal_data``) for a compute method, preferring stored
         parameter values over the signature defaults (matching by data type). """
         kwargs = dict()
@@ -242,6 +247,5 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         return kwargs
 
     @staticmethod
-    def is_alt_plot_class(obj):
-        """ True if obj inherits exclusively from AltPlotMethodBase. """
-        return inspect.isclass(obj) and obj.__bases__ == (AltPlotMethodBase,)
+    def is_alt_plot_class(obj: Any) -> bool:
+        return inspect.isclass(obj) and AltPlotMethodBase in obj.mro() and obj is not AltPlotMethodBase

@@ -12,11 +12,13 @@
 - Fixed tests for `rpyc>6`
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
 - Fix several `POIManagerGUI` `PySide6` bugs
+- Fix discovery of `AltPlotMethodBase` subclasses
 
 ### New Features
-- supporting custom alternative plots in pulsed analysis 
+- Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 - Added pulse shaping to the `pulsed` tool chain
+- supporting custom alternative plots in pulsed analysis
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
