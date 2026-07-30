@@ -124,6 +124,10 @@ class ReadoutSettings:
         # some future caller might construct this with directly.
         object.__setattr__(self, 'controlled_variable', self.controlled_variable.copy())
         self.controlled_variable.flags.writeable = False
+        # Sorted here rather than only in update_from_dict() so the invariant holds for every
+        # construction path - from_dict(), replace(), and direct construction alike. sorted()
+        # also returns a new list, so a caller's live list can never alias our state.
+        object.__setattr__(self, 'laser_ignore_list', sorted(self.laser_ignore_list))
 
     
     def to_dict(self):

@@ -113,7 +113,8 @@ class PulseObjects:
     SequenceGeneratorLogic's saved-asset registries - untouched by this class). `ensembles`/
     `blocks` are read-only copies of just that subset, resolved via
     SequenceGeneratorLogic.resolve_asset_closure(), so a saved measurement's dict representation
-    shows every element/block/ensemble/sequence directly instead of only a name.
+    shows every block/ensemble/sequence definition directly instead of only a name (and with them
+    every element, nested inside its block's element_list).
 
     Frozen-in-time: mutating SequenceGeneratorLogic's live registries after a snapshot was taken
     never affects an already-built PulseObjects instance.
@@ -134,15 +135,19 @@ class PulseObjects:
 
     @property
     def elements(self) -> List['PulseBlockElement']:
-        """Every PulseBlockElement across every PulseBlock in `blocks`, flattened. NOT a stored
-        field - PulseBlockElement has no identity of its own, so computing this fresh on every
-        access (rather than caching it) means it can never drift out of sync with `blocks`."""
+        """Every PulseBlockElement across every PulseBlock in `blocks`, flattened. A convenience
+        view for callers wanting a flat list; not a stored field and not part of to_dict(), since
+        `blocks` is the single source of truth and already contains every element."""
         return [element for block in self.blocks.values() for element in block.element_list]
 
     def to_dict(self):
         """`sequence` is tagged with its own class name so from_dict() knows which class to
-        reconstruct. `elements` is exported for readability only - from_dict() does not accept it
-        back, since restoring `blocks` already fully determines it."""
+        reconstruct.
+
+        The flattened `elements` view (see the property above) is deliberately NOT exported: every
+        element already appears inside its block's 'element_list', so a second copy would only
+        duplicate them. Use the `elements` property on a live instance if you want them flat.
+        """
         sequence_dict = None
         if self.sequence is not None:
             sequence_dict = {'type': type(self.sequence).__name__}
@@ -151,7 +156,6 @@ class PulseObjects:
             'sequence': sequence_dict,
             'ensembles': {name: ens.get_dict_representation() for name, ens in self.ensembles.items()},
             'blocks': {name: blk.get_dict_representation() for name, blk in self.blocks.items()},
-            'elements': [elem.get_dict_representation() for elem in self.elements],
         }
 
     def to_metadata_dict(self):
@@ -235,7 +239,7 @@ class PulsedMeasurement:
     objects: PulseObjects = field(default_factory=PulseObjects)
 
     def to_dict(self):
-        """Serializes `settings`, `data`, and `objects` (sequence/ensembles/blocks/elements)."""
+        """Serializes `settings`, `data`, and `objects` (sequence/ensembles/blocks)."""
         return {
             'settings': self.settings.to_dict(),
             'data': self.data.to_dict() if self.data is not None else None,

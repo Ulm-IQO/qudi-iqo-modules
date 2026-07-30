@@ -70,13 +70,17 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     ReadoutSettings,
     PulsedMeasurementSettings,
     PulsedMeasurementData,
-    _as_bool,
     _DEFAULT_MICROWAVE_SETTINGS,
     _DEFAULT_FAST_COUNTER_SETTINGS,
     _DEFAULT_READOUT_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement import PulsedMeasurement, PulsedData, PulseObjects, Settings
+from qudi.logic.pulsed.pulsed_data.settings_coercion import (
+    SettingsTypeError,
+    as_settings_dict,
+    coerce_settings,
+)
 
 
 
@@ -386,7 +390,7 @@ class PulsedMeasurementLogic(LogicBase):
         if asset is not self._loaded_asset:
             self.log.warning(
                 'A new sequence/ensemble has been loaded, but its settings have not been applied '
-                'to the measurement yet - press Play to apply them. Saving before that uses the '
+                'to the measurement yet - Saving before starting the measurement uses the '
                 'previous asset\'s name, settings, and data.'
             )
         self._pending_loaded_asset = asset
@@ -426,13 +430,21 @@ class PulsedMeasurementLogic(LogicBase):
 
         Returns independent copies (not live references), so the snapshot is frozen in time.
 
-        @param SequenceGeneratorSettings generator_settings: optional, the sequence generator
-            settings in effect for this measurement.
-        @param dict ensembles: optional, {name: PulseBlockEnsemble} already resolved and copied
-            by the caller (see SequenceGeneratorLogic.resolve_asset_closure()).
-        @param dict blocks: optional, {name: PulseBlock}, same caveat as `ensembles`.
-        @return PulsedMeasurement: snapshot of this module's current settings/data/loaded asset,
-            plus the given generator_settings/ensembles/blocks.
+        Parameters
+        ----------
+        generator_settings : SequenceGeneratorSettings
+            Optional, the sequence generator settings in effect for this measurement.
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller (see
+            SequenceGeneratorLogic.resolve_asset_closure()).
+        blocks : dict
+            Optional, {name: PulseBlock}, same caveat as `ensembles`.
+
+        Returns
+        -------
+        PulsedMeasurement
+            Snapshot of this module's current settings/data/loaded asset, plus the given
+            generator_settings/ensembles/blocks.
         """
         current = self._pulsed_measurement
         return PulsedMeasurement(
@@ -632,11 +644,11 @@ class PulsedMeasurementLogic(LogicBase):
         return self._settings.fast_counter_settings.to_dict()
 
     @fast_counter_settings.setter
-    def fast_counter_settings(self, settings_dict):
-        if isinstance(settings_dict, FastCounterSettings):
-            self.set_fast_counter_settings(settings_dict.to_dict())
-        elif isinstance(settings_dict, dict):
-            self.set_fast_counter_settings(settings_dict)
+    def fast_counter_settings(self, settings):
+        if not isinstance(settings, (FastCounterSettings, dict)):
+            raise SettingsTypeError(f'fast_counter_settings expects FastCounterSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_fast_counter_settings(settings)
         return
 
     @property
@@ -644,34 +656,38 @@ class PulsedMeasurementLogic(LogicBase):
         return self._fastcounter().get_constraints()
 
     @QtCore.Slot(dict)
-    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
+    def set_fast_counter_settings(self, settings=None, **kwargs):
         """
-        Either accepts a settings dictionary as positional argument or keyword arguments.
-        If both are present, both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accepts a FastCounterSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. A dict/kwargs is a partial patch of the current settings,
+        a FastCounterSettings is a full replacement. If both a settings_dict and kwargs are
+        present, the keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : FastCounterSettings or dict or None
+        kwargs
         """
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.fast_counter_settings, FastCounterSettings
+            )
+        except SettingsTypeError as err:
+            # A caller mistake - log it and leave the settings untouched. Deliberately not raised:
+            # this is a queued cross-thread slot, where an escaping exception cannot reach the
+            # emitter and may take the whole application down mid-measurement.
+            self.log.error(f'Unable to apply new fast counter settings. {err}')
+            self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
+            return self.fast_counter_settings
+
         # Check if fast counter is running and do nothing if that is the case
         counter_status = self._fastcounter().get_status()
         if not counter_status >= 2 and not counter_status < 0:
-            # Determine complete settings dictionary
-            if isinstance(settings_dict, FastCounterSettings):
-                settings_dict = settings_dict.to_dict()
-                settings_dict.update(kwargs)
-            elif not isinstance(settings_dict, dict):
-                settings_dict = kwargs
-            else:
-                settings_dict.update(kwargs)
-
             # Set parameters, check if it is gated
-            if 'number_of_gates' in settings_dict and not self._fastcounter().is_gated():
-                settings_dict['number_of_gates'] = 0
+            if not self._fastcounter().is_gated():
+                requested = replace(requested, number_of_gates=0)
 
-            self._apply_fast_counter_settings(self._settings.fast_counter_settings.update_from_dict(settings_dict))
+            self._apply_fast_counter_settings(requested)
 
             # Apply the settings to hardware
             bin_width, record_length, number_of_gates = self._fastcounter().configure(
@@ -697,16 +713,22 @@ class PulsedMeasurementLogic(LogicBase):
         return self.fast_counter_settings
 
     def fast_counter_on(self):
-        """Switching on the fast counter
+        """Switching on the fast counter.
 
-        @return int: error code (0:OK, -1:error)
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
         return self._fastcounter().start_measure()
 
     def fast_counter_off(self):
-        """Switching off the fast counter
+        """Switching off the fast counter.
 
-        @return int: error code (0:OK, -1:error)
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
         return self._fastcounter().stop_measure()
 
@@ -724,16 +746,22 @@ class PulsedMeasurementLogic(LogicBase):
         return err
 
     def fast_counter_pause(self):
-        """Switching off the fast counter
+        """Switching off the fast counter.
 
-        @return int: error code (0:OK, -1:error)
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
         return self._fastcounter().pause_measure()
 
     def fast_counter_continue(self):
-        """Switching off the fast counter
+        """Switching off the fast counter.
 
-        @return int: error code (0:OK, -1:error)
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
         return self._fastcounter().continue_measure()
 
@@ -787,11 +815,11 @@ class PulsedMeasurementLogic(LogicBase):
         return self._settings.microwave_settings.to_dict()
 
     @ext_microwave_settings.setter
-    def ext_microwave_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_microwave_settings(settings_dict)
-        elif isinstance(settings_dict, MicrowaveSettings):
-            self.set_microwave_settings(settings_dict.to_dict())
+    def ext_microwave_settings(self, settings):
+        if not isinstance(settings, (MicrowaveSettings, dict)):
+            raise SettingsTypeError(f'ext_microwave_settings expects MicrowaveSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_microwave_settings(settings)
         return
     
     @property
@@ -853,39 +881,40 @@ class PulsedMeasurementLogic(LogicBase):
         return err
 
     @QtCore.Slot(dict)
-    def set_microwave_settings(self, settings_dict=None, **kwargs):
+    def set_microwave_settings(self, settings=None, **kwargs):
         """
         Apply new settings to the external microwave device.
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accepts a MicrowaveSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. A dict/kwargs is a partial patch of the current settings,
+        a MicrowaveSettings is a full replacement. If both a settings_dict and kwargs are present,
+        the keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : MicrowaveSettings or dict or None
+        kwargs
         """
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.microwave_settings, MicrowaveSettings
+            )
+        except SettingsTypeError as err:
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to apply new microwave settings. {err}')
+            self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
+            return self.ext_microwave_settings
+
         # Check if microwave is running and do nothing if that is the case
         try:
             microwave = self._microwave()
             if (microwave is not None) and (microwave.module_state() != 'idle') :
                 self.log.warning('Microwave device is running.\nUnable to apply new settings.')
             else:
-                # Determine complete settings dictionary
-                if isinstance(settings_dict, MicrowaveSettings):
-                    settings_dict = settings_dict.to_dict()
-                    settings_dict.update(kwargs)
-                elif not isinstance(settings_dict, dict):
-                    settings_dict = kwargs
-                else:
-                    settings_dict.update(kwargs)
-
-                # Set parameters if present
                 # use_ext_microwave can only ever be True if a microwave connector is actually
                 # present - otherwise force it back to False regardless of what was requested.
-                if 'use_ext_microwave' in settings_dict:
-                    settings_dict['use_ext_microwave'] = _as_bool(settings_dict['use_ext_microwave']) and microwave is not None
-                self._apply_microwave_settings(self._settings.microwave_settings.update_from_dict(settings_dict))
+                if requested.use_ext_microwave and microwave is None:
+                    requested = replace(requested, use_ext_microwave=False)
+                self._apply_microwave_settings(requested)
                 if self._settings.microwave_settings.use_ext_microwave and microwave is not None:
                     # Apply the settings to hardware
                     microwave.set_cw(
@@ -958,11 +987,11 @@ class PulsedMeasurementLogic(LogicBase):
         return self._settings.readout_settings.to_dict()
 
     @measurement_settings.setter
-    def measurement_settings(self, settings_dict):
-        if isinstance(settings_dict, ReadoutSettings):
-            self.set_measurement_settings(settings_dict.to_dict())
-        elif isinstance(settings_dict, dict):
-            self.set_measurement_settings(settings_dict)
+    def measurement_settings(self, settings):
+        if not isinstance(settings, (ReadoutSettings, dict)):
+            raise SettingsTypeError(f'measurement_settings expects ReadoutSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_measurement_settings(settings)
         return
 
     @property
@@ -1057,8 +1086,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @timer_interval.setter
     def timer_interval(self, value):
-        if isinstance(value, (int, float)):
-            self.set_timer_interval(value)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise SettingsTypeError(f'timer_interval expects int or float, '
+                                    f'got {type(value).__name__}')
+        self.set_timer_interval(value)
         return
 
     @property
@@ -1068,8 +1099,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @alternative_data_type.setter
     def alternative_data_type(self, alt_data_type):
-        if isinstance(alt_data_type, str) or alt_data_type is None:
-            self.set_alternative_data_type(alt_data_type)
+        if not (isinstance(alt_data_type, str) or alt_data_type is None):
+            raise SettingsTypeError(f'alternative_data_type expects str or None, '
+                                    f'got {type(alt_data_type).__name__}')
+        self.set_alternative_data_type(alt_data_type)
         return
 
     @property
@@ -1096,8 +1129,12 @@ class PulsedMeasurementLogic(LogicBase):
 
     @analysis_settings.setter
     def analysis_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_analysis_settings(settings_dict)
+        # No dataclass counterpart: AnalysisParameters is a dict subclass because the parameter
+        # names are discovered at runtime from whichever analysis method is selected.
+        if not isinstance(settings_dict, dict):
+            raise SettingsTypeError(f'analysis_settings expects a dict, '
+                                    f'got {type(settings_dict).__name__}')
+        self.set_analysis_settings(settings_dict)
         return
 
     @property
@@ -1106,8 +1143,11 @@ class PulsedMeasurementLogic(LogicBase):
 
     @extraction_settings.setter
     def extraction_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_extraction_settings(settings_dict)
+        # No dataclass counterpart - see analysis_settings above.
+        if not isinstance(settings_dict, dict):
+            raise SettingsTypeError(f'extraction_settings expects a dict, '
+                                    f'got {type(settings_dict).__name__}')
+        self.set_extraction_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -1119,20 +1159,26 @@ class PulsedMeasurementLogic(LogicBase):
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings_dict
+        kwargs
         """
-        # Determine complete settings dictionary
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        # Determine complete settings dictionary. Built as a new dict rather than updated in
+        # place, so the caller's dict is never mutated by the bin snapping below.
+        try:
+            settings_dict = as_settings_dict(settings_dict, kwargs)
+        except SettingsTypeError as err:
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to apply new analysis settings. {err}')
+            self.sigAnalysisSettingsUpdated.emit(self.analysis_settings)
+            return
 
+        bin_width = self.fast_counter_settings['bin_width']
         for key in settings_dict:
             if key in ['signal_start', 'signal_end', 'norm_start', 'norm_end']:
-                num_bins_fast = round(settings_dict[key]/self.fast_counter_settings['bin_width'])
-                settings_dict[key] = num_bins_fast * self.fast_counter_settings['bin_width']
+                num_bins_fast = round(settings_dict[key] / bin_width)
+                settings_dict[key] = num_bins_fast * bin_width
 
         # Use threadlock to update settings during a running measurement
         with self._threadlock:
@@ -1143,21 +1189,25 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(dict)
     def set_extraction_settings(self, settings_dict=None, **kwargs):
         """
-        Apply new analysis settings.
+        Apply new extraction settings.
         Either accept a settings dictionary as positional argument or keyword arguments.
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings_dict
+        kwargs
         """
         # Determine complete settings dictionary
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            settings_dict = as_settings_dict(settings_dict, kwargs)
+        except SettingsTypeError as err:
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to apply new extraction settings. {err}')
+            self.sigExtractionSettingsUpdated.emit(self.extraction_settings)
+            return
 
         # Use threadlock to update settings during a running measurement
         with self._threadlock:
@@ -1166,55 +1216,71 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @QtCore.Slot(dict)
-    def set_measurement_settings(self, settings_dict=None, **kwargs):
+    def set_measurement_settings(self, settings=None, **kwargs):
         """
-        Apply new measurement settings.
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Apply new measurement (readout) settings.
+        Either accepts a ReadoutSettings instance or a settings dictionary as positional argument,
+        or keyword arguments. A dict/kwargs is a partial patch of the current settings, a
+        ReadoutSettings is a full replacement. If both a settings_dict and kwargs are present, the
+        keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Note that not every field can be applied in every module state: only invoke_settings,
+        units and labels are accepted while a measurement is running. Fields the current state
+        does not permit keep their current value, whether they were named explicitly or arrived
+        as part of a complete ReadoutSettings.
+
+        Parameters
+        ----------
+        settings : ReadoutSettings or dict or None
+        kwargs
         """
-        # Determine complete settings dictionary
-        if isinstance(settings_dict, ReadoutSettings):
-            settings_dict = settings_dict.to_dict()
-            settings_dict.update(kwargs)
-        elif not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.readout_settings, ReadoutSettings
+            )
+        except SettingsTypeError as err:
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to apply new measurement settings. {err}')
+            self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
+            return self.measurement_settings
 
         # invoke_settings flag can change regardless of module state
-        if 'invoke_settings' in settings_dict:
-            self._apply_readout_settings(
-                replace(
-                    self._settings.readout_settings,
-                    invoke_settings=_as_bool(settings_dict['invoke_settings'])
-                )
-            )
+        self._apply_readout_settings(
+            replace(self._settings.readout_settings, invoke_settings=requested.invoke_settings)
+        )
         if self._settings.readout_settings.invoke_settings:
             if self.measurement_information:
                 self._apply_invoked_settings()
         else:
             # units/labels can change while a measurement is running
             with self._threadlock:
-                units_labels = {}
-                if 'units' in settings_dict:
-                    units_labels['units'] = settings_dict['units']
-                if 'labels' in settings_dict:
-                    units_labels['labels'] = settings_dict['labels']
-                if units_labels:
-                    self._apply_readout_settings(self._settings.readout_settings.update_from_dict(units_labels))
+                self._apply_readout_settings(
+                    replace(
+                        self._settings.readout_settings,
+                        units=requested.units,
+                        labels=requested.labels,
+                    )
+                )
             if self.module_state() == 'idle':
-                idle_only_keys = ('controlled_variable', 'number_of_lasers', 'laser_ignore_list', 'alternating')
-                idle_updates = {k: settings_dict[k] for k in idle_only_keys if k in settings_dict}
-                if idle_updates:
-                    self._apply_readout_settings(self._settings.readout_settings.update_from_dict(idle_updates))
-                if 'number_of_lasers' in idle_updates and self._fastcounter().is_gated():
-                    self.set_fast_counter_settings(number_of_gates=self._settings.readout_settings.number_of_lasers)
+                # Everything else describes the pulse sequence being measured and can only change
+                # while no measurement is running.
+                self._apply_readout_settings(
+                    replace(
+                        self._settings.readout_settings,
+                        controlled_variable=requested.controlled_variable,
+                        number_of_lasers=requested.number_of_lasers,
+                        laser_ignore_list=requested.laser_ignore_list,
+                        alternating=requested.alternating,
+                    )
+                )
+                # A gated fast counter needs exactly one gate per laser pulse. Driven off the
+                # actual values rather than "was number_of_lasers named in the call", so this also
+                # heals the two ever drifting apart.
+                if (self._fastcounter().is_gated()
+                        and self._settings.fast_counter_settings.number_of_gates
+                        != self._settings.readout_settings.number_of_lasers):
+                    self.set_fast_counter_settings(
+                        number_of_gates=self._settings.readout_settings.number_of_lasers)
         self._measurement_settings_sanity_check()
         self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
         return self.measurement_settings
@@ -1222,9 +1288,12 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(bool, str)
     def toggle_pulsed_measurement(self, start, stash_raw_data_tag=''):
         """
-        Convenience method to start/stop measurement
+        Convenience method to start/stop measurement.
 
-        @param bool start: Start the measurement (True) or stop the measurement (False)
+        Parameters
+        ----------
+        start : bool
+            Start the measurement (True) or stop the measurement (False).
         """
         if start:
             self.start_pulsed_measurement(stash_raw_data_tag)
@@ -1334,9 +1403,12 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_measurement_pause(self, pause):
         """
-        Convenience method to pause/continue measurement
+        Convenience method to pause/continue measurement.
 
-        @param bool pause: Pause the measurement (True) or continue the measurement (False)
+        Parameters
+        ----------
+        pause : bool
+            Pause the measurement (True) or continue the measurement (False).
         """
         if pause:
             self.pause_pulsed_measurement()
@@ -1399,10 +1471,18 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(int)
     def set_timer_interval(self, interval):
         """
-        Change the interval of the measurement analysis timer
+        Change the interval of the measurement analysis timer.
 
-        @param int|float interval: Interval of the timer in s
+        Parameters
+        ----------
+        interval : int or float
+            Interval of the timer in s.
         """
+        if not isinstance(interval, (int, float)) or isinstance(interval, bool):
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to set timer interval. Expected int or float, got '
+                           f'{type(interval).__name__}.')
+            return
         with self._threadlock:
             self._apply_timer_interval(interval)
             if self._timer_interval_s > 0:
@@ -1419,6 +1499,11 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
         """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
+        if not (isinstance(alt_data_type, str) or alt_data_type is None):
+            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
+            self.log.error(f'Unable to set alternative data type. Expected str or None, got '
+                           f'{type(alt_data_type).__name__}.')
+            return
         with self._threadlock:
             if alt_data_type != self.alternative_data_type:
                 self.do_fit('No Fit', True)
@@ -1454,12 +1539,18 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Performs the chosen fit on the measured data.
 
-        @param str fit_config: name of the fit configuration to use
-        @param bool use_alternative_data: Flag indicating if the signal data (False) or the
-                                          alternative signal data (True) should be fitted.
-                                          Ignored if data is given as parameter
+        Parameters
+        ----------
+        fit_config : str
+            Name of the fit configuration to use.
+        use_alternative_data : bool
+            Flag indicating if the signal data (False) or the alternative signal data (True)
+            should be fitted. Ignored if data is given as parameter.
 
-        @return result_object: the lmfit result object
+        Returns
+        -------
+        result_object
+            The lmfit result object.
         """
         container = self.alt_fc if use_alternative_data else self.fc
         data = self.measurement_data.signal_alt_data if use_alternative_data else self.measurement_data.signal_data
@@ -1674,8 +1765,12 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Get the raw count data from the fast counting hardware and perform sanity checks.
         Also add recalled raw data to the newly received data.
-        @return tuple(numpy.ndarray, info_dict): The count data (1D for ungated, 2D for gated counter) and
-                                                 info_dict with keys 'elapsed_sweeps' and 'elapsed_time'
+
+        Returns
+        -------
+        tuple(numpy.ndarray, info_dict)
+            The count data (1D for ungated, 2D for gated counter) and info_dict with keys
+            'elapsed_sweeps' and 'elapsed_time'.
         """
         # get raw data from fast counter
         fc_data = self._fastcounter().get_data_trace()
@@ -1789,10 +1884,14 @@ class PulsedMeasurementLogic(LogicBase):
         display-only variant that drops duplicate/bulky SamplingInformation fields (see its
         docstring); the full snapshot file still uses to_dict() for lossless round-tripping.
 
-        @param dict ensembles: optional, {name: PulseBlockEnsemble} already resolved by the
-            caller (see SequenceGeneratorLogic.resolve_asset_closure()) - PulsedMeasurementLogic
-            has no Connector to SequenceGeneratorLogic and cannot resolve this itself.
-        @param dict blocks: optional, {name: PulseBlock}, same caveat as `ensembles`.
+        Parameters
+        ----------
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved by the caller (see
+            SequenceGeneratorLogic.resolve_asset_closure()) - PulsedMeasurementLogic has no
+            Connector to SequenceGeneratorLogic and cannot resolve this itself.
+        blocks : dict
+            Optional, {name: PulseBlock}, same caveat as `ensembles`.
         """
         if self._loaded_asset is None:
             return {}
@@ -1882,17 +1981,17 @@ class PulsedMeasurementLogic(LogicBase):
             file_name_stub, file_extension = file_name.rsplit('.', 1)
             return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
-    def _get_signal_column_headers(self, with_error):
+    def _get_signal_column_headers(self):
         """ Helper method to retrieve formatted column header strings for pulsed measurement data.
 
-        @param bool with_error: Boolean flag indicating if error data should be included
-
-        @return list: List of column header strings
+        Returns
+        -------
+        list
+            List of column header strings.
         """
         labels, units = self._settings.readout_settings.labels, self._settings.readout_settings.units
         column_headers = [f'{labels[0]} ({units[0]})', f'{labels[1]} ({units[1]})']
-        if with_error:
-            column_headers.append(f'{labels[1]} ({units[1]})')
+        column_headers.append(f'{labels[1]} ({units[1]})')
         return column_headers
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
@@ -1901,33 +2000,47 @@ class PulsedMeasurementLogic(LogicBase):
                               save_measurement_snapshot=False):
         """ Prepare data to be saved and create a proper plot of the data
 
-        @param str tag: a name tag which will be included in the filename if file_path is None
-        @param str file_path: optional, custom full file path including file extension to use.
-                              If given, tag is ignored.
-        @param type storage_cls: optional, override for data storage class to use
-        @param bool with_error: select whether errors should be saved/plotted
-        @param bool save_laser_pulses: select whether extracted lasers should be saved
-        @param bool save_pulsed_measurement: select whether final measurement should be saved
-        @param bool save_figure: select whether a thumbnail plot should be saved
-        @param str notes: optional, string that is included in the metadata "as-is" without a field
-        @param SequenceGeneratorSettings generator_settings: optional, the SequenceGeneratorLogic
-            settings in effect for this measurement. PulsedMeasurementLogic has no Connector to
-            SequenceGeneratorLogic and cannot fetch this itself - PulsedMasterLogic.
-            save_measurement_data supplies it. Included in the saved signal metadata as part of
-            a combined PulsedMeasurement snapshot (see get_pulsed_measurement()); left out (None)
-            if this method is called directly without going through PulsedMasterLogic.
-        @param dict ensembles: optional, {name: PulseBlockEnsemble} already resolved and copied
-            by the caller (see SequenceGeneratorLogic.resolve_asset_closure()) - same caveat as
-            generator_settings. Embedded in every raw/laser/signal .dat file's metadata (see
+        Parameters
+        ----------
+        tag : str
+            A name tag which will be included in the filename if file_path is None.
+        file_path : str
+            Optional, custom full file path including file extension to use.
+            If given, tag is ignored.
+        storage_cls : type
+            Optional, override for data storage class to use.
+        with_error : bool
+            Select whether errors should be plotted.
+        save_laser_pulses : bool
+            Select whether extracted lasers should be saved.
+        save_pulsed_measurement : bool
+            Select whether final measurement should be saved.
+        save_figure : bool
+            Select whether a thumbnail plot should be saved.
+        notes : str
+            Optional, string that is included in the metadata "as-is" without a field.
+        generator_settings : SequenceGeneratorSettings
+            Optional, the SequenceGeneratorLogic settings in effect for this measurement.
+            PulsedMeasurementLogic has no Connector to SequenceGeneratorLogic and cannot fetch
+            this itself - PulsedMasterLogic. save_measurement_data supplies it. Included in the
+            saved signal metadata as part of a combined PulsedMeasurement snapshot (see
+            get_pulsed_measurement()); left out (None) if this method is called directly without
+            going through PulsedMasterLogic.
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller (see
+            SequenceGeneratorLogic.resolve_asset_closure()) - same caveat as generator_settings.
+            Embedded in every raw/laser/signal .dat file's metadata (see
             _get_loaded_asset_metadata()) as well as the optional full snapshot below.
-        @param dict blocks: optional, {name: PulseBlock}, same caveat as `ensembles`.
-        @param bool save_measurement_snapshot: optional, additionally pickle the complete
-            PulsedMeasurement snapshot (settings + data + the loaded sequence/ensemble/ensembles/
-            blocks, see get_pulsed_measurement()) to a single '.pulsedmeasurement' file alongside
-            the raw/laser/signal files - see load_measurement_snapshot() to restore it. Off by
-            default since it's a new, potentially large binary artifact; the sequence/ensembles/
-            blocks/elements themselves are always in the raw/laser/signal .dat metadata regardless
-            of this flag - this only adds settings/data/fit results on top, in one loadable object.
+        blocks : dict
+            Optional, {name: PulseBlock}, same caveat as `ensembles`.
+        save_measurement_snapshot : bool
+            Optional, additionally pickle the complete PulsedMeasurement snapshot (settings +
+            data + the loaded sequence/ensemble/ensembles/blocks, see get_pulsed_measurement())
+            to a single '.pulsedmeasurement' file alongside the raw/laser/signal files - see
+            load_measurement_snapshot() to restore it. Off by default since it's a new,
+            potentially large binary artifact; the sequence/ensembles/blocks/elements themselves
+            are always in the raw/laser/signal .dat metadata regardless of this flag - this only
+            adds settings/data/fit results on top, in one loadable object.
         """
         # Use default data storage type if none has been given explicitly
         if storage_cls is None:
@@ -1997,11 +2110,8 @@ class PulsedMeasurementLogic(LogicBase):
                                                                         tag,
                                                                         '_pulsed_measurement')
 
-            # Format data to save
-            if with_error:
-                data = np.vstack((self.measurement_data.signal_data, self.measurement_data.measurement_error[1:])).transpose()
-            else:
-                data = self.measurement_data.signal_data.transpose()
+            # Format data to save - error columns are always included; with_error only affects the plot.
+            data = np.vstack((self.measurement_data.signal_data, self.measurement_data.measurement_error[1:])).transpose()
 
             save_path, _, _ = data_storage.save_data(
                 data,
@@ -2012,7 +2122,7 @@ class PulsedMeasurementLogic(LogicBase):
                 filename=save_filename,
                 timestamp=timestamp,
                 notes=notes,
-                column_headers=self._get_signal_column_headers(with_error)
+                column_headers=self._get_signal_column_headers()
             )
 
             # save thumbnail figure if required
@@ -2047,8 +2157,15 @@ class PulsedMeasurementLogic(LogicBase):
         """Load a PulsedMeasurement snapshot previously saved via
         save_measurement_data(save_measurement_snapshot=True).
 
-        @param str file_path: full path to the '.pulsedmeasurement' file to load
-        @return PulsedMeasurement: the restored snapshot (settings + data + sequence)
+        Parameters
+        ----------
+        file_path : str
+            Full path to the '.pulsedmeasurement' file to load.
+
+        Returns
+        -------
+        PulsedMeasurement
+            The restored snapshot (settings + data + sequence).
         """
         with open(file_path, 'rb') as snapshot_file:
             return pickle.load(snapshot_file)

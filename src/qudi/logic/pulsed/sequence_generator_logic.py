@@ -70,6 +70,11 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     _DEFAULT_PULSE_GENERATOR_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters, MeasurementInformation
+from qudi.logic.pulsed.pulsed_data.settings_coercion import (
+    SettingsTypeError,
+    as_settings_dict,
+    coerce_settings,
+)
 
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
@@ -105,12 +110,22 @@ def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_block
     Missing referenced names are logged as a combined warning and skipped rather than raising -
     a best-effort, partially-resolved snapshot is still useful for saving/inspection.
 
-    @param asset: the currently loaded PulseBlockEnsemble or PulseSequence, or None if nothing is
+    Parameters
+    ----------
+    asset
+        The currently loaded PulseBlockEnsemble or PulseSequence, or None if nothing is
         loaded.
-    @param dict saved_pulse_block_ensembles: SequenceGeneratorLogic._saved_pulse_block_ensembles
-    @param dict saved_pulse_blocks: SequenceGeneratorLogic._saved_pulse_blocks
-    @param log: logger to warn through (SequenceGeneratorLogic.log)
-    @return (ensembles, blocks): {name: independent copy}. `ensembles` is empty if `asset` is a
+    saved_pulse_block_ensembles : dict
+        SequenceGeneratorLogic._saved_pulse_block_ensembles
+    saved_pulse_blocks : dict
+        SequenceGeneratorLogic._saved_pulse_blocks
+    log
+        Logger to warn through (SequenceGeneratorLogic.log)
+
+    Returns
+    -------
+    ensembles, blocks
+        {name: independent copy}. `ensembles` is empty if `asset` is a
         bare PulseBlockEnsemble or None. `blocks` covers every PulseBlock referenced by
         `ensembles`, or referenced directly by `asset` if it is a bare PulseBlockEnsemble.
     """
@@ -483,11 +498,11 @@ class SequenceGeneratorLogic(LogicBase):
         return self._generator_settings.pulse_generator_settings.to_dict()
 
     @pulse_generator_settings.setter
-    def pulse_generator_settings(self, settings_dict):
-        if isinstance(settings_dict, PulseGeneratorSettings):
-            self.set_pulse_generator_settings(settings_dict.to_dict())
-        elif isinstance(settings_dict, dict):
-            self.set_pulse_generator_settings(settings_dict)
+    def pulse_generator_settings(self, settings):
+        if not isinstance(settings, (PulseGeneratorSettings, dict)):
+            raise SettingsTypeError(f'pulse_generator_settings expects PulseGeneratorSettings or '
+                                    f'dict, got {type(settings).__name__}')
+        self.set_pulse_generator_settings(settings)
         return
 
     @property
@@ -531,26 +546,35 @@ class SequenceGeneratorLogic(LogicBase):
         return LoadedAsset(name=return_name, asset_type=return_type)
 
     @QtCore.Slot(dict)
-    def set_pulse_generator_settings(self, settings_dict=None, **kwargs):
+    def set_pulse_generator_settings(self, settings=None, **kwargs):
         """
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accept a PulseGeneratorSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. If both are present both are being used by updating the
+        settings_dict with kwargs. The keyword arguments take precedence over the items in
+        settings_dict if there are conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Unlike set_generation_parameters() this stays dict-based rather than coercing to a
+        PulseGeneratorSettings: each key below is negotiated with the hardware only if present,
+        and activation_config accepts several shapes (str/set/tuple) that the dataclass field
+        does not. Calling with no arguments is a refresh, not an empty update.
+
+        Parameters
+        ----------
+        settings : PulseGeneratorSettings or dict or None
+        kwargs
         """
+        try:
+            settings_dict = as_settings_dict(settings, kwargs, PulseGeneratorSettings)
+        except SettingsTypeError as err:
+            # Logged rather than raised: this is a queued cross-thread slot, where an escaping
+            # exception cannot reach the emitter and may take the whole application down.
+            self.log.error(f'Unable to apply new pulse generator settings. {err}')
+            self.sigGeneratorSettingsUpdated.emit(self.pulse_generator_settings)
+            return self.pulse_generator_settings
+
         # Check if pulse generator is running and do nothing if that is the case
         pulser_status, status_dict = self.pulsegenerator().get_status()
         if pulser_status == 0:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
-            else:
-                settings_dict.update(kwargs)
-
             # Set parameters if present
             if 'activation_config' in settings_dict:
                 activation_config = settings_dict['activation_config']
@@ -648,7 +672,7 @@ class SequenceGeneratorLogic(LogicBase):
 
             self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
 
-        elif len(kwargs) != 0 or isinstance(settings_dict, dict):
+        elif settings_dict:
             # Only throw warning when arguments have been passed to this method
             self.log.warning(
                 'Pulse generator is not idle (status: {0:d}, "{1}").\nUnable to apply new settings.'.format(
@@ -692,7 +716,9 @@ class SequenceGeneratorLogic(LogicBase):
     def load_ensemble(self, ensemble):
         """
 
-        @param str|PulseBlockEnsemble ensemble:
+        Parameters
+        ----------
+        ensemble : str or PulseBlockEnsemble
         """
         # If str has been passed, get the ensemble object from saved ensembles
         if isinstance(ensemble, str):
@@ -753,7 +779,9 @@ class SequenceGeneratorLogic(LogicBase):
     def load_sequence(self, sequence):
         """
 
-        @param str|PulseSequence sequence:
+        Parameters
+        ----------
+        sequence : str or PulseSequence
         """
         # If str has been passed, get the sequence object from saved sequences
         if isinstance(sequence, str):
@@ -841,7 +869,10 @@ class SequenceGeneratorLogic(LogicBase):
     def _apply_activation_config(self, activation_config):
         """
 
-        @param set activation_config: A set of channels to set active (all others inactive)
+        Parameters
+        ----------
+        activation_config : set
+            A set of channels to set active (all others inactive)
         """
         channel_state = self.pulsegenerator().get_active_channels()
         for chnl in channel_state:
@@ -869,11 +900,11 @@ class SequenceGeneratorLogic(LogicBase):
         return self._generator_settings.generation_parameters.to_dict()
 
     @generation_parameters.setter
-    def generation_parameters(self, settings_dict):
-        if isinstance(settings_dict, GenerationParameters):
-            self.set_generation_parameters(settings_dict.to_dict())
-        elif isinstance(settings_dict, dict):
-            self.set_generation_parameters(settings_dict)
+    def generation_parameters(self, settings):
+        if not isinstance(settings, (GenerationParameters, dict)):
+            raise SettingsTypeError(f'generation_parameters expects GenerationParameters or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_generation_parameters(settings)
         return
 
     @property
@@ -889,79 +920,64 @@ class SequenceGeneratorLogic(LogicBase):
         return self._saved_pulse_sequences
 
     @QtCore.Slot(dict)
-    def set_generation_parameters(self, settings_dict=None, **kwargs):
+    def set_generation_parameters(self, settings=None, **kwargs):
         """
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accepts a GenerationParameters instance or a settings dictionary as positional
+        argument, or keyword arguments. A dict/kwargs is a partial patch of the current
+        parameters, a GenerationParameters is a full replacement. If both a settings_dict and
+        kwargs are present, the keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : GenerationParameters or dict or None
+        kwargs
         """
         # Check if generation is in progress and do nothing if that is the case
         if self.module_state() != 'locked':
-            # Determine complete settings dictionary
-            if isinstance(settings_dict, GenerationParameters):
-                settings_dict = settings_dict.to_dict()
-                settings_dict.update(kwargs)
-            elif not isinstance(settings_dict, dict):
-                settings_dict = kwargs
-            else:
-                settings_dict.update(kwargs)
+            current = self._generator_settings.generation_parameters
+            # Warn about unknown keys before coercion. GenerationParameters has a fixed schema, so
+            # (unlike the old plain dict) it cannot store arbitrary additional settings, and
+            # update_from_dict() would drop them without a word.
+            known_keys = {f.name for f in fields(GenerationParameters)}
+            if isinstance(settings, dict):
+                settings = {k: v for k, v in settings.items()
+                            if k in known_keys or self._warn_unknown_generation_parameter(k)}
+            kwargs = {k: v for k, v in kwargs.items()
+                      if k in known_keys or self._warn_unknown_generation_parameter(k)}
 
-            # Discard unknown keys. GenerationParameters has a fixed schema, so (unlike the old
-            # plain dict) it cannot store arbitrary additional settings.
-            known_keys = self._generator_settings.generation_parameters.to_dict().keys()
-            for key in list(settings_dict):
-                if key not in known_keys:
-                    self.log.warning(
-                        'Setting by name "{0}" not present in generation_parameters.\n'
-                        'Ignoring it.'.format(key)
-                    )
-                    del settings_dict[key]
-            # Sanity checks
+            try:
+                requested = coerce_settings(settings, kwargs, current, GenerationParameters)
+            except SettingsTypeError as err:
+                # Logged rather than raised: this is a queued cross-thread slot, where an escaping
+                # exception cannot reach the emitter and may take the whole application down.
+                self.log.error(f'Unable to apply new sampling settings. {err}')
+                self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
+                return self.generation_parameters
+
+            # Sanity checks. A channel that is not part of the activation config keeps its current
+            # value, so the rest of the requested parameters still apply. Only channels this call
+            # actually changes are checked - an already-invalid current value would otherwise log
+            # an error on every call while reverting to itself. Healing those is the job of the
+            # activation-config handler in set_pulse_generator_settings().
+            # Every *_channel field is checked, not just the four built-in ones, so a lab
+            # extension declaring its own channel parameter gets the same validation - matching
+            # the suffix-based healing loop in set_pulse_generator_settings().
             active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
-            if settings_dict.get('laser_channel'):
-                if settings_dict['laser_channel'] not in active_channels:
+            for field_name in (f.name for f in fields(GenerationParameters) if f.name.endswith('_channel')):
+                channel = getattr(requested, field_name)
+                if (isinstance(channel, str) and channel
+                        and channel != getattr(current, field_name)
+                        and channel not in active_channels):
                     self.log.error(
-                        'Unable to set laser channel "{0}".\nChannel to set is not part '
-                        'of the current channel activation config ({1}).'
-                        ''.format(settings_dict['laser_channel'], active_channels)
+                        'Unable to set {0} channel "{1}".\nChannel to set is not part '
+                        'of the current channel activation config ({2}).'
+                        ''.format(field_name[:-len('_channel')], channel, active_channels)
                     )
-                    del settings_dict['laser_channel']
-            if settings_dict.get('sync_channel'):
-                if settings_dict['sync_channel'] not in active_channels:
-                    self.log.error(
-                        'Unable to set sync channel "{0}".\nChannel to set is not part '
-                        'of the current channel activation config ({1}).'
-                        ''.format(settings_dict['sync_channel'], active_channels)
-                    )
-                    del settings_dict['sync_channel']
-            if settings_dict.get('gate_channel'):
-                if settings_dict['gate_channel'] not in active_channels:
-                    self.log.error(
-                        'Unable to set gate channel "{0}".\nChannel to set is not part '
-                        'of the current channel activation config ({1}).'
-                        ''.format(settings_dict['gate_channel'], active_channels)
-                    )
-                    del settings_dict['gate_channel']
-            if settings_dict.get('microwave_channel'):
-                if settings_dict['microwave_channel'] not in active_channels:
-                    self.log.error(
-                        'Unable to set microwave channel "{0}".\nChannel to set is not '
-                        'part of the current channel activation config ({1}).'
-                        ''.format(settings_dict['microwave_channel'], active_channels)
-                    )
-                    del settings_dict['microwave_channel']
+                    requested = replace(requested, **{field_name: getattr(current, field_name)})
 
-            # update settings dict
+            # update settings
             self._generator_settings = replace(
-                self._generator_settings,
-                generation_parameters=self._generator_settings.generation_parameters.update_from_dict(
-                    settings_dict
-                ),
+                self._generator_settings, generation_parameters=requested
             )
         else:
             self.log.error(
@@ -971,10 +987,20 @@ class SequenceGeneratorLogic(LogicBase):
         self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
         return self.generation_parameters
 
+    def _warn_unknown_generation_parameter(self, key):
+        """Log an ignored generation parameter name. Always returns False so it can be used as the
+        filtering half of a comprehension guard."""
+        self.log.warning('Setting by name "{0}" not present in generation_parameters.\n'
+                         'Ignoring it.'.format(key))
+        return False
+
     def save_block(self, block):
         """Saves a PulseBlock instance
 
-        @param PulseBlock block: PulseBlock instance to save
+        Parameters
+        ----------
+        block : PulseBlock
+            PulseBlock instance to save
         """
         self._saved_pulse_blocks[block.name] = block
         self._save_block_to_file(block)
@@ -984,8 +1010,13 @@ class SequenceGeneratorLogic(LogicBase):
     def get_block(self, name):
         """
 
-        @param str name:
-        @return PulseBlock:
+        Parameters
+        ----------
+        name : str
+
+        Returns
+        -------
+        PulseBlock
         """
         if name not in self._saved_pulse_blocks:
             self.log.warning('PulseBlock "{0}" could not be found in saved pulse blocks.\nReturning None.'.format(name))
@@ -994,7 +1025,10 @@ class SequenceGeneratorLogic(LogicBase):
     def delete_block(self, name):
         """Remove the serialized object "name" from the block list and HDD.
 
-        @param name: string, name of the PulseBlock object to be removed.
+        Parameters
+        ----------
+        name
+            String, name of the PulseBlock object to be removed.
         """
         # Delete from dict
         if name in self.saved_pulse_blocks:
@@ -1012,8 +1046,15 @@ class SequenceGeneratorLogic(LogicBase):
         """
         De-serializes a PulseBlock instance from file.
 
-        @param str block_name: The name of the PulseBlock instance to de-serialize
-        @return PulseBlock: The de-serialized PulseBlock instance
+        Parameters
+        ----------
+        block_name : str
+            The name of the PulseBlock instance to de-serialize
+
+        Returns
+        -------
+        PulseBlock
+            The de-serialized PulseBlock instance
         """
         block = None
         filepath = os.path.join(self._assets_storage_dir, '{0}.block'.format(block_name))
@@ -1054,7 +1095,10 @@ class SequenceGeneratorLogic(LogicBase):
         """
         Saves a single PulseBlock instance to file by serialization using pickle.
 
-        @param PulseBlock block: The PulseBlock instance to be saved
+        Parameters
+        ----------
+        block : PulseBlock
+            The PulseBlock instance to be saved
         """
         filename = '{0}.block'.format(block.name)
         try:
@@ -1075,7 +1119,10 @@ class SequenceGeneratorLogic(LogicBase):
     def save_ensemble(self, ensemble):
         """Saves a PulseBlockEnsemble instance
 
-        @param PulseBlockEnsemble ensemble: PulseBlockEnsemble instance to save
+        Parameters
+        ----------
+        ensemble : PulseBlockEnsemble
+            PulseBlockEnsemble instance to save
         """
         self._saved_pulse_block_ensembles[ensemble.name] = ensemble
         self._save_ensemble_to_file(ensemble)
@@ -1085,8 +1132,9 @@ class SequenceGeneratorLogic(LogicBase):
     def get_ensemble(self, name: str):
         """
 
-        @param name:
-        @return:
+        Parameters
+        ----------
+        name
         """
         if name not in self._saved_pulse_block_ensembles:
             self.log.warning(
@@ -1122,8 +1170,15 @@ class SequenceGeneratorLogic(LogicBase):
         """
         De-serializes a PulseBlockEnsemble instance from file.
 
-        @param str ensemble_name: The name of the PulseBlockEnsemble instance to de-serialize
-        @return PulseBlockEnsemble: The de-serialized PulseBlockEnsemble instance
+        Parameters
+        ----------
+        ensemble_name : str
+            The name of the PulseBlockEnsemble instance to de-serialize
+
+        Returns
+        -------
+        PulseBlockEnsemble
+            The de-serialized PulseBlockEnsemble instance
         """
         ensemble = None
         filepath = os.path.join(self._assets_storage_dir, '{0}.ensemble'.format(ensemble_name))
@@ -1171,7 +1226,10 @@ class SequenceGeneratorLogic(LogicBase):
         """
         Saves a single PulseBlockEnsemble instance to file by serialization using pickle.
 
-        @param PulseBlockEnsemble ensemble: The PulseBlockEnsemble instance to be saved
+        Parameters
+        ----------
+        ensemble : PulseBlockEnsemble
+            The PulseBlockEnsemble instance to be saved
         """
         filename = '{0}.ensemble'.format(ensemble.name)
         try:
@@ -1192,10 +1250,15 @@ class SequenceGeneratorLogic(LogicBase):
     def save_sequence(self, sequence):
         """Saves a PulseSequence instance
 
-        @param object sequence: a PulseSequence object, which is going to be
-                                serialized to file.
+        Parameters
+        ----------
+        sequence : object
+            A PulseSequence object, which is going to be serialized to file.
 
-        @return: str: name of the serialized object, if needed.
+        Returns
+        -------
+        str
+            Name of the serialized object, if needed.
         """
         self._saved_pulse_sequences[sequence.name] = sequence
         self._save_sequence_to_file(sequence)
@@ -1205,8 +1268,9 @@ class SequenceGeneratorLogic(LogicBase):
     def get_sequence(self, name: str):
         """
 
-        @param name:
-        @return:
+        Parameters
+        ----------
+        name
         """
         if name not in self._saved_pulse_sequences:
             self.log.warning(
@@ -1221,8 +1285,15 @@ class SequenceGeneratorLogic(LogicBase):
         pulsed_data/pulsed_measurement.py's PulseObjects) - see _resolve_asset_closure() for the
         full traversal/missing-reference contract.
 
-        @param asset: the currently loaded PulseBlockEnsemble or PulseSequence, or None.
-        @return (ensembles, blocks): {name: independent copy}, see _resolve_asset_closure().
+        Parameters
+        ----------
+        asset
+            The currently loaded PulseBlockEnsemble or PulseSequence, or None.
+
+        Returns
+        -------
+        ensembles, blocks
+            {name: independent copy}, see _resolve_asset_closure().
         """
         return _resolve_asset_closure(asset, self._saved_pulse_block_ensembles, self._saved_pulse_blocks, self.log)
 
@@ -1254,8 +1325,15 @@ class SequenceGeneratorLogic(LogicBase):
         """
         De-serializes a PulseSequence instance from file.
 
-        @param str sequence_name: The name of the PulseSequence instance to de-serialize
-        @return PulseSequence: The de-serialized PulseSequence instance
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the PulseSequence instance to de-serialize
+
+        Returns
+        -------
+        PulseSequence
+            The de-serialized PulseSequence instance
         """
         filepath = os.path.join(self._assets_storage_dir, '{0}.sequence'.format(sequence_name))
         if os.path.exists(filepath):
@@ -1351,7 +1429,10 @@ class SequenceGeneratorLogic(LogicBase):
         """
         Saves a single PulseSequence instance to file by serialization using pickle.
 
-        @param PulseSequence sequence: The PulseSequence instance to be saved
+        Parameters
+        ----------
+        sequence : PulseSequence
+            The PulseSequence instance to be saved
         """
         filename = '{0}.sequence'.format(sequence.name)
         try:
@@ -1372,9 +1453,10 @@ class SequenceGeneratorLogic(LogicBase):
     def generate_predefined_sequence(self, predefined_sequence_name, kwargs_dict):
         """
 
-        @param predefined_sequence_name:
-        @param kwargs_dict:
-        @return:
+        Parameters
+        ----------
+        predefined_sequence_name
+        kwargs_dict
         """
         gen_method = self.generate_methods[predefined_sequence_name]
         gen_params = self.generate_method_params[predefined_sequence_name]
@@ -1473,8 +1555,15 @@ class SequenceGeneratorLogic(LogicBase):
         Will return information like length in seconds and bins (with currently set sampling rate)
         as well as number of laser pulses (with currently selected laser/gate channel)
 
-        @param PulseBlockEnsemble ensemble: The PulseBlockEnsemble instance to analyze
-        @return (float, int, int): length in seconds, length in bins, number of laser/gate pulses
+        Parameters
+        ----------
+        ensemble : PulseBlockEnsemble
+            The PulseBlockEnsemble instance to analyze
+
+        Returns
+        -------
+        (float, int, int)
+            Length in seconds, length in bins, number of laser/gate pulses
         """
         # Return if the ensemble is empty
         if len(ensemble) == 0:
@@ -1492,8 +1581,15 @@ class SequenceGeneratorLogic(LogicBase):
         seconds and bins (with currently set sampling rate), number of laser pulses (with currently
         selected laser/gate channel)
 
-        @param PulseSequence sequence: The PulseSequence instance to analyze
-        @return (float, int, int): length in seconds, length in bins, number of laser/gate pulses
+        Parameters
+        ----------
+        sequence : PulseSequence
+            The PulseSequence instance to analyze
+
+        Returns
+        -------
+        (float, int, int)
+            Length in seconds, length in bins, number of laser/gate pulses
         """
         # Determine the right laser channel to choose. For gated counting it should be the gate
         # channel instead of the laser trigger.
@@ -1531,19 +1627,26 @@ class SequenceGeneratorLogic(LogicBase):
         PulseBlocks are actually present in saved blocks and the channel activation matches the
         current pulse settings.
 
-        @param ensemble: A PulseBlockEnsemble object (see logic.pulse_objects.py) or the name of one
-        @return: number_of_samples (int): The total number of samples in a Waveform provided the
-                                              current sample_rate and PulseBlockEnsemble object.
-                 total_elements (int): The total number of PulseBlockElements (incl. repetitions) in
-                                       the provided PulseBlockEnsemble.
-                 elements_length_bins (1D numpy.ndarray[int]): Array of number of timebins for each
-                                                               PulseBlockElement in chronological
-                                                               order (incl. repetitions).
-                 digital_rising_bins (dict): Dictionary with keys being the digital channel
-                                             descriptor string and items being arrays of
-                                             chronological low-to-high transition positions
-                                             (in timebins; incl. repetitions) for each digital
-                                             channel.
+        Parameters
+        ----------
+        ensemble
+            A PulseBlockEnsemble object (see logic.pulse_objects.py) or the name of one
+
+        Returns
+        -------
+        number_of_samples : int
+            The total number of samples in a Waveform provided the current sample_rate and
+            PulseBlockEnsemble object.
+        total_elements : int
+            The total number of PulseBlockElements (incl. repetitions) in the provided
+            PulseBlockEnsemble.
+        elements_length_bins : 1D numpy.ndarray[int]
+            Array of number of timebins for each PulseBlockElement in chronological order (incl.
+            repetitions).
+        digital_rising_bins : dict
+            Dictionary with keys being the digital channel descriptor string and items being
+            arrays of chronological low-to-high transition positions (in timebins; incl.
+            repetitions) for each digital channel.
         """
         if isinstance(ensemble, str):
             if ensemble not in self._saved_pulse_block_ensembles:
@@ -1688,19 +1791,26 @@ class SequenceGeneratorLogic(LogicBase):
         PulseBlocks are actually present in saved blocks and the channel activation matches the
         current pulse settings.
 
-        @param sequence: A PulseSequence object (see logic.pulse_objects.py) or the name of one
-        @return: number_of_samples (int): The total number of samples in a Waveform provided the
-                                              current sample_rate and PulseBlockEnsemble object.
-                 total_elements (int): The total number of PulseBlockElements (incl. repetitions) in
-                                       the provided PulseBlockEnsemble.
-                 elements_length_bins (1D numpy.ndarray[int]): Array of number of timebins for each
-                                                               PulseBlockElement in chronological
-                                                               order (incl. repetitions).
-                 digital_rising_bins (dict): Dictionary with keys being the digital channel
-                                             descriptor string and items being arrays of
-                                             chronological low-to-high transition positions
-                                             (in timebins; incl. repetitions) for each digital
-                                             channel.
+        Parameters
+        ----------
+        sequence
+            A PulseSequence object (see logic.pulse_objects.py) or the name of one
+
+        Returns
+        -------
+        number_of_samples : int
+            The total number of samples in a Waveform provided the current sample_rate and
+            PulseBlockEnsemble object.
+        total_elements : int
+            The total number of PulseBlockElements (incl. repetitions) in the provided
+            PulseBlockEnsemble.
+        elements_length_bins : 1D numpy.ndarray[int]
+            Array of number of timebins for each PulseBlockElement in chronological order (incl.
+            repetitions).
+        digital_rising_bins : dict
+            Dictionary with keys being the digital channel descriptor string and items being
+            arrays of chronological low-to-high transition positions (in timebins; incl.
+            repetitions) for each digital channel.
         """
         if isinstance(sequence, str):
             if sequence not in self._saved_pulse_sequences:
@@ -1957,24 +2067,28 @@ class SequenceGeneratorLogic(LogicBase):
     ):
         """General sampling of a PulseBlockEnsemble object, which serves as the construction plan.
 
-        @param str|PulseBlockEnsemble ensemble: PulseBlockEnsemble instance or name of a saved
-                                                PulseBlockEnsemble to sample
-        @param int offset_bin: If many pulse ensembles are samples sequentially, then the
-                               offset_bin of the previous sampling can be passed to maintain
-                               rotating frame across pulse_block_ensembles
-        @param str name_tag: a name tag, which is used to keep the sampled files together, which
-                             where sampled from the same PulseBlockEnsemble object but where
-                             different offset_bins were used.
+        Parameters
+        ----------
+        ensemble : str or PulseBlockEnsemble
+            PulseBlockEnsemble instance or name of a saved PulseBlockEnsemble to sample
+        offset_bin : int
+            If many pulse ensembles are samples sequentially, then the offset_bin of the previous
+            sampling can be passed to maintain rotating frame across pulse_block_ensembles
+        name_tag : str
+            A name tag, which is used to keep the sampled files together, which where sampled
+            from the same PulseBlockEnsemble object but where different offset_bins were used.
 
-        @return tuple: of length 3 with
-                       (offset_bin, created_waveforms, ensemble_info).
-                        offset_bin:
-                            integer, which is used for maintaining the rotation frame
-                        created_waveforms:
-                            list, a list of created waveform names
-                        ensemble_info:
-                            EnsembleAnalysisResult, information about the ensemble returned by
-                            analyze_block_ensemble
+        Returns
+        -------
+        tuple
+            Of length 3 with (offset_bin, created_waveforms, ensemble_info).
+        offset_bin
+            Integer, which is used for maintaining the rotation frame
+        created_waveforms
+            List, a list of created waveform names
+        ensemble_info
+            EnsembleAnalysisResult, information about the ensemble returned by
+            analyze_block_ensemble
 
         This method is creating the actual samples (voltages and logic states) for each time step
         of the analog and digital channels specified in the PulseBlockEnsemble.
@@ -2303,7 +2417,10 @@ class SequenceGeneratorLogic(LogicBase):
     def sample_pulse_sequence(self, sequence: Union[str, PulseSequence]):
         """Samples the PulseSequence object, which serves as the construction plan.
 
-        @param str|PulseSequence sequence: Name or instance of the PulseSequence to be sampled.
+        Parameters
+        ----------
+        sequence : str or PulseSequence
+            Name or instance of the PulseSequence to be sampled.
 
         The sequence object is sampled by call subsequently the sampling routine for the
         PulseBlockEnsemble objects and passing if needed the rotating frame option.

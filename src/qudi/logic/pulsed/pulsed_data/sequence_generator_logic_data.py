@@ -26,6 +26,14 @@ import numpy as np
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 from qudi.util.benchmark import BenchmarkTool
 
+# Imported for its side effect as much as for the name: importing this module defines every
+# lab-declared BaseGenerationParameters subclass, which _build_generation_parameters() below then
+# merges with CoreGenerationParameters into the public GenerationParameters class. The base lives
+# over there so that file never has to import back from this one - a cycle would make the merge
+# silently skip extensions depending on which module happened to be imported first.
+from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import BaseGenerationParameters
+import qudi.logic.pulsed.pulsed_data.generation_parameter_extensions as _generation_parameter_extensions  # noqa: F401
+
 
 ##############################################################################
 #  The following dataclasses are for the SequenceGeneratorLogic class and    #
@@ -40,88 +48,165 @@ def _as_bool(value):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
     return bool(value)
 
-
 @dataclass(frozen=True)
-class GenerationParameters:
+class CoreGenerationParameters(BaseGenerationParameters):
     """Global parameters describing the channel usage and common parameters used during
-    pulsed object generation for predefined methods."""
+    pulsed object generation for predefined methods.
 
-    laser_channel: str
-    sync_channel: str
-    gate_channel: str
-    microwave_channel: str
-    microwave_frequency: float
-    microwave_amplitude: float
-    rabi_period: float
-    laser_length: float
-    laser_delay: float
-    wait_time: float
-    analog_trigger_voltage: float
-    optimal_control_assets_path: str
-    pulse_envelope: PulseEnvelope
-    pulse_envelope_order: int
+    The built-in contributor to `GenerationParameters`. Note this class is NOT the type the rest
+    of the toolchain annotates against - that is the merged `GenerationParameters` built at the
+    bottom of this module, which includes these fields plus every lab extension's.
+    """
 
-    def to_dict(self):
-        return {
-            'laser_channel': self.laser_channel,
-            'sync_channel': self.sync_channel,
-            'gate_channel': self.gate_channel,
-            'microwave_channel': self.microwave_channel,
-            'microwave_frequency': self.microwave_frequency,
-            'microwave_amplitude': self.microwave_amplitude,
-            'rabi_period': self.rabi_period,
-            'laser_length': self.laser_length,
-            'laser_delay': self.laser_delay,
-            'wait_time': self.wait_time,
-            'analog_trigger_voltage': self.analog_trigger_voltage,
-            'optimal_control_assets_path': self.optimal_control_assets_path,
-            'pulse_envelope': self.pulse_envelope,
-            'pulse_envelope_order': self.pulse_envelope_order,
-        }
+    laser_channel: str = 'd_ch1'
+    sync_channel: str = ''
+    gate_channel: str = ''
+    microwave_channel: str = 'a_ch1'
+    microwave_frequency: float = 2.87e9
+    microwave_amplitude: float = 0.0
+    rabi_period: float = 100e-9
+    laser_length: float = 3e-6
+    laser_delay: float = 500e-9
+    wait_time: float = 1e-6
+    analog_trigger_voltage: float = 0.0
+    optimal_control_assets_path: str = 'C:\\Software\\qudi_data\\optimal_control_assets'
+    pulse_envelope: PulseEnvelope = field(
+        default_factory=lambda: PulseEnvelope(PulseEnvelopeType.rectangle)
+    )
+    pulse_envelope_order: int = 1
 
     @staticmethod
     def _as_pulse_envelope(value):
         return value if isinstance(value, PulseEnvelope) else PulseEnvelope.from_dict(value)
 
     @classmethod
-    def from_dict(cls, data):
-        return cls(
-            laser_channel=str(data['laser_channel']),
-            sync_channel=str(data['sync_channel']),
-            gate_channel=str(data['gate_channel']),
-            microwave_channel=str(data['microwave_channel']),
-            microwave_frequency=float(data['microwave_frequency']),
-            microwave_amplitude=float(data['microwave_amplitude']),
-            rabi_period=float(data['rabi_period']),
-            laser_length=float(data['laser_length']),
-            laser_delay=float(data['laser_delay']),
-            wait_time=float(data['wait_time']),
-            analog_trigger_voltage=float(data['analog_trigger_voltage']),
-            optimal_control_assets_path=str(data['optimal_control_assets_path']),
-            pulse_envelope=cls._as_pulse_envelope(data['pulse_envelope']),
-            pulse_envelope_order=int(data['pulse_envelope_order']),
-        )
-
-    def update_from_dict(self, data):
-        return replace(
-            self,
-            laser_channel=str(data.get('laser_channel', self.laser_channel)),
-            sync_channel=str(data.get('sync_channel', self.sync_channel)),
-            gate_channel=str(data.get('gate_channel', self.gate_channel)),
-            microwave_channel=str(data.get('microwave_channel', self.microwave_channel)),
-            microwave_frequency=float(data.get('microwave_frequency', self.microwave_frequency)),
-            microwave_amplitude=float(data.get('microwave_amplitude', self.microwave_amplitude)),
-            rabi_period=float(data.get('rabi_period', self.rabi_period)),
-            laser_length=float(data.get('laser_length', self.laser_length)),
-            laser_delay=float(data.get('laser_delay', self.laser_delay)),
-            wait_time=float(data.get('wait_time', self.wait_time)),
-            analog_trigger_voltage=float(data.get('analog_trigger_voltage', self.analog_trigger_voltage)),
-            optimal_control_assets_path=str(
-                data.get('optimal_control_assets_path', self.optimal_control_assets_path)
+    def _coerce_fields(cls, data, current=None):
+        pick = cls._pick
+        return {
+            'laser_channel': str(pick(data, current, 'laser_channel', 'd_ch1')),
+            'sync_channel': str(pick(data, current, 'sync_channel', '')),
+            'gate_channel': str(pick(data, current, 'gate_channel', '')),
+            'microwave_channel': str(pick(data, current, 'microwave_channel', 'a_ch1')),
+            'microwave_frequency': float(pick(data, current, 'microwave_frequency', 2.87e9)),
+            'microwave_amplitude': float(pick(data, current, 'microwave_amplitude', 0.0)),
+            'rabi_period': float(pick(data, current, 'rabi_period', 100e-9)),
+            'laser_length': float(pick(data, current, 'laser_length', 3e-6)),
+            'laser_delay': float(pick(data, current, 'laser_delay', 500e-9)),
+            'wait_time': float(pick(data, current, 'wait_time', 1e-6)),
+            'analog_trigger_voltage': float(pick(data, current, 'analog_trigger_voltage', 0.0)),
+            'optimal_control_assets_path': str(
+                pick(data, current, 'optimal_control_assets_path',
+                     'C:\\Software\\qudi_data\\optimal_control_assets')
             ),
-            pulse_envelope=self._as_pulse_envelope(data.get('pulse_envelope', self.pulse_envelope)),
-            pulse_envelope_order=int(data.get('pulse_envelope_order', self.pulse_envelope_order)),
-        )
+            'pulse_envelope': cls._as_pulse_envelope(
+                pick(data, current, 'pulse_envelope', PulseEnvelope(PulseEnvelopeType.rectangle))
+            ),
+            'pulse_envelope_order': int(pick(data, current, 'pulse_envelope_order', 1)),
+        }
+
+
+def _generation_parameters_to_dict(self):
+    """Flat dict of every parameter, contributors in order (core first, then extensions by name).
+
+    Order matters beyond aesthetics: the GUI builds the Predefined Methods tab's global-parameter
+    widget grid by iterating these items (pulsed_maingui._create_pm_global_params), so relying on
+    dataclasses.fields() here would put extension fields ahead of the built-in ones - field order
+    on a merged dataclass is reverse-MRO.
+    """
+    result = {}
+    for contributor in self._CONTRIBUTORS:
+        for name in contributor._own_field_names():
+            result[name] = getattr(self, name)
+    return result
+
+
+def _generation_parameters_from_dict(cls, data):
+    """Build from a saved dict, falling back to defaults for anything absent.
+
+    Tolerant by design: a status file written before a parameter existed (or by an install without
+    a given extension) must still load. The pre-refactor version indexed `data['...']` directly, so
+    one missing key raised KeyError inside the StatusVar constructor and silently reset *every*
+    generation parameter to its default. Unknown keys are ignored rather than rejected, so removing
+    an extension does not make its old status file unloadable.
+    """
+    kwargs = {}
+    for contributor in cls._CONTRIBUTORS:
+        kwargs.update(contributor._coerce_fields(data, None))
+    return cls(**kwargs)
+
+
+def _generation_parameters_update_from_dict(self, data):
+    """Return a new instance with the parameters named in `data` applied on top of this one."""
+    kwargs = {}
+    for contributor in self._CONTRIBUTORS:
+        kwargs.update(contributor._coerce_fields(data, self))
+    return type(self)(**kwargs)
+
+
+def _build_generation_parameters(extensions=None):
+    """Merge CoreGenerationParameters with every lab extension into one frozen dataclass.
+
+    Runs once at module import - long before qudi-core restores status variables
+    (LogicBase.__activation_callback does _load_status_variables() then on_activate()), which is
+    exactly why the extensions must be declared at import time rather than discovered from a
+    ConfigOption path during activation.
+
+    The result is bound to the module-level name `GenerationParameters`, matching the class's own
+    __name__/__qualname__, so pickle can resolve it. That matters: a GenerationParameters instance
+    is pickled into every saved .ensemble/.sequence via SamplingInformation (see
+    sequence_generator_logic.sample_pulse_block_ensemble).
+
+    Parameters
+    ----------
+    extensions : iterable of BaseGenerationParameters subclasses, optional
+        Contributors to merge alongside CoreGenerationParameters. Defaults to discovering every
+        declared subclass, which is what production uses; tests pass an explicit list so a
+        throwaway contributor cannot leak into a later build (__subclasses__() only drops entries
+        once the class object is garbage collected, and the merged class keeps its bases alive).
+    """
+    if extensions is None:
+        extensions = [
+            cls for cls in BaseGenerationParameters.__subclasses__() if cls is not CoreGenerationParameters
+        ]
+    extensions = sorted(extensions, key=lambda cls: cls.__name__)
+    # Core first so it wins any tie and reads first in tracebacks; extensions in a deterministic
+    # (name-sorted) order so the merged schema does not depend on import order.
+    contributors = (CoreGenerationParameters, *extensions)
+
+    # Reject duplicate field names. The method/sampling-function registries elsewhere in the
+    # pulsed toolchain resolve collisions by silent last-wins, which is survivable there (you see
+    # the wrong pulse shape) but not for a settings value - it would silently change a measurement
+    # parameter with no other signal.
+    seen = {}
+    for contributor in contributors:
+        for name in contributor._own_field_names():
+            if name in seen:
+                raise TypeError(
+                    f'Duplicate generation parameter "{name}" declared by both '
+                    f'{seen[name].__name__} and {contributor.__name__}. Rename one of them - '
+                    f'generation parameter names must be unique across all contributors.'
+                )
+            seen[name] = contributor
+
+    merged = dataclass(frozen=True)(type('GenerationParameters', contributors, {}))
+    merged._CONTRIBUTORS = contributors
+    # Attached here rather than to the module-level GenerationParameters, so every class this
+    # builder produces carries them - including the ones built in tests.
+    merged.to_dict = _generation_parameters_to_dict
+    merged.from_dict = classmethod(_generation_parameters_from_dict)
+    merged.update_from_dict = _generation_parameters_update_from_dict
+    merged.__doc__ = """Global parameters describing the channel usage and common parameters used
+    during pulsed object generation for predefined methods.
+
+    Built at import time by merging CoreGenerationParameters (the built-in settings) with every
+    BaseGenerationParameters subclass declared in generation_parameter_extensions.py, so a lab's
+    own parameters are indistinguishable from the built-in ones at every call site. See
+    _build_generation_parameters() and the extensions module's docstring.
+    """
+    return merged
+
+
+GenerationParameters = _build_generation_parameters()
 
 
 @dataclass(frozen=True)
@@ -632,22 +717,12 @@ class LoadedAsset:
 # _default_generator_settings() (a brand new settings object). Defined once, here, since this
 # file can't import back from sequence_generator_logic.py (that direction would be circular) -
 # this is the lower-level file, so it owns the shared literals instead.
-_DEFAULT_GENERATION_PARAMETERS = GenerationParameters(
-    laser_channel='d_ch1',
-    sync_channel='',
-    gate_channel='',
-    microwave_channel='a_ch1',
-    microwave_frequency=2.87e9,
-    microwave_amplitude=0.0,
-    rabi_period=100e-9,
-    laser_length=3e-6,
-    laser_delay=500e-9,
-    wait_time=1e-6,
-    analog_trigger_voltage=0.0,
-    optimal_control_assets_path='C:\\Software\\qudi_data\\optimal_control_assets',
-    pulse_envelope=PulseEnvelope(PulseEnvelopeType.rectangle),
-    pulse_envelope_order=1,
-)
+#
+# Every field now carries its default on the dataclass itself (required: a merged dataclass cannot
+# have a no-default field following a defaulted one), so this is just a zero-argument construction
+# rather than the explicit field-by-field literal it used to be. Extensions supply their own
+# defaults the same way, so this stays correct however many are declared.
+_DEFAULT_GENERATION_PARAMETERS = GenerationParameters()
 _DEFAULT_PULSE_GENERATOR_SETTINGS = PulseGeneratorSettings(
     activation_config=ActivationConfig(name='', channels=set()),
     sample_rate=0.0,

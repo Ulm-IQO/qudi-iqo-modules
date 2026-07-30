@@ -166,7 +166,10 @@ class PulseExtractor(PulseExtractorBase):
         This property holds all parameters needed for the currently selected extraction_method as
         well as the currently selected method name.
 
-        @return dict: dictionary with keys being the parameter name and values being the parameter
+        Returns
+        -------
+        dict
+            Dictionary with keys being the parameter name and values being the parameter.
         """
         current_method = self._parameters.get('method')
         # Get reference to the extraction method
@@ -189,7 +192,10 @@ class PulseExtractor(PulseExtractorBase):
         Also sets the current extraction method by passing its name using key "method".
         Parameters not included in self._parameters (except "method") will be ignored.
 
-        @param dict settings_dict: dictionary containing the parameters to set (name, value)
+        Parameters
+        ----------
+        settings_dict : dict
+            Dictionary containing the parameters to set (name, value).
         """
         if not isinstance(settings_dict, dict):
             return
@@ -217,7 +223,10 @@ class PulseExtractor(PulseExtractorBase):
         """
         Return available extraction methods depending on if the fast counter is gated or not.
 
-        @return dict: Dictionary with keys being the method names and values being the methods.
+        Returns
+        -------
+        dict
+            Dictionary with keys being the method names and values being the methods.
         """
         if self.is_gated:
             return self._gated_extraction_methods
@@ -229,9 +238,16 @@ class PulseExtractor(PulseExtractorBase):
         Wrapper method to call the currently selected extraction method with count_data and the
         appropriate keyword arguments.
 
-        @param numpy.ndarray count_data: 1D (ungated) or 2D (gated) numpy array (dtype='int64')
-                                         containing the timetrace to extract laser pulses from.
-        @return dict: result dictionary of the extraction method
+        Parameters
+        ----------
+        count_data : numpy.ndarray
+            1D (ungated) or 2D (gated) numpy array (dtype='int64') containing the timetrace to
+            extract laser pulses from.
+
+        Returns
+        -------
+        dict
+            Result dictionary of the extraction method.
         """
         if count_data.ndim > 1 and not self.is_gated:
             self.log.error('"is_gated" flag is set to False but the count data to extract laser '
@@ -254,9 +270,16 @@ class PulseExtractor(PulseExtractorBase):
         Try to take the values from self._parameters. If the keyword is missing in the dictionary,
         take the default values from the method signature.
 
-        @param method: reference to a callable extraction method
-        @return dict: A dictionary containing the argument keywords for <method> and corresponding
-                      values from self._parameters.
+        Parameters
+        ----------
+        method
+            Reference to a callable extraction method.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the argument keywords for <method> and corresponding values
+            from self._parameters.
         """
         kwargs_dict = dict()
         method_signature = inspect.signature(method)
@@ -278,8 +301,15 @@ class PulseExtractor(PulseExtractorBase):
         Find all classes in those modules that inherit exclusively from PulseExtractorBase and
         return a list of them.
 
-        @param str path: Path to import modules from
-        @return list: A list of imported valid extractor classes
+        Parameters
+        ----------
+        path : str
+            Path to import modules from.
+
+        Returns
+        -------
+        list
+            A list of imported valid extractor classes.
         """
         class_list = list()
         # Get all python modules to import from.
@@ -308,7 +338,10 @@ class PulseExtractor(PulseExtractorBase):
         Helper method to populate the dictionaries containing all references to callable extraction
         methods contained in extractor instances passed to this method.
 
-        @param list instance_list: List containing instances of extractor classes
+        Parameters
+        ----------
+        instance_list : list
+            List containing instances of extractor classes.
         """
         self._ungated_extraction_methods = dict()
         self._gated_extraction_methods = dict()
@@ -339,8 +372,15 @@ class PulseExtractor(PulseExtractorBase):
         """
         Helper method to check if an object is a valid extractor class.
 
-        @param object obj: object to check
-        @return bool: True if obj is a valid extractor class, False otherwise
+        Parameters
+        ----------
+        obj : object
+            Object to check.
+
+        Returns
+        -------
+        bool
+            True if obj is a valid extractor class, False otherwise.
         """
         if inspect.isclass(obj):
             return PulseExtractorBase in obj.__bases__ and len(obj.__bases__) == 1
