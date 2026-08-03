@@ -13,6 +13,7 @@
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
 - Fix several `POIManagerGUI` `PySide6` bugs
 - Fix discovery of `AltPlotMethodBase` subclasses
+- Fix NI IO for only analog input channels.
 
 ### New Features
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
