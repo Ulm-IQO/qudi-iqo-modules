@@ -2059,7 +2059,9 @@ class PulsedMeasurementGui(GuiBase):
         )
 
     @QtCore.Slot(object, bool)
-    def predefined_generated(self, asset_name, is_sequence):
+    def predefined_generated(self, asset_name, produced_sequence):
+        """`produced_sequence` reports whether the generate method returned any PulseSequence - a
+        different question from PulseSequence.is_sequence, which asks whether an object is one."""
         # Enable all "Generate" buttons in predefined methods tab
         for button in self._pm.gen_buttons.values():
             button.setEnabled(True)
@@ -2075,7 +2077,7 @@ class PulsedMeasurementGui(GuiBase):
             self._pg.sample_ensemble_PushButton.setEnabled(False)
             self._pg.samplo_ensemble_PushButton.setEnabled(False)
             self._pg.load_ensemble_PushButton.setEnabled(False)
-            if is_sequence:
+            if produced_sequence:
                 self._sg.load_sequence_PushButton.setEnabled(False)
                 self._sg.samplo_sequence_PushButton.setEnabled(False)
                 self._sg.sample_sequence_PushButton.setEnabled(False)

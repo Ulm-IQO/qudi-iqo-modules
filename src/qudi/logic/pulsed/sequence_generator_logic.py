@@ -146,7 +146,12 @@ def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_block
     blocks = {}
     missing_blocks = set()
 
-    if isinstance(asset, PulseSequence):
+    # Tri-state on purpose: True/False come from PulseSequence.is_sequence and
+    # PulseBlockEnsemble.is_sequence, while None means "not a pulse asset at all" and keeps the
+    # error branch below reachable - a bare `asset.is_sequence` would raise AttributeError there.
+    asset_is_sequence = getattr(asset, 'is_sequence', None)
+
+    if asset_is_sequence is True:
         ensembles = {}
         missing_ensembles = set()
         for seq_step in asset.ensemble_list:
@@ -165,7 +170,7 @@ def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_block
                 '"{0}" while building its closure (they may have been deleted from the library '
                 'since this sequence was generated): {1}'.format(asset.name, missing_ensembles)
             )
-    elif isinstance(asset, PulseBlockEnsemble):
+    elif asset_is_sequence is False:
         ensembles = {}
         _resolve_blocks(asset, missing_blocks, blocks)
     else:
@@ -270,6 +275,10 @@ class SequenceGeneratorLogic(LogicBase):
     sigAvailableSequencesUpdated = QtCore.Signal(list)
     sigBenchmarkComplete = QtCore.Signal()
 
+    #: (asset_name, produced_sequence). The bool reports whether the generate method returned any
+    #: PulseSequence, which is what decides between sample_sequence() and sample_ensemble()
+    #: downstream. It is NOT the same question as PulseSequence.is_sequence, which asks whether a
+    #: given object is a sequence.
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
     def __init__(self, *args, **kwargs):
@@ -1510,7 +1519,20 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_sequence(sequence)
 
         created_name = gen_params.get('name') if 'name' not in kwargs_dict else kwargs_dict['name']
-        self.sigPredefinedSequenceGenerated.emit(created_name, len(sequences) > 0)
+        # Ask the created asset itself instead of inferring from "did this method return any
+        # sequences at all" - the downstream decision is sample_sequence() vs sample_ensemble() for
+        # this one name, so the object carrying that name is what actually answers it.
+        # Sequences are searched first because _add_default_sequence() names its PulseSequence
+        # after ensembles[0], so both lists can hold `created_name` - and the sequence is the one
+        # that gets loaded. Falls back to the old proxy if no object carries the name, e.g. a
+        # generate method that renames what it returns.
+        created_asset = next(
+            (asset for asset in (*sequences, *ensembles) if asset.name == created_name), None
+        )
+        produced_sequence = (
+            created_asset.is_sequence if created_asset is not None else len(sequences) > 0
+        )
+        self.sigPredefinedSequenceGenerated.emit(created_name, produced_sequence)
         return
 
     def _add_default_sequence(self, ensembles, sequences):

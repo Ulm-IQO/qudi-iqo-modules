@@ -1136,13 +1136,22 @@ class PulsedMasterLogic(LogicBase):
         return
 
     @QtCore.Slot(object, bool)
-    def predefined_sequence_generated(self, asset_name, is_sequence):
+    def predefined_sequence_generated(self, asset_name, produced_sequence):
+        """
+        Parameters
+        ----------
+        asset_name : str or None
+            Name of the generated asset, or None if generation failed.
+        produced_sequence : bool
+            Whether the generate method returned any PulseSequence. Not to be confused with
+            PulseSequence.is_sequence, which asks whether a given *object* is a sequence.
+        """
         self.status_dict.predefined_generation_busy = False
         if asset_name is None:
             self.status_dict.sampload_busy = False
-        self.sigPredefinedSequenceGenerated.emit(asset_name, is_sequence)
+        self.sigPredefinedSequenceGenerated.emit(asset_name, produced_sequence)
         if self.status_dict.sampload_busy:
-            if is_sequence:
+            if produced_sequence:
                 self.sample_sequence(asset_name, True)
             else:
                 self.sample_ensemble(asset_name, True)

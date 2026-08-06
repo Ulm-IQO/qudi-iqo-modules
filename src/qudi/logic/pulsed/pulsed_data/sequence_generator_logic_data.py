@@ -20,7 +20,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, replace, field, fields
-from typing import Optional
+from enum import Enum
+from logging import getLogger
+from typing import Optional, get_type_hints
 import numpy as np
 
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
@@ -31,8 +33,19 @@ from qudi.util.benchmark import BenchmarkTool
 # merges with CoreGenerationParameters into the public GenerationParameters class. The base lives
 # over there so that file never has to import back from this one - a cycle would make the merge
 # silently skip extensions depending on which module happened to be imported first.
-from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import BaseGenerationParameters
+from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import (
+    BaseGenerationParameters,
+    as_bool as _as_bool,
+)
 import qudi.logic.pulsed.pulsed_data.generation_parameter_extensions as _generation_parameter_extensions  # noqa: F401
+
+_logger = getLogger(__name__)
+
+#: Field types pulsed_maingui._create_pm_global_params() can build a widget for. A generation
+#: parameter outside this set still works from a script, but never appears on the Predefined
+#: Methods tab - _build_generation_parameters() warns about one at import rather than leaving it to
+#: surface as a GUI error at activation.
+_GUI_RENDERABLE_TYPES = (str, int, float, bool, Enum, PulseEnvelope)
 
 
 ##############################################################################
@@ -40,14 +53,6 @@ import qudi.logic.pulsed.pulsed_data.generation_parameter_extensions as _generat
 #   are used to store and manage the settings for pulse/sequence object      #
 #              generation and the connected pulse generator hardware         #
 ##############################################################################
-def _as_bool(value):
-    """Converts a value to a boolean. If the value is a string,
-    it checks for common truthy values.
-    """
-    if isinstance(value, str):
-        return value.strip().lower() in {'1', 'true', 'yes', 'on'}
-    return bool(value)
-
 @dataclass(frozen=True)
 class CoreGenerationParameters(BaseGenerationParameters):
     """Global parameters describing the channel usage and common parameters used during
@@ -81,6 +86,10 @@ class CoreGenerationParameters(BaseGenerationParameters):
 
     @classmethod
     def _coerce_fields(cls, data, current=None):
+        """Kept explicit, unlike a lab extension, which inherits the type-driven version in
+        BaseGenerationParameters. These are the built-in settings: spelling out every conversion and
+        default in one reviewable block is worth the duplication here, and it pins the behaviour the
+        automatic path is expected to reproduce."""
         pick = cls._pick
         return {
             'laser_channel': str(pick(data, current, 'laser_channel', 'd_ch1')),
@@ -143,6 +152,55 @@ def _generation_parameters_update_from_dict(self, data):
     return type(self)(**kwargs)
 
 
+def _check_is_dataclass(contributor):
+    """Raise if a contributor was declared without the @dataclass decorator.
+
+    `dataclasses.is_dataclass()` cannot be used: it reports True for an undecorated subclass,
+    because `__dataclass_fields__` is inherited from BaseGenerationParameters. Only the decorator
+    writes that attribute into the class's own __dict__.
+
+    Parameters
+    ----------
+    contributor : type
+        A BaseGenerationParameters subclass about to be merged.
+
+    Raises
+    ------
+    TypeError
+        If `contributor` itself was never processed by @dataclass.
+    """
+    if '__dataclass_fields__' not in contributor.__dict__:
+        raise TypeError(
+            f'{contributor.__name__} is missing the @dataclass(frozen=True) decorator. Without it '
+            f'its annotations never become fields, so it would contribute nothing to '
+            f'GenerationParameters and its parameters would silently not exist.'
+        )
+
+
+def _warn_about_unrenderable_types(contributor):
+    """Log a warning for each field whose type the Predefined Methods tab cannot build a widget for.
+
+    Parameters
+    ----------
+    contributor : type
+        A BaseGenerationParameters subclass about to be merged.
+    """
+    try:
+        hints = get_type_hints(contributor)
+    except (NameError, TypeError):
+        return
+    for name in contributor._own_field_names():
+        declared_type = hints.get(name)
+        if isinstance(declared_type, type) and not issubclass(declared_type, _GUI_RENDERABLE_TYPES):
+            _logger.warning(
+                'Generation parameter "%s" declared by %s has type %s, which the Predefined '
+                'Methods tab cannot build a widget for - it will be usable from scripts but will '
+                'not appear in the GUI. Supported types are str, int, float, bool, Enum and '
+                'PulseEnvelope.',
+                name, contributor.__name__, declared_type.__name__
+            )
+
+
 def _build_generation_parameters(extensions=None):
     """Merge CoreGenerationParameters with every lab extension into one frozen dataclass.
 
@@ -179,6 +237,8 @@ def _build_generation_parameters(extensions=None):
     # parameter with no other signal.
     seen = {}
     for contributor in contributors:
+        _check_is_dataclass(contributor)
+        _warn_about_unrenderable_types(contributor)
         for name in contributor._own_field_names():
             if name in seen:
                 raise TypeError(

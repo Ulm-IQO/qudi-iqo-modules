@@ -420,6 +420,13 @@ class PulseBlockEnsemble(object):
     This object is used as a construction plan to create one sampled file.
     """
 
+    #: Distinguishes the two loadable asset types without an isinstance check, for callers holding
+    #: an asset whose kind they do not know (see PulseSequence.is_sequence). Declared on the class
+    #: rather than assigned in __init__ deliberately: a class attribute is not part of pickled
+    #: instance state, so every .ensemble/.sequence already saved to disk gains it with no
+    #: migration, and it can never drift out of sync with the object's actual type.
+    is_sequence = False
+
     def __init__(self, name, block_list=None, rotating_frame=True):
         """
         The constructor for a Pulse_Block_Ensemble needs to have:
@@ -746,6 +753,12 @@ class PulseSequence(object):
     Represents a playback procedure for a number of PulseBlockEnsembles. Unused for pulse
     generator hardware without sequencing functionality.
     """
+
+    #: True here, False on PulseBlockEnsemble - see the note there for why this is a class
+    #: attribute. Note this asks whether the *object* is a sequence, which is a different question
+    #: from sigPredefinedSequenceGenerated's `produced_sequence` payload (whether a generate method
+    #: returned any sequences).
+    is_sequence = True
 
     def __init__(self, name, ensemble_list=None, rotating_frame=False):
         """
@@ -1088,7 +1101,7 @@ class PredefinedGeneratorBase:
     Also provides helper methods to simplify sequence/ensemble generation.
     """
 
-    def __init__(self, sequencegeneratorlogic):
+    def __init__(self, sequencegeneratorlogic): 
         # Keep protected reference to the SequenceGeneratorLogic
         self.__sequencegeneratorlogic = sequencegeneratorlogic
 
@@ -1178,6 +1191,7 @@ class PredefinedGeneratorBase:
         channel = self.generator_settings.generation_parameters.microwave_channel
         return None if channel == '' else channel
 
+ 
     @property
     def microwave_frequency(self):
         return self.generator_settings.generation_parameters.microwave_frequency
@@ -1193,6 +1207,7 @@ class PredefinedGeneratorBase:
     @property
     def wait_time(self):
         return self.generator_settings.generation_parameters.wait_time
+    
 
     @property
     def rabi_period(self):

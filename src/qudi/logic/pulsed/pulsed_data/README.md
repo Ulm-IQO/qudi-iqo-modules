@@ -65,6 +65,13 @@ new_settings = replace(old_settings, power=-20.0)   # old_settings is untouched
 
 Some classes here are deliberately **not** frozen. See rule 4.
 
+When using a jupyter notebook, it is adviced to change frozen settings dataclasses using their setters, which accept 4 different input formats:
+-Keywoard Arguments
+-Plain dict (must be compatible)
+-The dataclass itself
+
+All setters use update_from_dict or replace, which will always create a brand new clean object.
+
 ### 2. Every persisted class implements the same three methods
 
 | Method | Direction | Missing keys behave as | Called by |
@@ -242,17 +249,47 @@ Provides three helpers to subclasses:
 
 | Member | What it does |
 |---|---|
-| `_coerce_fields(cls, data, current=None)` | **You must override this.** Returns `{field_name: value}` for this class's own fields only, reading from `data`, else `current`, else the default. |
-| `_own_field_names(cls)` | The names this class itself declared (not inherited ones). Used for the duplicate-name check and for `to_dict()` ordering. |
+| `_coerce_fields(cls, data, current=None)` | **Already implemented — you normally do not touch it.** Returns `{field_name: value}` for this class's own fields only, reading from `data`, else `current`, else the default, and converting each value according to the type its field declares. |
+| `_own_field_names(cls)` | The names this class itself declared (not inherited ones). Used for the duplicate-name check, for `to_dict()` ordering, and to drive the coercion loop. |
 | `_pick(data, current, name, default)` | The 3-step fallback: `data` → `current` → `default`. |
 
 `_coerce_fields` backs **both** `from_dict` (called with `current=None`, so missing keys become
 defaults) and `update_from_dict` (called with `current=self`, so missing keys keep their value). That
-is why you write the per-field conversion exactly once.
+is why the per-field conversion is expressed exactly once.
 
-`_own_field_names` reads `cls.__dict__['__annotations__']` rather than `cls.__annotations__` or
-`dataclasses.fields()` — plain attribute access and `fields()` both walk up to parent classes and
-would return inherited fields too.
+The conversion it applies comes from the field's declared type, so declaring the field *is* declaring
+how it is restored:
+
+| Declared type | Conversion applied to the saved value |
+|---|---|
+| `int`, `float`, `str` | `int(value)`, `float(value)`, `str(value)` |
+| `bool` | `as_bool(value)` — `'False'`/`'no'`/`'off'`/`'0'` are False. A plain `bool('False')` is `True`, which is why this exists |
+| an `Enum` subclass | looked up by member name, else by member value |
+| any other class | an instance passes through as-is; a `dict` goes through that class's `from_dict()` if it has one — this is how `PulseEnvelope` round-trips |
+
+A value that cannot be converted (a corrupted status file) is **logged and skipped**, and that one
+field falls back to its current value, else its default. It deliberately does not raise: the
+`StatusVar` constructor swallows an exception and returns the whole default object, so one bad key
+would otherwise silently reset every generation parameter — convention 3 again.
+
+Type detection cannot know that a fraction must stay within [0, 1]. For a field like that, override
+`_coerce_fields`, let `super()` handle everything else, and patch only the key concerned:
+
+```python
+@classmethod
+def _coerce_fields(cls, data, current=None):
+    coerced = super()._coerce_fields(data, current)
+    coerced['laser_power_fraction'] = min(1.0, max(0.0, coerced['laser_power_fraction']))
+    return coerced
+```
+
+`_own_field_names` intersects two sources. `cls.__dict__['__annotations__']` gives ownership and
+declaration order — plain `cls.__annotations__` and `dataclasses.fields()` both walk up to parent
+classes and would return inherited fields too. `dataclasses.fields()` then gives membership, which is
+what drops `ClassVar`/`InitVar` declarations: those are annotations but **not** fields, so without the
+intersection a lab constant like `CHANNEL_MAP: ClassVar[dict] = {...}` would be exported by
+`to_dict()` as though it were a measurement parameter, compared by the duplicate-name check, and
+passed to the merged constructor as an unexpected keyword argument.
 
 **Why this class lives here and not next to `CoreGenerationParameters`:** so this file never has to
 import from `sequence_generator_logic_data.py`. A circular import between the two would make the merge
@@ -274,6 +311,10 @@ class TestParameters(BaseGenerationParameters):
 > **Note:** this is currently active, so `time_delay` really is a field of `GenerationParameters` and
 > really does get a spin box on the Predefined Methods tab. It is scaffolding from the refactor — if
 > your setup does not want it, delete the class.
+>
+> Its `_coerce_fields` predates the automatic version and does exactly what the base class would now
+> do for a `float` field. **Do not copy it into a new class** — the two lines of `time_delay: float =
+> 4.0` are the whole modern form.
 
 ---
 
@@ -830,15 +871,59 @@ filled in by `SequenceGeneratorLogic`:
 
 ## Neighbour map
 
-Classes referenced from here that live elsewhere. Named, not documented — see their own files.
+Classes referenced from here that live elsewhere. Named, not documented — see their own files. The
+one exception is `is_sequence` below, which is documented here because *why* it is not a field of any
+class in this package is the interesting part.
 
 | Class | Lives in | Relationship |
 |---|---|---|
-| `PulseBlock`, `PulseBlockEnsemble`, `PulseSequence`, `PulseBlockElement` | [`../pulse_objects.py`](../pulse_objects.py) | held by `PulseObjects`; carry `SamplingInformation`/`MeasurementInformation`/`GenerationMethodParameters` |
+| `PulseBlock`, `PulseBlockEnsemble`, `PulseSequence`, `PulseBlockElement` | [`../pulse_objects.py`](../pulse_objects.py) | held by `PulseObjects`; carry `SamplingInformation`/`MeasurementInformation`/`GenerationMethodParameters`. The two loadable ones expose `is_sequence` — see below |
 | `PulseEnvelope`, `PulseEnvelopeType` | [`../sampling_functions.py`](../sampling_functions.py) | the type of `CoreGenerationParameters.pulse_envelope` |
 | `BenchmarkTool` | `qudi.util.benchmark` | the two fields of `PulserBenchmarks` |
 | `FitContainer` | `qudi.util.datafitting` | the two fields of `FitContainers`; `dict_result()` is the one-way fit export |
 | `dataclass_representer`, `sampling_information_constructor` | `qudi.util.yaml_helpers` | YAML round trip for `SamplingInformation`, registered in `../sequence_generator_logic.py` |
+
+#### `is_sequence` — telling the two loadable assets apart
+
+`PulseBlockEnsemble.is_sequence` is `False`, `PulseSequence.is_sequence` is `True`. Use it when you
+hold an asset object whose kind you do not know:
+
+```python
+if asset.is_sequence:
+    ...
+```
+
+**It is a class attribute, not an instance attribute, and that is the whole point.** A class attribute
+is not part of pickled instance state, so every `.ensemble`/`.sequence` already saved to disk gained
+it the moment the classes were updated — no migration, and it cannot drift out of sync with the
+object's actual type. Had it been a persisted field instead, convention 3's missing-key tolerance
+would have defaulted it to `False` on every pre-existing file, silently reclassifying every saved
+`PulseSequence` as an ensemble.
+
+It is therefore **not** in `to_dict()`, `to_metadata_dict()` or any pickle. The saved form carries the
+distinction as a class-name string instead — `PulseObjects.to_dict()['sequence']['type']`, which is
+what `from_dict()` branches on, and `'loaded asset type'` in each `.dat` header. Keep those as strings:
+they must survive without the classes present, and a name still works if a third asset type appears.
+
+Three places it deliberately does **not** replace `isinstance`:
+
+| Pattern | Why |
+|---|---|
+| `if not isinstance(x, PulseBlockEnsemble): error` | asks *"is this the right type at all"* — `is_sequence == False` doesn't rule out `None`, a `str` or a dict |
+| `if isinstance(x, PulseSequence): x = x.name` | object-or-name coercion; the other branch is a `str`, which has no `is_sequence` |
+| anywhere only a name or `LoadedAsset.asset_type` is available | there is no object to ask — `asset_type` comes from the pulser hardware |
+
+Where the object *is* in hand but might not be a pulse asset at all, use the tri-state form so an
+unrelated object still reaches your error branch instead of raising `AttributeError` (see
+`_resolve_asset_closure` in [`../sequence_generator_logic.py`](../sequence_generator_logic.py)):
+
+```python
+asset_is_sequence = getattr(asset, 'is_sequence', None)   # None -> not a pulse asset
+```
+
+> **Not to be confused with** `sigPredefinedSequenceGenerated`'s `produced_sequence` payload, which
+> asks whether a *generate method returned* any sequences — a different question about a different
+> subject.
 
 ### The layering rule
 
@@ -871,18 +956,12 @@ class NVCentreParameters(BaseGenerationParameters):
 
     green_aom_delay: float = 700e-9
     readout_channel: str = 'd_ch4'
-
-    @classmethod
-    def _coerce_fields(cls, data, current=None):
-        pick = cls._pick
-        return {
-            'green_aom_delay': float(pick(data, current, 'green_aom_delay', 700e-9)),
-            'readout_channel': str(pick(data, current, 'readout_channel', 'd_ch4')),
-        }
 ```
 
-That is the whole change. A widget appears on the Predefined Methods tab, the value persists across
-restarts, and predefined methods read it as:
+That is the whole change — there is no restore method to write, because the declared types already
+say how each value is converted on the way back in (see the
+[`_coerce_fields` table above](#basegenerationparameters--the-marker-base-class)). A widget appears on
+the Predefined Methods tab, the value persists across restarts, and predefined methods read it as:
 
 ```python
 self.generation_parameters['green_aom_delay']                        # dict style
@@ -893,10 +972,10 @@ self.generator_settings.generation_parameters.green_aom_delay        # attribute
 
 | Rule | What happens otherwise |
 |---|---|
+| Decorate the class `@dataclass(frozen=True)` | `TypeError` at import naming the class. Without the decorator its annotations never become fields, so it would contribute nothing and its parameters would simply not exist |
 | Every field needs a default | `TypeError` at import — a merged dataclass cannot have a no-default field after a defaulted one |
 | Field names must be unique across all contributors | `TypeError` at import naming both classes. This is a *feature* — silent last-wins would change a measurement parameter with no warning |
-| Types must be `str`/`int`/`float`/`bool`/`Enum`/`PulseEnvelope` | no widget is built for it (see `_create_pm_global_params` in [`../../../gui/pulsed/pulsed_maingui.py`](../../../gui/pulsed/pulsed_maingui.py)); the parameter still works from scripts |
-| Implement `_coerce_fields()` | `NotImplementedError` the first time settings are loaded or changed |
+| Types must be `str`/`int`/`float`/`bool`/`Enum`/`PulseEnvelope` | a warning is logged at import and no widget is built for it (see `_create_pm_global_params` in [`../../../gui/pulsed/pulsed_maingui.py`](../../../gui/pulsed/pulsed_maingui.py)); the parameter still works from scripts |
 | Declare the class at import time, not from a config path | the merge runs at module import, long before qudi-core restores status variables |
 | Never pass a bare contributor to `set_generation_parameters()` | rejected by `coerce_settings` — see the note in the `settings_coercion.py` section |
 
