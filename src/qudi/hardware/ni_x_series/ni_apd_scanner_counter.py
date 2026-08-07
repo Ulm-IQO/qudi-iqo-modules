@@ -4,31 +4,37 @@ NI-DAQ APD Scanner Counter
 ===========================
 
 Standalone Qudi hardware module that counts photon pulses from an APD or SPCM,
-gated by an external TTL trigger from the PI E-710 scanner.
+synchronised to the PI E-710 scanner gate signal.
 
-How the PI E-710 trigger works
--------------------------------
-KT-1 (SPCM mode) outputs one active-LOW short pulse per waveform step (0.2 ms
-period at 5000 Hz).  On a scope at 10 ms/div the pulses merge into a solid LOW
-level -- zoom to < 0.2 ms/div to resolve individual pulses.
+Why two NI counter tasks?
+-------------------------
+NI CI (counter input) tasks do NOT reliably support:
+  - External sample clock from PFI terminals  (device-dependent, fails here)
+  - Start triggers                             (device-dependent, failed earlier)
 
-The NI counter latches its cumulative photon count on each RISING edge of the
-trigger signal (= end of each LOW pulse = return to HIGH).
+NI CO (counter output) tasks DO support start triggers on all X-Series devices.
 
-n = round(t_pixel * 5000) trigger pulses per pixel
-n * n_pixels total pulses per scan
+Solution
+--------
+CO task  (clock_counter, default ctr1):
+    Generates exactly  n_pixels * n_steps + 1  pulses at 5000 Hz.
+    Starts when the PI gate signal (trigger_terminal) goes HIGH.
 
-NI task design  (matches MATLAB PiezoSetEdgeCountMeas)
--------------------------------------------------------
-  ci_count_edges_chan:  APD terminal -> photon edge source (cumulative)
-  cfg_samp_clk_timing:  trigger terminal -> sample clock
-      rate hint = 1e7 Hz  (MATLAB max_freq = 1e7; must be >= actual rate)
-      mode      = CONTINUOUS  (not FINITE -- avoids wait_until_done timeout)
-      buffer    = n * n_pixels + headroom
+CI task  (counter_channel, default ctr0):
+    Counts APD photon edges.
+    Clocked by the CO task's internal output (Ctr1InternalOutput).
+    FINITE mode: collects exactly  n_pixels * n_steps + 1  samples.
 
-  After scan:  read n*n_pixels + 1 cumulative values
-               np.diff -> per-step increments
-               reshape(n_pixels, n).sum(axis=1) -> per-pixel counts
+Why n_pixels * n_steps + 1 samples?
+------------------------------------
+raw[0]  = cumulative photon count the instant gate goes HIGH = pre-scan background
+raw[k]  = cumulative count k steps into the scan
+
+np.diff(raw) removes the background automatically:
+    diff[0] = raw[1] - raw[0] = photons during scan step 0
+    diff[k] = photons during scan step k
+
+reshape(n_pixels, n_steps).sum(axis=1) gives per-pixel counts.
 
 Wiring (two BNC cables):
     PI E-710  Trigger OUT  ->  NI  trigger_terminal  (e.g. PFI1)
@@ -41,16 +47,16 @@ YAML configuration:
             options:
                 device_name:      'Dev1'
                 counter_channel:  'ctr0'
+                clock_counter:    'ctr1'
                 apd_terminal:     'PFI8'
                 trigger_terminal: 'PFI1'
                 channel_name:     'APD1'
-                read_timeout:     10.0
+                read_timeout:     30.0
 """
 
-import time
 import numpy as np
 import nidaqmx as ni
-from nidaqmx.constants import Edge, AcquisitionType
+from nidaqmx.constants import Edge, AcquisitionType, Level
 from nidaqmx.stream_readers import CounterReader
 from typing import Dict, List, Optional
 
@@ -58,35 +64,34 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.module import Base
 
 
-_PI_SAMP_RATE: float = 5000.0   # PI waveform generator rate (Hz)
-_NI_RATE_HINT: float = 1e7      # Rate hint to NI driver -- must be >= actual rate
-                                 # Matches MATLAB: max_freq = 1e7
+# PI E-710 waveform generator sample rate (Hz)
+_PI_SAMP_RATE: float = 5000.0
 
 
 class NIAPDScannerCounter(Base):
     """
-    NI-DAQ photon counter for triggered scanning.
+    NI-DAQ photon counter using CO+CI dual-task architecture.
+
+    CO task triggered by PI gate --> CI task clocked by CO output.
 
     Three methods consumed by PIE710CounterInterfuse:
-        arm(n_pixels, t_pixel)   -- configure and start NI task
-        read(n_pixels)           -- read and return per-pixel counts
-        stop()                   -- abort immediately, never raises
-
-    Diagnostic method:
-        diagnose_trigger_input() -- verify NI receives the PI trigger signal
-                                    call this BEFORE running a scan to confirm wiring
+        arm(n_pixels, t_pixel)   -- create and start both tasks
+        read(n_pixels)           -- wait for CO to finish, return per-pixel counts
+        stop()                   -- abort both tasks, never raises
     """
 
-    _device_name      = ConfigOption('device_name',      missing='error')
+    _device_name      = ConfigOption('device_name',      default='Dev1')
     _counter_channel  = ConfigOption('counter_channel',  default='ctr0')
-    _apd_terminal     = ConfigOption('apd_terminal',     missing='error')
-    _trigger_terminal = ConfigOption('trigger_terminal', missing='error')
+    _clock_counter    = ConfigOption('clock_counter',    default='ctr1')
+    _apd_terminal     = ConfigOption('apd_terminal',     default='PFI8')
+    _trigger_terminal = ConfigOption('trigger_terminal', default='PFI1')
     _channel_name     = ConfigOption('channel_name',     default='APD1')
-    _read_timeout     = ConfigOption('read_timeout',     default=10.0)
+    _read_timeout     = ConfigOption('read_timeout',     default=30.0)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._task:              Optional[ni.Task]       = None
+        self._task:              Optional[ni.Task]       = None   # CI task
+        self._co_task:           Optional[ni.Task]       = None   # CO clock task
         self._reader:            Optional[CounterReader] = None
         self._n_steps_per_pixel: int                     = 1
         self._n_pixels:          int                     = 0
@@ -96,6 +101,7 @@ class NIAPDScannerCounter(Base):
     # =========================================================================
 
     def on_activate(self) -> None:
+        """Verify NI device is reachable and log configuration."""
         dev_names = ni.system.System().devices.device_names
         if self._device_name.lower() not in {d.lower() for d in dev_names}:
             raise ValueError(
@@ -107,12 +113,24 @@ class NIAPDScannerCounter(Base):
                 self._device_name = d
                 break
 
+        # Warn if user accidentally uses same counter for CI and CO
+        if self._counter_channel.lower() == self._clock_counter.lower():
+            raise ValueError(
+                f'counter_channel and clock_counter must be different. '
+                f'Both are set to "{self._counter_channel}".'
+            )
+
+        clock_num = ''.join(filter(str.isdigit, self._clock_counter))
+        co_output = f'/{self._device_name}/Ctr{clock_num}InternalOutput'
+
         self.log.info(
             f'NIAPDScannerCounter ready -- '
             f'device={self._device_name}  '
-            f'counter={self._counter_channel}  '
+            f'CI counter={self._counter_channel}  '
+            f'CO counter={self._clock_counter}  '
+            f'CO output routed to: {co_output}  '
             f'APD terminal={self._apd_terminal}  '
-            f'trigger terminal={self._trigger_terminal}  '
+            f'gate terminal={self._trigger_terminal}  '
             f'channel="{self._channel_name}"'
         )
 
@@ -129,94 +147,8 @@ class NIAPDScannerCounter(Base):
 
     @property
     def channel_units(self) -> Dict[str, str]:
+        """Interfuse divides raw counts by t_pixel to produce c/s."""
         return {self._channel_name: 'c/s'}
-
-    # =========================================================================
-    # Diagnostic
-    # =========================================================================
-
-    def diagnose_trigger_input(self, test_duration: float = 5.0) -> int:
-        """
-        Count rising edges directly on trigger_terminal for test_duration seconds.
-
-        Call this WITHOUT a scan running to verify physical wiring.
-        Then run a PI scan manually via GPIB or the original test script
-        and call again to confirm pulses arrive during scanning.
-
-        How to use
-        ----------
-        1. Call diagnose_trigger_input(5.0)
-        2. While it is counting, run a manual PI scan (or wait if a scan
-           happens automatically)
-        3. Check the returned count:
-             0       -> no signal on trigger_terminal -> CHECK WIRING
-             1       -> gate signal (one long pulse) -> scope issue or PI
-                        sending level not pulses
-             ~n*px   -> correct individual pulses per step
-
-        This uses a DIRECT edge count on the trigger terminal (no APD
-        involved) so it isolates the PI->NI connection completely.
-
-        @param test_duration : seconds to listen for edges
-        @return              : number of rising edges detected
-        """
-        ctr_name  = f'/{self._device_name}/{self._counter_channel}'
-        trig_name = f'/{self._device_name}/{self._trigger_terminal}'
-
-        count = 0
-        try:
-            with ni.Task() as task:
-                # Count rising edges on the trigger terminal directly
-                task.ci_channels.add_ci_count_edges_chan(
-                    ctr_name,
-                    edge=Edge.RISING,
-                )
-                # Route trigger terminal as the counter source (not the APD)
-                task.ci_channels.all.ci_count_edges_term = trig_name
-
-                # Simple on-demand mode: start, wait, read accumulated count
-                task.start()
-                self.log.info(
-                    f'Listening for rising edges on {self._trigger_terminal} '
-                    f'for {test_duration:.1f} s ...'
-                )
-                time.sleep(test_duration)
-                count = int(task.read())
-                task.stop()
-
-        except ni.DaqError as exc:
-            self.log.error(f'diagnose_trigger_input failed: {exc}')
-            return -1
-
-        self.log.info(
-            f'diagnose_trigger_input result: {count} rising edges detected '
-            f'on {self._trigger_terminal} in {test_duration:.1f} s'
-        )
-
-        if count == 0:
-            self.log.warning(
-                f'ZERO edges on {self._trigger_terminal}.\n'
-                f'Checklist:\n'
-                f'  1. BNC cable: PI E-710 Trigger OUT -> NI {self._trigger_terminal}\n'
-                f'  2. Config option trigger_terminal matches the physical connector\n'
-                f'  3. PI scan was running during the test window\n'
-                f'  4. PI firmware: FT trigger commands active (check scan_x code)\n'
-                f'  5. Scope: set timebase < 0.2 ms/div to see individual KT-1 pulses'
-            )
-        elif count == 1:
-            self.log.warning(
-                f'Only 1 edge detected -- PI may be sending a GATE (one long pulse) '
-                f'instead of individual pulses per step.\n'
-                f'Check PI firmware trigger mode: KT-1 should give one short pulse '
-                f'per waveform step, not a single gate.'
-            )
-        else:
-            self.log.info(
-                f'Trigger input OK: {count} pulses received.\n'
-                f'Expected ~{int(count)} pulses for the scan that ran during the test.'
-            )
-
-        return count
 
     # =========================================================================
     # Counting API
@@ -224,69 +156,100 @@ class NIAPDScannerCounter(Base):
 
     def arm(self, n_pixels: int, t_pixel: float) -> None:
         """
-        Configure and start the NI counter task.
+        Create and start the CO + CI task pair.
 
         Call BEFORE sending the PI scan command.
+        Both tasks start and wait silently:
+          CO task: waits for gate RISING edge on trigger_terminal
+          CI task: waits for CO to provide first clock edge
 
-        NI task setup  (matches MATLAB PiezoSetEdgeCountMeas)
-        -------------------------------------------------------
-        ci_count_edges_chan
-            source = apd_terminal  (cumulative photon edge count, never reset)
+        Task layout
+        -----------
+        CO (clock_counter, e.g. ctr1):
+            Finite pulse train at 5000 Hz.
+            Generates n_pixels * n_steps + 1 pulses.
+            Starts when gate RISING edge arrives on trigger_terminal.
+            Duration after trigger: (n_pixels * n_steps + 1) / 5000 seconds.
 
-        cfg_samp_clk_timing
-            source      = trigger_terminal  (PI E-710 Trigger OUT)
-            active_edge = RISING
-                PI KT-1 = active-LOW short pulse.
-                Signal is HIGH at rest, dips LOW briefly each waveform step.
-                RISING = end of each dip = one latch per step.
-            rate        = 1e7 Hz hint (NOT 5000 -- must be >= actual rate)
-            mode        = CONTINUOUS  (FINITE causes wait_until_done timeout)
-            buffer      = n_steps * n_pixels + 200
+        CI (counter_channel, e.g. ctr0):
+            Counts rising edges on apd_terminal (photon pulses).
+            Clocked by Ctr{N}InternalOutput (CO task's generated clock).
+            Finite: collects n_pixels * n_steps + 1 cumulative values.
 
-        @param n_pixels : total pixels  (1D: n_x,  2D: n_x * n_y)
-        @param t_pixel  : dwell time per pixel in seconds
+        Why n_pixels * n_steps + 1?
+            raw[0] = background baseline (cumulative count at gate HIGH)
+            np.diff(raw) = n_pixels * n_steps per-step increments, background-free
+
+        @param n_pixels : pixels per sweep (1D: n_x, 2D: one fast-axis line)
+        @param t_pixel  : dwell time per pixel in seconds (= 1/frequency)
         """
         self._cleanup_task()
 
-        n = max(1, round(t_pixel * _PI_SAMP_RATE))
-        n_samples_total = n * n_pixels
+        n = max(1, round(t_pixel * _PI_SAMP_RATE))   # waveform steps per pixel
+        n_collect = n * n_pixels + 1                  # +1 for diff baseline
 
         self._n_steps_per_pixel = n
         self._n_pixels          = n_pixels
+
+        # Derive CO output terminal for routing to CI sample clock
+        clock_num = ''.join(filter(str.isdigit, self._clock_counter))
+        co_output = f'/{self._device_name}/Ctr{clock_num}InternalOutput'
 
         self.log.debug(
             f'arm  n_pixels={n_pixels}  '
             f't_pixel={t_pixel * 1e3:.3f} ms  '
             f'steps/pixel={n}  '
-            f'expected trigger pulses={n_samples_total}'
+            f'n_collect={n_collect}  '
+            f'CO clock -> {co_output}'
         )
 
         try:
-            self._task = ni.Task(f'APDScanCounter_{id(self):d}')
+            # ---- CO task: finite pulse train, triggered by gate ------------
+            self._co_task = ni.Task('ScanClock')
+            self._co_task.co_channels.add_co_pulse_chan_freq(
+                counter      = f'/{self._device_name}/{self._clock_counter}',
+                freq         = _PI_SAMP_RATE,
+                duty_cycle   = 0.5,
+                idle_state   = Level.LOW,
+                initial_delay= 0.0,
+            )
+            self._co_task.timing.cfg_implicit_timing(
+                sample_mode  = AcquisitionType.FINITE,
+                samps_per_chan= n_collect,
+            )
+            # Gate RISING edge starts the CO pulse train.
+            # CO tasks support start triggers on all NI X-Series devices.
+            self._co_task.triggers.start_trigger.cfg_dig_edge_start_trig(
+                trigger_source = f'/{self._device_name}/{self._trigger_terminal}',
+                trigger_edge   = Edge.RISING,
+            )
 
-            # Count photon edges on apd_terminal
-            ctr_name = f'/{self._device_name}/{self._counter_channel}'
+            # ---- CI task: count photons, clocked by CO output --------------
+            self._task = ni.Task('APDScanCounter')
             self._task.ci_channels.add_ci_count_edges_chan(
-                ctr_name,
+                f'/{self._device_name}/{self._counter_channel}',
                 edge=Edge.RISING,
             )
+            # Route APD signal to counter source input
             self._task.ci_channels.all.ci_count_edges_term = (
                 f'/{self._device_name}/{self._apd_terminal}'
             )
-
-            # Latch cumulative count on each PI trigger pulse
+            # Sample clock from CO internal output -- always works via internal routing
             self._task.timing.cfg_samp_clk_timing(
-                rate           = _NI_RATE_HINT,
-                source         = f'/{self._device_name}/{self._trigger_terminal}',
+                rate           = _PI_SAMP_RATE,
+                source         = co_output,
                 active_edge    = Edge.RISING,
-                sample_mode    = AcquisitionType.CONTINUOUS,
-                samps_per_chan = n_samples_total + 200,
+                sample_mode    = AcquisitionType.FINITE,
+                samps_per_chan = n_collect,
             )
 
             self._reader = CounterReader(self._task.in_stream)
             self._reader.verify_array_shape = False
 
+            # Start CI first -- it immediately waits for the CO to provide a clock
             self._task.start()
+            # Start CO -- it waits for the gate trigger on trigger_terminal
+            self._co_task.start()
 
         except ni.DaqError as exc:
             self._cleanup_task()
@@ -294,98 +257,83 @@ class NIAPDScannerCounter(Base):
 
     def read(self, n_pixels: int) -> Optional[Dict[str, np.ndarray]]:
         """
-        Read and bin per-pixel counts from the continuous NI buffer.
+        Wait for the CO task to finish, then read and return per-pixel counts.
 
-        Matches MATLAB:
-            [A,...] = PiezoReadCounter(hCounter, NT+1, timeout)
-            A = diff(A)
-            B = reshape(A, n, NX)
-            C = mean(B, 1)
+        The CO task generates its last pulse (n_collect/5000) seconds after
+        the gate went HIGH. By the time the interfuse calls read() (after
+        wait_for_scan_complete confirms the PI generators are idle), the CO
+        and CI tasks are already done. wait_until_done returns immediately.
 
-        Steps
-        -----
-        1. Short settle delay for last trigger pulses in transit
-        2. Check how many samples arrived (diagnose if 0)
-        3. Read n*n_pixels + 1 cumulative values
-        4. np.diff -> per-step increments
-        5. reshape(n_pixels, n).sum(axis=1) -> per-pixel counts
+        Data processing
+        ---------------
+        raw[k]  = cumulative photon count at the end of CO clock pulse k
+        raw[0]  = background accumulated before the gate went HIGH (baseline)
+
+        np.diff(raw):
+            diff[0] = raw[1] - raw[0] = photons during scan step 0
+            diff[k] = photons during scan step k
+            Background cancels exactly because raw[0] is subtracted.
+
+        reshape(n_pixels, n_steps).sum(axis=1):
+            Groups n_steps per pixel and sums to get total counts per pixel.
 
         @param n_pixels : must match value passed to arm()
-        @return         : {channel_name: np.ndarray(n_pixels,)} or None
+        @return         : {channel_name: np.ndarray(n_pixels,)} raw counts
+                          or None on failure
         """
-        if self._task is None or self._reader is None:
-            self.log.error('read() called but no counter task is active.')
+        if self._task is None or self._co_task is None or self._reader is None:
+            self.log.error('read() called without active tasks.')
             return None
 
-        n               = self._n_steps_per_pixel
-        n_expected      = n * n_pixels
-        n_to_read       = n_expected + 1    # +1 so diff gives n_expected values
-
-        # Short settle -- last pulses may still be in transit from PI to NI
-        time.sleep(0.3)
-
-        available = self._task.in_stream.avail_samp_per_chan
-        self.log.debug(
-            f'read  expected={n_expected}  available={available}  '
-            f'steps/pixel={n}  n_pixels={n_pixels}'
-        )
-
-        if available == 0:
-            self.log.warning(
-                f'ZERO trigger pulses received on {self._trigger_terminal}.\n'
-                f'Run diagnose_trigger_input() to verify wiring:\n'
-                f'  PI E-710 Trigger OUT -> NI {self._trigger_terminal}\n'
-                f'  Config: trigger_terminal = "{self._trigger_terminal}"\n'
-                f'Scope tip: set timebase < 0.2 ms/div to see individual KT-1 pulses.'
-            )
-            self._cleanup_task()
-            return None
-
-        if available < n_expected:
-            self.log.warning(
-                f'Partial trigger count: {available} received, {n_expected} expected. '
-                f'Will use available samples and zero-pad the rest.'
-            )
-
-        actual_to_read = min(available, n_to_read)
+        n        = self._n_steps_per_pixel
+        n_collect = n * n_pixels + 1
 
         try:
-            raw = np.zeros(actual_to_read, dtype=np.float64)
+            # Wait for CO to finish generating all n_collect pulses.
+            # This blocks until the scan's gate HIGH region ends.
+            self._co_task.wait_until_done(timeout=self._read_timeout)
+
+            # CI task is clocked by CO and collects the same number of samples.
+            self._task.wait_until_done(timeout=10.0)
+
+            # Read all cumulative values from NI buffer
+            raw = np.zeros(n_collect, dtype=np.float64)
             self._reader.read_many_sample_double(
                 raw,
-                number_of_samples_per_channel=actual_to_read,
-                timeout=self._read_timeout,
+                number_of_samples_per_channel=n_collect,
+                timeout=10.0,
             )
+
         except ni.DaqError as exc:
-            self.log.error(f'NIAPDScannerCounter.read failed: {exc}')
-            self._cleanup_task()
+            self.log.error(
+                f'NIAPDScannerCounter.read failed: {exc}\n'
+                f'Checklist:\n'
+                f'  1. BNC cable: PI Trigger OUT -> NI {self._trigger_terminal}\n'
+                f'  2. Gate signal must go HIGH at start of scan region\n'
+                f'  3. Expected gate: HIGH for {n_pixels * t_pixel * 1e3:.0f} ms\n'
+                f'     where t_pixel = 1/frequency\n'
+                f'  4. CO counter ({self._clock_counter}) and CI counter '
+                f'({self._counter_channel}) must be different'
+            )
             return None
+        finally:
+            self._cleanup_task()
 
-        # Cumulative -> per-step increments
-        increments = np.diff(np.concatenate([[0.0], raw]))
-
-        # Pad or trim to exactly n_expected values
-        if len(increments) < n_expected:
-            increments = np.concatenate([
-                increments,
-                np.zeros(n_expected - len(increments))
-            ])
-        else:
-            increments = increments[:n_expected]
-
-        # Sum every n increments -> per-pixel counts
-        counts = increments.reshape(n_pixels, n).sum(axis=1)
+        # np.diff removes the background baseline (raw[0])
+        # Result: n_pixels * n_steps per-step photon increments
+        increments = np.diff(raw)
+        counts     = increments.reshape(n_pixels, n).sum(axis=1)
 
         self.log.debug(
-            f'read OK  total={int(counts.sum())}  '
+            f'read OK  n_pixels={n_pixels}  steps/pixel={n}  '
+            f'total={int(counts.sum())}  '
             f'mean={counts.mean():.1f}  max={counts.max():.0f} cts/px'
         )
 
-        self._cleanup_task()
         return {self._channel_name: counts}
 
     def stop(self) -> None:
-        """Abort immediately. Must never raise exceptions."""
+        """Abort both tasks immediately. Must never raise exceptions."""
         try:
             self._cleanup_task()
         except Exception as exc:
@@ -396,13 +344,16 @@ class NIAPDScannerCounter(Base):
     # =========================================================================
 
     def _cleanup_task(self) -> None:
+        """Stop and close both NI tasks. Safe to call at any time."""
         self._reader = None
-        if self._task is not None:
-            try:
-                if not self._task.is_task_done():
-                    self._task.stop()
-                self._task.close()
-            except ni.DaqError as exc:
-                self.log.warning(f'NI task cleanup: {exc}')
-            finally:
-                self._task = None
+        for attr in ('_task', '_co_task'):
+            task = getattr(self, attr, None)
+            if task is not None:
+                try:
+                    if not task.is_task_done():
+                        task.stop()
+                    task.close()
+                except ni.DaqError as exc:
+                    self.log.warning(f'NI task cleanup ({attr}): {exc}')
+                finally:
+                    setattr(self, attr, None)

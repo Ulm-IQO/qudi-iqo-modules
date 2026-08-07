@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-PI E-710 + NI-DAQ Counter — Qudi Scanning Probe Interfuse
+PI E-710 + NI-DAQ Counter -- Qudi Scanning Probe Interfuse
 ==========================================================
 
 Combines:
@@ -9,12 +9,25 @@ Combines:
 
 Together they satisfy the complete Qudi ScanningProbeInterface.
 
-The scanning probe logic monitors self._scanner().module_state() to track
-scan progress.  This interfuse locks module_state when a scan starts and
-unlocks it when the scan thread exits — that is the only mechanism needed.
+Scan execution
+--------------
+1D scan:
+    arm(n_pixels)              <- counter creates CO+CI tasks, both wait
+    fire 1D PI scan            <- GPIB command, BLOCKING (includes 0.5s move + scan)
+    wait_for_scan_complete     <- verify PI generators idle
+    read(n_pixels)             <- CO.wait_until_done -> read buffer
 
-Example config for copy-paste:
+2D scan (line by line):
+    The PI gate fires once per fast-axis sweep.
+    For each slow-axis position:
+        move slow axis
+        arm(n_fast)            <- fresh CO+CI tasks
+        fire 1D fast-axis scan <- BLOCKING
+        wait_for_scan_complete
+        read(n_fast)
+        accumulate + live GUI update
 
+YAML configuration:
     interfuse:
         confocal_scanner:
             module.Class: 'interfuse.pi_e710_counter_interfuse.PIE710CounterInterfuse'
@@ -24,7 +37,7 @@ Example config for copy-paste:
 """
 
 import threading
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -45,29 +58,37 @@ from qudi.interface.scanning_probe_interface import (
 
 class PIE710CounterInterfuse(ScanningProbeInterface):
     """
-    Qudi ScanningProbeInterface combining a PI E-710 scanner and an NI-DAQ
-    photon counter.
+    Qudi ScanningProbeInterface combining PIE710Scanner and NIAPDScannerCounter.
 
-    Scan state is tracked exclusively via Qudi's module_state:
-        'idle'   — no scan running, motion is allowed
-        'locked' — scan running, motion is blocked
+    Motion:   fully delegated to scanner module.
+    Counting: fully delegated to counter module.
+    Logic:    lives here.
 
-    The logic polls module_state() on this interfuse.  When it transitions
-    from 'locked' → 'idle' the logic knows the scan is done and calls
-    stop_scan() / emits signals itself.
+    Axis mapping:
+        'x'  ->  PI axis 1   (fast axis in XY, XZ scans)
+        'y'  ->  PI axis 2   (fast axis in YZ; slow in XY)
+        'z'  ->  PI axis 3   (slow axis in XZ, YZ scans)
+
+    Supported scan combinations:
+        1D:  ('x',)  ('y',)  ('z',)
+        2D:  ('x','y')  ('x','z')  ('y','z')  -- first = fast axis
 
     Back scan:
-        Accepted and stored so the logic validation passes.
-        Always returns NaN-filled data — the PI E-710 only gates photon
-        triggers on the forward sweep.
+        Accepted so logic validation passes.
+        Always returns NaN -- PI gate only active on forward sweep.
+
+    Scan state tracking:
+        Uses Qudi module_state ('locked' / 'idle').
+        The scanning probe logic polls module_state() to detect completion.
+        The scan thread's finally block unlocks module_state when done.
     """
 
     _scanner = Connector(name='scanner',        interface='PIE710ScannerInterface')
     _counter = Connector(name='photon_counter', interface='NIAPDScannerCounter')
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Lifecycle
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -80,7 +101,6 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         self._scan_thread: Optional[threading.Thread] = None
         self._stop_event   = threading.Event()
-        # Protects configure_scan / start_scan from concurrent calls
         self._lock         = threading.Lock()
 
     def on_activate(self) -> None:
@@ -91,11 +111,12 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         if self.module_state() == 'locked':
             self.stop_scan()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Constraints
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def _build_constraints(self) -> ScanConstraints:
+        """Build ScanConstraints from scanner travel limits and counter channels."""
         scanner = self._scanner()
         counter = self._counter()
 
@@ -112,24 +133,16 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             span = float(hi - lo)
             return ScannerAxis(
                 name=name,
-                unit='µm',
+                unit='um',
                 position=ScalarConstraint(
                     default=round((lo + hi) / 2.0, 3),
                     bounds=(float(lo), float(hi)),
                 ),
-                step=ScalarConstraint(
-                    default=0.1,
-                    bounds=(1e-3, span),
-                ),
+                step=ScalarConstraint(default=0.1, bounds=(1e-3, span)),
                 resolution=ScalarConstraint(
-                    default=100,
-                    bounds=(2, 2000),
-                    enforce_int=True,
-                ),
+                    default=100, bounds=(2, 2000), enforce_int=True),
                 frequency=ScalarConstraint(
-                    default=1000.0,
-                    bounds=(1.0, 5000.0),
-                ),
+                    default=1000.0, bounds=(1.0, 5000.0)),
             )
 
         axis_objects = (
@@ -141,11 +154,6 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         return ScanConstraints(
             channel_objects=channel_objects,
             axis_objects=axis_objects,
-            # AVAILABLE so the logic's on_activate validation passes.
-            # RESOLUTION_CONFIGURABLE so the logic can set a default back-scan
-            # resolution independently of the forward scan.
-            # We accept the settings but always return NaN data for the back
-            # sweep because the PI only gates triggers on the forward sweep.
             back_scan_capability=(
                 BackScanCapability.AVAILABLE
                 | BackScanCapability.RESOLUTION_CONFIGURABLE
@@ -158,9 +166,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     def constraints(self) -> ScanConstraints:
         return self._constraints
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Scan settings  (read-only properties)
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
+    # Scan settings properties
+    # =========================================================================
 
     @property
     def scan_settings(self) -> Optional[ScanSettings]:
@@ -170,23 +178,23 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     def back_scan_settings(self) -> Optional[ScanSettings]:
         return self._back_scan_settings
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Reset
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def reset(self) -> None:
         if self.module_state() == 'locked':
             self.stop_scan()
         self._scanner().reset()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Configure
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def configure_scan(self, settings: ScanSettings) -> None:
         with self._lock:
             if self.module_state() == 'locked':
-                self.log.error('Cannot configure scan while scanning is in progress.')
+                self.log.error('Cannot configure scan while scanning.')
                 return
 
             self._constraints.check_settings(settings)
@@ -205,8 +213,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             self._scan_data = ScanData.from_constraints(
                 settings=settings, constraints=self._constraints)
 
-            # Always create a matching default back scan so the logic has
-            # valid settings from the moment the forward scan is configured.
+            # Matching default back scan so logic validation always passes
             default_back = ScanSettings(
                 channels   = settings.channels,
                 axes       = settings.axes,
@@ -219,27 +226,22 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 settings=default_back, constraints=self._constraints)
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """
-        Accept and store back scan settings so the logic validation passes.
-        The returned data will always be NaN-filled — no photons are collected
-        on the PI's return sweep.
-        """
+        """Accept back scan settings. Data will always be NaN."""
         with self._lock:
             if self.module_state() == 'locked':
-                self.log.error('Cannot configure back scan while scanning is in progress.')
+                self.log.error('Cannot configure back scan while scanning.')
                 return
             if self._scan_settings is None:
                 self.log.error('Configure forward scan before back scan.')
                 return
-
             self._constraints.check_back_scan_settings(settings, self._scan_settings)
             self._back_scan_settings = settings
             self._back_scan_data = ScanData.from_constraints(
                 settings=settings, constraints=self._constraints)
 
-    # ══════════════════════════════════════════════════════════════════════════
-    # Motion  —  fully delegated to scanner
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
+    # Motion -- fully delegated to scanner
+    # =========================================================================
 
     def move_absolute(
         self,
@@ -269,9 +271,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     def get_position(self) -> Dict[str, float]:
         return self._scanner().get_position()
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Scanning
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def start_scan(self) -> None:
         with self._lock:
@@ -279,7 +281,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 self.log.error('Scan already running.')
                 return
             if self._scan_settings is None:
-                self.log.error('No scan configured — call configure_scan() first.')
+                self.log.error('No scan configured.')
                 return
 
             self._scan_data.new_scan()
@@ -291,10 +293,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
             self._stop_event.clear()
 
-            # Lock module_state HERE.
-            # The scanning probe logic polls self._scanner().module_state().
-            # While 'locked' → logic keeps polling and emitting live updates.
-            # When 'idle'    → logic calls its own stop_scan() and emits signals.
+            # Lock module_state: logic polls this to track scan progress.
+            # Scan thread's finally block unlocks it on completion or error.
             self.module_state.lock()
 
             self._scan_thread = threading.Thread(
@@ -305,31 +305,19 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             self._scan_thread.start()
 
     def stop_scan(self) -> None:
-        """
-        Stop a running scan.
-
-        Can be called either:
-          (a) by the user / GUI while the scan is still in progress, or
-          (b) by the logic's poll loop after our module_state became 'idle'
-              (scan completed naturally) — in that case module_state is
-              already 'idle' and we return immediately.
-        """
         if self.module_state() != 'locked':
-            self.log.debug('stop_scan() called but module_state is not locked — nothing to do.')
+            self.log.debug('stop_scan() called but module_state is not locked.')
             return
 
-        # Signal the scan thread to abort
         self._stop_event.set()
         self._scanner().halt_generators()
-        self._counter().stop()
+        self._counter().stop()   # aborts CO + CI tasks
 
-        # Join the thread.  The finally block in _scan_worker will unlock
-        # module_state, so by the time join() returns the state is clean.
         thread = self._scan_thread
         if thread and thread.is_alive():
             thread.join(timeout=10.0)
             if thread.is_alive():
-                self.log.warning('Scan thread did not stop within timeout — forcing unlock.')
+                self.log.warning('Scan thread timeout -- forcing unlock.')
                 if self.module_state() == 'locked':
                     self.module_state.unlock()
 
@@ -339,7 +327,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         return self._scan_data
 
     def get_back_scan_data(self) -> Optional[ScanData]:
-        """Returns NaN-filled ScanData — PI triggers only on forward sweep."""
+        """NaN -- PI gate only active on forward sweep."""
         return self._back_scan_data
 
     def emergency_stop(self) -> None:
@@ -347,159 +335,264 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         self._scanner().halt()
         self._scanner().halt_generators()
         self._counter().stop()
-
         thread = self._scan_thread
         if thread and thread.is_alive():
             thread.join(timeout=5.0)
-
         if self.module_state() == 'locked':
             self.module_state.unlock()
-
         self.log.warning('EMERGENCY STOP.')
 
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Scan worker
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
     def _scan_worker(self) -> None:
         """
-        Background thread.  Sequence:
-            1. Arm counter              (before PI fires)
-            2. Start scanner waveform   (PI runs autonomously over GPIB)
-            3. Wait for PI to finish
-            4. Read counts from counter
-            5. Store data into ScanData
-
-        The finally block ALWAYS unlocks module_state, regardless of how the
-        thread exits.  This is how the logic detects scan completion.
+        Background thread. Dispatches to 1D or 2D handler.
+        finally block ALWAYS unlocks module_state so the logic detects completion.
         """
         try:
             s       = self._scan_settings
             t_pixel = 1.0 / s.frequency
 
-            positions = tuple(
-                np.linspace(r[0], r[1], n).tolist()
-                for r, n in zip(s.range, s.resolution)
-            )
-            n_total     = int(np.prod(s.resolution))
-            current_pos = self._scanner().get_target()
+            if len(s.axes) == 1:
+                self._run_1d_scan(
+                    axis       = s.axes[0],
+                    scan_range = s.range[0],
+                    n_pts      = s.resolution[0],
+                    t_pixel    = t_pixel,
+                )
+            elif len(s.axes) == 2:
+                self._run_2d_scan_line_by_line(
+                    fast_axis  = s.axes[0],
+                    slow_axis  = s.axes[1],
+                    fast_range = s.range[0],
+                    slow_range = s.range[1],
+                    n_fast     = s.resolution[0],
+                    n_slow     = s.resolution[1],
+                    t_pixel    = t_pixel,
+                )
+        except Exception as exc:
+            self.log.exception(f'Scan worker unhandled exception: {exc}')
+        finally:
+            if self.module_state() == 'locked':
+                self.module_state.unlock()
 
-            # ── 1. Arm counter BEFORE scanner fires ───────────────────────
+    # =========================================================================
+    # 1D scan
+    # =========================================================================
+
+    def _run_1d_scan(
+        self,
+        axis:       str,
+        scan_range: Tuple[float, float],
+        n_pts:      int,
+        t_pixel:    float,
+    ) -> None:
+        """
+        1. arm(n_pts)          -- CO+CI tasks created; CO waits for gate
+        2. start_scan()        -- GPIB: moves to start, fires scan (BLOCKING)
+        3. wait_for_scan_complete -- verify PI generators idle
+        4. read(n_pts)         -- CO.wait_until_done; read buffer; diff+reshape
+        5. store
+        """
+        pos_array   = np.linspace(scan_range[0], scan_range[1], n_pts).tolist()
+        current_pos = self._scanner().get_target()
+
+        # 1. Arm counter before scanner fires
+        try:
+            self._counter().arm(n_pixels=n_pts, t_pixel=t_pixel)
+        except Exception as exc:
+            self.log.error(f'Counter arm failed: {exc}')
+            return
+
+        if self._stop_event.is_set():
+            self._counter().stop()
+            return
+
+        # 2. Fire PI scan (scan_x is BLOCKING: includes move + 0.5s sleep + scan + WA wait)
+        try:
+            estimated_s = self._scanner().start_scan(
+                axes        = (axis,),
+                positions   = (pos_array,),
+                t_pixel     = t_pixel,
+                current_pos = current_pos,
+            )
+        except Exception as exc:
+            self.log.error(f'Scanner start_scan failed: {exc}')
+            self._counter().stop()
+            return
+
+        # 3. Verify PI generators idle
+        completed = self._scanner().wait_for_scan_complete(
+            estimated_s = estimated_s,
+            stop_event  = self._stop_event,
+        )
+        if not completed or self._stop_event.is_set():
+            self._counter().stop()
+            return
+
+        # 4. Read (CO.wait_until_done returns immediately since scan already done)
+        try:
+            counts_dict = self._counter().read(n_pixels=n_pts)
+        except Exception as exc:
+            self.log.error(f'Counter read failed: {exc}')
+            counts_dict = None
+
+        # 5. Store
+        self._store_1d(counts_dict=counts_dict, n_pts=n_pts, t_pixel=t_pixel)
+        self._scanner().sync_position()
+
+    # =========================================================================
+    # 2D scan -- line by line
+    # =========================================================================
+
+    def _run_2d_scan_line_by_line(
+        self,
+        fast_axis:  str,
+        slow_axis:  str,
+        fast_range: Tuple[float, float],
+        slow_range: Tuple[float, float],
+        n_fast:     int,
+        n_slow:     int,
+        t_pixel:    float,
+    ) -> None:
+        """
+        2D scan as n_slow individual 1D fast-axis scans.
+
+        The PI gate fires once per fast-axis sweep. The counter re-arms
+        before each sweep. After each line, ScanData is updated for live
+        GUI display.
+        """
+        fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
+        slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
+        channels = self._scan_settings.channels
+
+        # Accumulate raw counts; (n_fast, n_slow) -- not yet divided by t_pixel
+        data_accum = {
+            ch: np.zeros((n_fast, n_slow), dtype=float) for ch in channels
+        }
+
+        for i_slow, slow_val in enumerate(slow_pos):
+            if self._stop_event.is_set():
+                break
+
+            # Move slow axis directly via scanner module
+            # (bypasses interfuse.move_absolute which is blocked while locked)
+            current_pos = self._scanner().get_target()
+            current_pos[slow_axis] = slow_val
+            self._scanner().move_absolute(current_pos, blocking=True)
+
+            if self._stop_event.is_set():
+                break
+
+            # Arm counter for this line
             try:
-                self._counter().arm(n_pixels=n_total, t_pixel=t_pixel)
+                self._counter().arm(n_pixels=n_fast, t_pixel=t_pixel)
             except Exception as exc:
-                self.log.error(f'Counter arm failed: {exc}')
-                return
+                self.log.error(f'Counter arm failed on line {i_slow}: {exc}')
+                break
 
             if self._stop_event.is_set():
                 self._counter().stop()
-                return
+                break
 
-            # ── 2. Start scanner waveform (non-blocking over GPIB) ────────
+            # Fire 1D scan along fast axis (BLOCKING)
+            current_pos = self._scanner().get_target()
             try:
                 estimated_s = self._scanner().start_scan(
-                    axes        = s.axes,
-                    positions   = positions,
+                    axes        = (fast_axis,),
+                    positions   = (fast_pos,),
                     t_pixel     = t_pixel,
                     current_pos = current_pos,
                 )
             except Exception as exc:
-                self.log.error(f'Scanner start_scan failed: {exc}')
+                self.log.error(f'Scanner start_scan failed on line {i_slow}: {exc}')
                 self._counter().stop()
-                return
+                break
 
-            # ── 3. Wait for PI generators to go idle ──────────────────────
+            # Verify PI idle
             completed = self._scanner().wait_for_scan_complete(
                 estimated_s = estimated_s,
                 stop_event  = self._stop_event,
             )
-
             if not completed or self._stop_event.is_set():
                 self._counter().stop()
-                return
+                break
 
-            # ── 4. Read photon counts ─────────────────────────────────────
+            # Read this line
             try:
-                counts_dict = self._counter().read(n_pixels=n_total)
+                line_counts = self._counter().read(n_pixels=n_fast)
             except Exception as exc:
-                self.log.error(f'Counter read failed: {exc}')
-                counts_dict = None
+                self.log.error(f'Counter read failed on line {i_slow}: {exc}')
+                line_counts = None
 
-            # ── 5. Store into ScanData ────────────────────────────────────
-            self._store_data(counts_dict=counts_dict, settings=s, t_pixel=t_pixel)
+            # Accumulate
+            if line_counts is not None:
+                for ch in channels:
+                    raw = line_counts.get(ch)
+                    if raw is not None and len(raw) == n_fast:
+                        data_accum[ch][:, i_slow] = raw
+                    else:
+                        self.log.warning(
+                            f'Line {i_slow} channel "{ch}": '
+                            f'unexpected array size. Filling zeros.'
+                        )
 
-            self._scanner().sync_position()
+            # Live GUI update after each line
+            self._write_2d_scan_data(data_accum, channels, t_pixel)
 
-        except Exception as exc:
-            self.log.exception(f'Scan worker unhandled exception: {exc}')
+        # Final write
+        self._write_2d_scan_data(data_accum, channels, t_pixel)
+        self._scanner().sync_position()
 
-        finally:
-            # Unlock module_state so the logic detects scan completion.
-            # This runs whether the scan succeeded, failed, or was aborted.
-            if self.module_state() == 'locked':
-                self.module_state.unlock()
-
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
     # Data storage
-    # ══════════════════════════════════════════════════════════════════════════
+    # =========================================================================
 
-    def _store_data(
+    def _store_1d(
         self,
         counts_dict: Optional[Dict[str, np.ndarray]],
-        settings:    ScanSettings,
+        n_pts:       int,
         t_pixel:     float,
     ) -> None:
-        """
-        Convert raw counts → counts/s and write into self._scan_data.
-
-        1D : data shape  (n_x,)
-        2D : counter delivers samples row-major (line by line):
-                 index k = i_slow * n_fast + i_fast
-             reshape (n_slow, n_fast) → .T → (n_fast, n_slow)
-             matches Qudi ScanData convention: data[i_fast, i_slow]
-        """
         if self._scan_data is None or counts_dict is None:
-            self.log.warning('No count data to store — scan data remains NaN.')
+            self.log.warning('No 1D count data to store.')
             return
 
-        channels   = settings.channels
-        resolution = settings.resolution
-
-        if settings.scan_dimension == 1:
-            n_pts = resolution[0]
-
-            def _to_rate(raw: Optional[np.ndarray]) -> np.ndarray:
-                if raw is not None and len(raw) == n_pts:
-                    return np.asarray(raw, dtype=float) / t_pixel
+        channels = self._scan_settings.channels
+        data_dict: Dict[str, np.ndarray] = {}
+        for ch in channels:
+            raw = counts_dict.get(ch)
+            if raw is not None and len(raw) == n_pts:
+                data_dict[ch] = np.asarray(raw, dtype=float) / t_pixel
+            else:
                 if raw is not None:
                     self.log.warning(
-                        f'1D count array length mismatch '
-                        f'(got {len(raw)}, expected {n_pts}). Filling zeros.'
+                        f'1D count mismatch "{ch}": '
+                        f'got {len(raw)}, expected {n_pts}. Filling zeros.'
                     )
-                return np.zeros(n_pts, dtype=float)
-
-        else:
-            n_fast, n_slow = resolution[0], resolution[1]
-            n_total = n_fast * n_slow
-
-            def _to_rate(raw: Optional[np.ndarray]) -> np.ndarray:
-                if raw is not None and len(raw) == n_total:
-                    return (
-                        np.asarray(raw, dtype=float)
-                        .reshape(n_slow, n_fast)
-                        .T
-                        / t_pixel
-                    )
-                if raw is not None:
-                    self.log.warning(
-                        f'2D count array length mismatch '
-                        f'(got {len(raw)}, expected {n_total}). Filling zeros.'
-                    )
-                return np.zeros((n_fast, n_slow), dtype=float)
-
-        data_dict = {ch: _to_rate(counts_dict.get(ch)) for ch in channels}
+                data_dict[ch] = np.zeros(n_pts, dtype=float)
 
         try:
             self._scan_data.data = data_dict
         except ValueError as exc:
-            self.log.error(f'ScanData write failed: {exc}')
+            self.log.error(f'ScanData 1D write failed: {exc}')
+
+    def _write_2d_scan_data(
+        self,
+        data_accum: Dict[str, np.ndarray],
+        channels:   Tuple[str, ...],
+        t_pixel:    float,
+    ) -> None:
+        """
+        Convert accumulated 2D raw counts to c/s and write to ScanData.
+        Called after every line for live GUI updates.
+        """
+        if self._scan_data is None:
+            return
+        data_dict = {ch: data_accum[ch] / t_pixel for ch in channels}
+        try:
+            self._scan_data.data = data_dict
+        except ValueError as exc:
+            self.log.error(f'ScanData 2D write failed: {exc}')
