@@ -41,6 +41,19 @@ from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
+from qudi.logic.pulsed.pulsed_fsm.generator_state import GeneratorState
+from qudi.logic.pulsed.pulsed_fsm.measurement_state import MeasurementState
+
+#: Status bar text per state. A state absent from here falls back to the IDLE entry.
+_STATE_TEXT = {
+    GeneratorState.IDLE: 'Ready',
+    GeneratorState.GENERATING: 'Generating…',
+    GeneratorState.SAMPLING_ENSEMBLE: 'Sampling ensemble…',
+    GeneratorState.SAMPLING_SEQUENCE: 'Sampling sequence…',
+    GeneratorState.BENCHMARKING: 'Benchmarking pulse generator…',
+    MeasurementState.RUNNING: 'Measurement running',
+    MeasurementState.PAUSED: 'Measurement paused',
+}
 
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
@@ -460,6 +473,10 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+
+        self.pulsedmasterlogic().sigGeneratorStateChanged.connect(self.state_display_updated)
+        self.pulsedmasterlogic().sigMeasurementStateChanged.connect(self.state_display_updated)
+        self.state_display_updated()
         return
 
     def _disconnect_main_window_signals(self):
@@ -615,7 +632,29 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.pulsedmasterlogic().sigGeneratorStateChanged.disconnect()
+        self.pulsedmasterlogic().sigMeasurementStateChanged.disconnect()
         return
+
+    @QtCore.Slot()
+    @QtCore.Slot(object, object)
+    def state_display_updated(self, _old_state=None, _new_state=None):
+        """Refresh the toolbar state label and the busy spinner from both state machines.
+
+        Reads the mirrored states rather than the signal arguments, since either machine may have
+        sent this: a running measurement takes precedence, otherwise the generator's activity shows.
+        """
+        master = self.pulsedmasterlogic()
+        measuring = master.measurement_state is not MeasurementState.IDLE
+        state = master.measurement_state if measuring else master.generator_state
+        busy = measuring or master.generator_state is not GeneratorState.IDLE
+
+        self._mw.state_Label.setText('  {0}'.format(_STATE_TEXT.get(state, _STATE_TEXT[GeneratorState.IDLE])))
+        self._mw.state_Label.setStyleSheet(
+            'color: {0};'.format((palette.orange if busy else palette.green).name())
+        )
+        # The spinner now follows every busy state, not just sampload/benchmark as before.
+        self._mw.loading_indicator_action.setVisible(busy)
 
     ###########################################################################
     #                    Main window related methods                          #
@@ -654,6 +693,15 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.current_loaded_asset_Label.setText('  No Asset Loaded')
         self._mw.current_loaded_asset_Label.setToolTip('Display the currently loaded asset.')
         self._mw.control_ToolBar.addWidget(self._mw.current_loaded_asset_Label)
+
+        # What the toolchain is doing right now, driven by the three state machines.
+        self._mw.state_Label = QtWidgets.QLabel(self._mw)
+        font = self._mw.state_Label.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 1)
+        self._mw.state_Label.setFont(font)
+        self._mw.state_Label.setToolTip('Current state of the pulsed toolchain.')
+        self._mw.control_ToolBar.addWidget(self._mw.state_Label)
 
         self._mw.loading_indicator = CircleLoadingIndicator(parent=self._mw)
         self._mw.loading_indicator_action = self._mw.control_ToolBar.addWidget(
@@ -1999,29 +2047,23 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().load_ensemble(ensemble_name)
         return
 
+    # The asset label and the spinner are no longer touched here: what the toolchain is doing now
+    # has its own widget, updated by state_display_updated() from the state machines. These three
+    # slots only enable/disable the run button, which is not derivable from those states.
     @QtCore.Slot()
     def sampling_or_loading_busy(self):
         if self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(False)
-
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  loading...')
-            self._mw.loading_indicator_action.setVisible(True)
 
     @QtCore.Slot()
     def benchmark_busy(self):
         if self.pulsedmasterlogic().status_dict['benchmark_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  benchmarking...')
-            self._mw.loading_indicator_action.setVisible(True)
-
     @QtCore.Slot()
     def sampling_or_loading_finished(self):
         if not self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
-            self._mw.loading_indicator_action.setVisible(False)
 
     def generate_predefined_clicked(self, method_name, sample_and_load=False):
         """

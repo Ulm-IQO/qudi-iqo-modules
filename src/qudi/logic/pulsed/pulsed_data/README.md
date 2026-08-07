@@ -582,11 +582,18 @@ new object. That is required: `AltPlotAnalyzer` holds this exact instance.
 
 #### `ExecutionState` *(mutable)* — the pause-aware clock
 
-`is_paused`, `start_time`, `time_of_pause`, `elapsed_pause`, with `start()`, `pause()`, `unpause()`
-and `get_live_elapsed_time()`.
+`is_paused`, `start_time`, `time_of_pause`, with `start()`, `pause()`, `unpause()` and
+`get_live_elapsed_time()`.
 
 The trick worth knowing: `unpause()` pushes `start_time` *forward* by the pause duration, so elapsed
-time never counts paused seconds and no separate accumulator is needed.
+time never counts paused seconds and no separate accumulator is needed. (There used to be an
+`elapsed_pause` field for that accumulator; it survived the switch but was never read again, so it
+silently returned 0.0 forever. Removed.)
+
+**This class is now driven by the state machine, not called directly.** `PulsedMeasurementLogic.
+_sync_measurement_clock()` listens to `MeasurementStateMachine.sigStateChanged` and maps each
+transition onto one clock operation, so `is_paused` cannot drift out of step with the real state.
+Do not call `start()`/`pause()`/`unpause()` from measurement code.
 
 #### `MeasurementInformation` *(mutable, dict-like)*
 

@@ -38,6 +38,11 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     PulseGeneratorSettings,
 )
 from qudi.logic.pulsed.pulsed_data.settings_coercion import SettingsTypeError, as_settings_dict
+# Master owns the SampLoad workflow machine; the other two states are mirrored, not owned.
+from qudi.logic.pulsed.pulsed_fsm.state_machines import StateMachineError
+from qudi.logic.pulsed.pulsed_fsm.master_state import SampLoadState, SampLoadStateMachine
+from qudi.logic.pulsed.pulsed_fsm.generator_state import GeneratorState
+from qudi.logic.pulsed.pulsed_fsm.measurement_state import MeasurementState
 
 
 class PulsedMasterLogic(LogicBase):
@@ -130,13 +135,66 @@ class PulsedMasterLogic(LogicBase):
     sigSamplingSettingsUpdated = QtCore.Signal(dict)
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
+    #: (old_state, new_state) forwarded on from the two logic modules, so the GUI can show what the
+    #: toolchain is doing without polling ten booleans.
+    sigGeneratorStateChanged = QtCore.Signal(object, object)
+    sigMeasurementStateChanged = QtCore.Signal(object, object)
+
     def __init__(self, *args, **kwargs):
         """ Create PulsedMasterLogic object with connectors.
         """
         super().__init__(*args, **kwargs)
 
-        # Container serving as status register
+        # Container serving as status register. Its seven mirror flags are recomputed from the
+        # state machines by _sync_status_dict(); fitting_busy and benchmark_busy remain real
+        # master-owned state, written directly (the GUI writes benchmark_busy itself).
         self.status_dict = PulsedMasterStatus()
+
+        # The generate -> sample -> load chain, the one multi-step workflow master drives itself.
+        self._sampload_fsm = SampLoadStateMachine(parent=self)
+        self._sampload_fsm.sigStateChanged.connect(self._sync_status_dict)
+
+        # Mirrors of the other two modules' states, kept fresh by their state-changed signals.
+        self.generator_state = GeneratorState.IDLE
+        self.measurement_state = MeasurementState.IDLE
+
+    def _generator_state_updated(self, old_state, new_state):
+        """Mirror SequenceGeneratorLogic's state and refresh the flags derived from it.
+
+        Parameters
+        ----------
+        old_state, new_state : GeneratorState
+        """
+        self.generator_state = new_state
+        self._sync_status_dict()
+        self.sigGeneratorStateChanged.emit(old_state, new_state)
+
+    def _measurement_state_updated(self, old_state, new_state):
+        """Mirror PulsedMeasurementLogic's state and refresh the flags derived from it.
+
+        Parameters
+        ----------
+        old_state, new_state : MeasurementState
+        """
+        self.measurement_state = new_state
+        self._sync_status_dict()
+        self.sigMeasurementStateChanged.emit(old_state, new_state)
+
+    def _sync_status_dict(self, *_):
+        """Recompute the status flags that are derived from the three state machines.
+
+        The single writer of those flags, so they cannot drift. fitting_busy and benchmark_busy are
+        deliberately absent: they are master's own state, written directly (the GUI sets
+        benchmark_busy itself), and must not be overwritten here.
+        """
+        generator = self.generator_state
+        sampload = self._sampload_fsm.state
+        self.status_dict.predefined_generation_busy = generator is GeneratorState.GENERATING
+        self.status_dict.sampling_ensemble_busy = generator is GeneratorState.SAMPLING_ENSEMBLE
+        self.status_dict.sampling_sequence_busy = generator is GeneratorState.SAMPLING_SEQUENCE
+        self.status_dict.measurement_running = self.measurement_state is not MeasurementState.IDLE
+        self.status_dict.loading_busy = sampload is SampLoadState.LOADING
+        self.status_dict.sampload_busy = sampload is not SampLoadState.IDLE
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -182,6 +240,8 @@ class PulsedMasterLogic(LogicBase):
             self.fit_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigMeasurementStatusUpdated.connect(
             self.measurement_status_updated, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.pulsedmeasurementlogic().sigMeasurementStateChanged.connect(
+            self._measurement_state_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigPulserRunningUpdated.connect(
             self.pulser_running_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigExtMicrowaveRunningUpdated.connect(
@@ -249,6 +309,8 @@ class PulsedMasterLogic(LogicBase):
             self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
             self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sequencegeneratorlogic().sigGeneratorStateChanged.connect(
+            self._generator_state_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.connect(
             self.predefined_sequence_generated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.connect(
@@ -285,6 +347,7 @@ class PulsedMasterLogic(LogicBase):
         self.pulsedmeasurementlogic().sigTimerUpdated.disconnect()
         self.pulsedmeasurementlogic().sigFitUpdated.disconnect()
         self.pulsedmeasurementlogic().sigMeasurementStatusUpdated.disconnect()
+        self.pulsedmeasurementlogic().sigMeasurementStateChanged.disconnect()
         self.pulsedmeasurementlogic().sigPulserRunningUpdated.disconnect()
         self.pulsedmeasurementlogic().sigExtMicrowaveRunningUpdated.disconnect()
         self.pulsedmeasurementlogic().sigExtMicrowaveSettingsUpdated.disconnect()
@@ -316,6 +379,7 @@ class PulsedMasterLogic(LogicBase):
         self.sequencegeneratorlogic().sigAvailableSequencesUpdated.disconnect()
         self.sequencegeneratorlogic().sigGeneratorSettingsUpdated.disconnect()
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.disconnect()
+        self.sequencegeneratorlogic().sigGeneratorStateChanged.disconnect()
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.disconnect()
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.disconnect()
         self.sequencegeneratorlogic().sigSampleSequenceComplete.disconnect()
@@ -623,7 +687,8 @@ class PulsedMasterLogic(LogicBase):
         is_paused
         """
         if isinstance(is_running, bool) and isinstance(is_paused, bool):
-            self.status_dict.measurement_running = is_running
+            # measurement_running is no longer set here - it is derived in _sync_status_dict() from
+            # the mirrored MeasurementState, which also knows about paused, unlike these two bools.
             self.sigMeasurementStatusUpdated.emit(is_running, is_paused)
         return
 
@@ -823,26 +888,23 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def sample_ensemble(self, ensemble_name, with_load=False):
-        already_busy = (self.status_dict.sampling_ensemble_busy
-                        or self.status_dict.sampling_sequence_busy
-                        or self.sequencegeneratorlogic().module_state() == 'locked')
-        if already_busy:
-            self.log.error('Sampling of a different asset already in progress.\n'
-                           'PulseBlockEnsemble "{0}" not sampled!'.format(ensemble_name))
-        else:
-            if with_load:
-                self.status_dict.sampload_busy = True
-            self.status_dict.sampling_ensemble_busy = True
-            self.sigSampleBlockEnsemble.emit(ensemble_name)
+        # Deliberately does NOT gate on self.generator_state. That mirror lags one queued-signal
+        # hop, and this slot is reached from predefined_sequence_generated() while the generator's
+        # "back to IDLE" update is still in the queue - so gating on it refuses every GenSampLo.
+        # The mirror is for display. Whether sampling may start is decided by master's own SampLoad
+        # machine below, and authoritatively by the generator's own machine when the request lands.
+        if with_load and not self._enter_sampling(ensemble_name):
+            return
+        self.sigSampleBlockEnsemble.emit(ensemble_name)
         return
 
     @QtCore.Slot(object)
     def sample_ensemble_finished(self, ensemble):
-        self.status_dict.sampling_ensemble_busy = False
         self.sigSampleEnsembleComplete.emit(ensemble)
-        if self.status_dict.sampload_busy and not self.status_dict.sampling_sequence_busy:
+        # Not ours to advance if a sequence run is sampling its constituent ensembles.
+        if self._sampload_fsm.state is SampLoadState.SAMPLING:
             if ensemble is None:
-                self.status_dict.sampload_busy = False
+                self._sampload_fsm.abort()
                 self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
             else:
                 self.load_ensemble(ensemble.name)
@@ -851,67 +913,114 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def sample_sequence(self, sequence_name, with_load=False):
-        already_busy = (self.status_dict.sampling_ensemble_busy
-                        or self.status_dict.sampling_sequence_busy
-                        or self.sequencegeneratorlogic().module_state() == 'locked')
-        if already_busy:
-            self.log.error('Sampling of a different asset already in progress.\n'
-                           'PulseSequence "{0}" not sampled!'.format(sequence_name))
-        else:
-            if with_load:
-                self.status_dict.sampload_busy = True
-            self.status_dict.sampling_sequence_busy = True
-            self.sigSampleSequence.emit(sequence_name)
+        # See sample_ensemble() on why the generator_state mirror is not consulted here.
+        if with_load and not self._enter_sampling(sequence_name):
+            return
+        self.sigSampleSequence.emit(sequence_name)
         return
+
+    def _enter_sampling(self, asset_name):
+        """Move into the SAMPLING step, continuing a GenSampLo chain or starting a fresh one.
+
+        Parameters
+        ----------
+        asset_name : str
+            Only used for the error message.
+
+        Returns
+        -------
+        bool
+            False if another chain was already in progress, in which case nothing was started.
+        """
+        if self._sampload_fsm.state is SampLoadState.GENERATING:
+            self._sampload_fsm.continue_to_sample()
+            return True
+        return self._begin_sampload('begin_sample', asset_name)
+
+    def _begin_sampload(self, event, asset_name):
+        """Enter the generate/sample/load chain, or report that one is already running.
+
+        Parameters
+        ----------
+        event : str
+            'begin_generate', 'begin_sample' or 'begin_load'.
+        asset_name : str
+            Only used for the error message.
+
+        Returns
+        -------
+        bool
+            False if a chain was already in progress, in which case nothing was started.
+        """
+        try:
+            self._sampload_fsm.trigger(event)
+        except StateMachineError:
+            self.log.error('A generate/sample/load operation is already in progress.\n'
+                           '"{0}" not started!'.format(asset_name))
+            return False
+        return True
 
     @QtCore.Slot(object)
     def sample_sequence_finished(self, sequence):
-        self.status_dict.sampling_sequence_busy = False
         self.sigSampleSequenceComplete.emit(sequence)
-        if self.status_dict.sampload_busy:
+        if self._sampload_fsm.state is SampLoadState.SAMPLING:
             if sequence is None:
-                self.status_dict.sampload_busy = False
+                self._sampload_fsm.abort()
                 self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
             else:
                 self.load_sequence(sequence.name)
         return
 
+    def _enter_loading(self, asset_name):
+        """Move into the LOADING step, continuing a sample-and-load chain or starting a fresh one.
+
+        Parameters
+        ----------
+        asset_name : str
+            Only used for the error message.
+
+        Returns
+        -------
+        bool
+            False if another chain was already in progress, in which case nothing was started.
+        """
+        if self._sampload_fsm.state is SampLoadState.SAMPLING:
+            self._sampload_fsm.continue_to_load()
+            return True
+        return self._begin_sampload('begin_load', asset_name)
+
     @QtCore.Slot(str)
     def load_ensemble(self, ensemble_name):
-        if self.status_dict.loading_busy:
-            self.log.error('Loading of a different asset already in progress.\n'
-                           'PulseBlockEnsemble "{0}" not loaded!'.format(ensemble_name))
-            self.loaded_asset_updated(*self.loaded_asset)
-        elif self.status_dict.measurement_running:
+        if self.status_dict.measurement_running:
             self.log.error('Loading of ensemble not possible while measurement is running.\n'
                            'PulseBlockEnsemble "{0}" not loaded!'.format(ensemble_name))
             self.loaded_asset_updated(*self.loaded_asset)
-        else:
-            self.status_dict.loading_busy = True
-            if self.status_dict.pulser_running:
-                self.log.warning('Can not load new asset into pulse generator while it is still '
-                                 'running. Turned off.')
-                self.pulsedmeasurementlogic().pulse_generator_off()
-            self.sigLoadBlockEnsemble.emit(ensemble_name)
+            return
+        if not self._enter_loading(ensemble_name):
+            self.loaded_asset_updated(*self.loaded_asset)
+            return
+        if self.status_dict.pulser_running:
+            self.log.warning('Can not load new asset into pulse generator while it is still '
+                             'running. Turned off.')
+            self.pulsedmeasurementlogic().pulse_generator_off()
+        self.sigLoadBlockEnsemble.emit(ensemble_name)
         return
 
     @QtCore.Slot(str)
     def load_sequence(self, sequence_name):
-        if self.status_dict.loading_busy:
-            self.log.error('Loading of a different asset already in progress.\n'
-                           'PulseSequence "{0}" not loaded!'.format(sequence_name))
-            self.loaded_asset_updated(*self.loaded_asset)
-        elif self.status_dict.measurement_running:
+        if self.status_dict.measurement_running:
             self.log.error('Loading of sequence not possible while measurement is running.\n'
                            'PulseSequence "{0}" not loaded!'.format(sequence_name))
             self.loaded_asset_updated(*self.loaded_asset)
-        else:
-            self.status_dict.loading_busy = True
-            if self.status_dict.pulser_running:
-                self.log.warning('Can not load new asset into pulse generator while it is still '
-                                 'running. Turned off.')
-                self.pulsedmeasurementlogic().pulse_generator_off()
-            self.sigLoadSequence.emit(sequence_name)
+            return
+        if not self._enter_loading(sequence_name):
+            self.loaded_asset_updated(*self.loaded_asset)
+            return
+        if self.status_dict.pulser_running:
+            self.log.warning('Can not load new asset into pulse generator while it is still '
+                             'running. Turned off.')
+            self.pulsedmeasurementlogic().pulse_generator_off()
+        self.sigLoadSequence.emit(sequence_name)
         return
 
     @QtCore.Slot(str, str)
@@ -931,8 +1040,10 @@ class PulsedMasterLogic(LogicBase):
         asset_name
         asset_type
         """
-        self.status_dict.sampload_busy = False
-        self.status_dict.loading_busy = False
+        # Terminates the chain. Guarded because this slot doubles as a "refresh the GUI" helper
+        # called from the error paths above, where no chain was ever started.
+        if self._sampload_fsm.state is not SampLoadState.IDLE:
+            self._sampload_fsm.finish()
         self.sigLoadedAssetUpdated.emit(asset_name, asset_type)
         # Transfer sequence information from PulseBlockEnsemble or PulseSequence to
         # PulsedMeasurementLogic to be able to invoke measurement settings from them
@@ -1129,9 +1240,10 @@ class PulsedMasterLogic(LogicBase):
         """
         if not isinstance(kwarg_dict, dict):
             kwarg_dict = dict()
-        self.status_dict.predefined_generation_busy = True
-        if sample_and_load:
-            self.status_dict.sampload_busy = True
+        # Only a sample-and-load run is a master workflow; a bare generate is entirely the
+        # generator's business and shows up through its own state.
+        if sample_and_load and not self._begin_sampload('begin_generate', generator_method_name):
+            return
         self.sigGeneratePredefinedSequence.emit(generator_method_name, kwarg_dict)
         return
 
@@ -1146,11 +1258,13 @@ class PulsedMasterLogic(LogicBase):
             Whether the generate method returned any PulseSequence. Not to be confused with
             PulseSequence.is_sequence, which asks whether a given *object* is a sequence.
         """
-        self.status_dict.predefined_generation_busy = False
-        if asset_name is None:
-            self.status_dict.sampload_busy = False
+        in_chain = self._sampload_fsm.state is SampLoadState.GENERATING
+        if in_chain and asset_name is None:
+            self._sampload_fsm.abort()
+            in_chain = False
         self.sigPredefinedSequenceGenerated.emit(asset_name, produced_sequence)
-        if self.status_dict.sampload_busy:
+        if in_chain:
+            # sample_sequence/sample_ensemble fire continue_to_sample, since we are in GENERATING.
             if produced_sequence:
                 self.sample_sequence(asset_name, True)
             else:

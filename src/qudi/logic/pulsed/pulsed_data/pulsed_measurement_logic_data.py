@@ -279,7 +279,6 @@ class ExecutionState:
     is_paused: bool = False
     start_time: float = 0.0
     time_of_pause: float = 0.0
-    elapsed_pause: float = 0.0
 
     @property
     def elapsed_time(self) -> float:
@@ -290,7 +289,6 @@ class ExecutionState:
         self.is_paused = False
         self.start_time = time.time()
         self.time_of_pause = 0.0
-        self.elapsed_pause = 0.0
 
     def pause(self):
         """Called when the user hits pause."""

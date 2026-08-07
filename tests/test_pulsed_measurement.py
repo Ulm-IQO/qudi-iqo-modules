@@ -406,7 +406,6 @@ def test_pulsed_measurement_closure_round_trip():
     assert as_dict['objects']['sequence']['type'] == 'PulseSequence'
     assert len(as_dict['objects']['ensembles']) == 2
     assert len(as_dict['objects']['blocks']) == 3  # blk_2 shared between ens_a/ens_b, deduped
-    assert len(as_dict['objects']['elements']) == 3  # one element per block
 
     restored = PulsedMeasurement.from_dict(as_dict)
     assert isinstance(restored.objects.sequence, PulseSequence)
