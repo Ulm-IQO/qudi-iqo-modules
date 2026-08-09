@@ -824,18 +824,22 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         ----------------
         Returns:
             (data, info_dict)
-            data : dict {channel_name: int64 ndarray (num_gates_per_cycle, n_bins)}
-                   e.g. {'APD1': array1, 'APD2': array2}
+            data : int64 ndarray, shape (2, num_gates_per_cycle, n_bins)
+                data[0] = photon1 histogram (APD1)
+                data[1] = photon2 histogram (APD2)
             info_dict : {'elapsed_sweeps': int, 'elapsed_time': float}
 
-        The format is distinguishable by type: ndarray = single-channel,
-        dict = two-channel.  Calling code should check accordingly.
+        In both cases data is always a numpy ndarray so that existing logic
+        code (e.g. pulsed_measurement_logic.py) can call .any() on the result.
+        Single-channel return shape is unchanged -- fully backward compatible.
+        Two-channel consumers should check data.ndim == 3 to detect the format.
         """
         if self._accumulator is None:
             empty = np.zeros((1, 1), dtype=np.int64)
             info  = {'elapsed_sweeps': 0, 'elapsed_time': 0.0}
             if self._two_channel_fc:
-                return {self._scan_ch_name: empty, self._scan_ch_name2: empty}, info
+                # Stack two empty arrays so shape is (2, 1, 1).
+                return np.stack([empty, empty], axis=0), info
             return empty, info
 
         elapsed = self._elapsed_time_s
@@ -848,14 +852,16 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         }
 
         if self._two_channel_fc and self._accumulator2 is not None:
-            # Two-channel: return dict keyed by channel name.
-            data = {
-                self._scan_ch_name:  self._accumulator.astype(np.int64).copy(),
-                self._scan_ch_name2: self._accumulator2.astype(np.int64).copy(),
-            }
+            # Two-channel: stack histograms along a new first axis.
+            # Shape: (2, num_gates_per_cycle, n_bins)
+            # Callers check data.ndim == 3 to distinguish from single-channel.
+            data = np.stack([
+                self._accumulator.astype(np.int64).copy(),
+                self._accumulator2.astype(np.int64).copy(),
+            ], axis=0)
         else:
-            # Single-channel: return array (backward compatible with existing
-            # PulsedMeasurementLogic and analysis code).
+            # Single-channel: shape (num_gates_per_cycle, n_bins).
+            # Identical to original behaviour -- pulsed logic works unchanged.
             data = self._accumulator.astype(np.int64).copy()
 
         return data, info_dict
@@ -1402,13 +1408,22 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             print('No complete cycles acquired yet.')
             return
 
-        # Extract photon1 histogram for summary (works for both return types).
-        hist1 = data[self._scan_ch_name] if isinstance(data, dict) else data
+        # Extract per-channel histograms.
+        # Two-channel: data.shape == (2, num_gates, n_bins)
+        # Single-channel: data.shape == (num_gates, n_bins)
+        if self._two_channel_fc and data.ndim == 3:
+            hist1 = data[0]   # photon1
+            hist2 = data[1]   # photon2
+        else:
+            hist1 = data
+            hist2 = None
+
         total_ph1       = int(hist1.sum())
         total_gate_time = (cycles_done
-                           * self._num_gates_per_cycle
-                           * self._gate_width_s)
+                        * self._num_gates_per_cycle
+                        * self._gate_width_s)
         rate_gated1 = total_ph1 / total_gate_time if total_gate_time > 0 else 0.0
+
         if elapsed_total > 0 and cycles_done > 0:
             gate_period_s = elapsed_total / (cycles_done * self._num_gates_per_cycle)
             dead_time_ns  = (gate_period_s - self._gate_width_s) * 1e9
@@ -1419,7 +1434,8 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
         sep = '--' * 30
         print(f'\n{sep}')
-        print(f'  Mode                  : {"two-channel" if self._two_channel_fc else "single-channel"}')
+        print(f'  Mode                  : '
+            f'{"two-channel" if self._two_channel_fc else "single-channel"}')
         print(f'  Cycles completed      : {cycles_done}')
         print(f'  Elapsed time          : {elapsed_total:.3f} s')
         print(f'  Gate width            : {self._gate_width_s * 1e6:.3f} us')
@@ -1429,11 +1445,11 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         print(f'  Total photons         : {total_ph1:,}')
         print(f'  Count rate (gated)    : {rate_gated1 / 1e3:.2f} kHz')
         print(f'  Count rate (sequence) : {rate_seq1 / 1e3:.2f} kHz')
-        if self._two_channel_fc and isinstance(data, dict):
-            hist2     = data[self._scan_ch_name2]
+
+        if hist2 is not None:
             total_ph2 = int(hist2.sum())
             rate_g2   = total_ph2 / total_gate_time if total_gate_time > 0 else 0.0
-            rate_s2   = total_ph2 / elapsed_total if elapsed_total > 0 else 0.0
+            rate_s2   = total_ph2 / elapsed_total   if elapsed_total > 0 else 0.0
             print(f'  --- Channel 2 ({self._scan_ch_name2}) ---')
             print(f'  Total photons         : {total_ph2:,}')
             print(f'  Count rate (gated)    : {rate_g2 / 1e3:.2f} kHz')
