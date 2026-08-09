@@ -84,7 +84,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     """
 
     _scanner = Connector(name='scanner',        interface='PIE710ScannerInterface')
-    _counter = Connector(name='photon_counter', interface='NIAPDScannerCounter')
+    _counter = Connector(name='photon_counter', interface='NIXSeriesCounter')
 
     # =========================================================================
     # Lifecycle
