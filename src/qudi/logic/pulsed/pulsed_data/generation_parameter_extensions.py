@@ -302,17 +302,4 @@ class BaseGenerationParameters:
 #                                                                            #
 ##############################################################################
 
-#Test
-@dataclass(frozen=True)
-class TestParameters(BaseGenerationParameters):
-    time_delay: float = 4.0
 
-    @classmethod
-    def _coerce_fields(cls, data, current=None):
-        pick = cls._pick
-        return {
-            'time_delay': float(pick(data, current, 'time_delay', 4.0)),
-        }
-    #Plan to remove this
-
-    #GenerationParameters

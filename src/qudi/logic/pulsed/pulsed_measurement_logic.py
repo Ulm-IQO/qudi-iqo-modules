@@ -428,6 +428,58 @@ class PulsedMeasurementLogic(LogicBase):
         self._pending_ensembles = dict(ensembles) if ensembles else {}
         self._pending_blocks = dict(blocks) if blocks else {}
 
+    def _verify_loaded_asset(self, action):
+        """Check the pulse generator really holds the asset this measurement is configured for.
+
+        Nothing re-reads the device between a load and pressing Play, so the two can diverge - most
+        obviously after run_pg_benchmark(), which overwrites the loaded asset, but also after any
+        direct pulsegenerator() call from a script. Measuring the wrong pulses with the right
+        x-axis produces data that looks valid and is not, so this refuses rather than warns.
+
+        Parameters
+        ----------
+        action : str
+            'start' or 'resume', used only in the error message.
+
+        Returns
+        -------
+        bool
+            True if the device matches, or if the comparison cannot be made.
+        """
+        asset = self._loaded_asset
+        if asset is None:
+            return True
+
+        try:
+            loaded_names, loaded_type = self._pulsegenerator().get_loaded_assets()
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator. '
+                               'Continuing without the consistency check.')
+            return True
+
+        if asset.is_sequence:
+            expected, expected_type = {asset.name}, 'sequence'
+        else:
+            # The exact waveform names this ensemble wrote, suffixes included - avoids having to
+            # re-derive the device's channel naming here.
+            expected, expected_type = set(asset.sampling_information.waveforms), 'waveform'
+        if not expected:
+            # Never sampled, so there is nothing to compare against.
+            return True
+
+        on_device = set(loaded_names.values())
+        if loaded_type == expected_type and on_device and on_device.issubset(expected):
+            return True
+
+        self.log.error(
+            'Cannot {0} the measurement: the pulse generator does not hold the asset this '
+            'measurement is configured for.\nExpected {1} "{2}" ({3}), but the device reports '
+            '{4}: {5}.\nRe-load "{2}" and try again.'
+            ''.format(action, expected_type, asset.name, sorted(expected),
+                      loaded_type or 'nothing loaded', sorted(on_device) or 'nothing')
+        )
+        return False
+
     def _commit_pending_asset(self):
         """Promote whatever's pending (from the last loaded_asset/refresh_loaded_asset_closure()
         call) to the actively-measured asset - called at the start of start_pulsed_measurement(),
@@ -1359,6 +1411,11 @@ class PulsedMeasurementLogic(LogicBase):
 
         self._commit_pending_asset()
 
+        # Verify against the device before anything is applied or switched on.
+        if not self._verify_loaded_asset('start'):
+            self.sigMeasurementStatusUpdated.emit(False, False)
+            return
+
         # Check if measurement settings need to be invoked
         if self._settings.readout_settings.invoke_settings:
             if self.measurement_information:
@@ -1501,6 +1558,12 @@ class PulsedMeasurementLogic(LogicBase):
         Continues the measurement
         """
         with self._threadlock:
+            # Before the transition: the device can be touched while a measurement is paused, and a
+            # failed check must leave it paused rather than half-resumed.
+            if not self._verify_loaded_asset('resume'):
+                self.sigMeasurementStatusUpdated.emit(True, True)
+                return
+
             try:
                 # Only legal from PAUSED, so continuing an already-running measurement no longer
                 # re-issues microwave_on()/pulse_generator_on() to live hardware.

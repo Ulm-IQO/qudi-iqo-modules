@@ -180,6 +180,16 @@ class PulsedMasterLogic(LogicBase):
         self._sync_status_dict()
         self.sigMeasurementStateChanged.emit(old_state, new_state)
 
+    @property
+    def _generator_busy(self):
+        """Whether SequenceGeneratorLogic is doing anything, asked of it directly.
+
+        Gating decisions must not use `self.generator_state`: that mirror is one queued signal
+        behind, so a script calling sample_ensemble() then clear_pulse_generator() would slip past
+        a check made against it. module_state() is the generator's own live value.
+        """
+        return self.sequencegeneratorlogic().module_state() == 'locked'
+
     def _sync_status_dict(self, *_):
         """Recompute the status flags that are derived from the three state machines.
 
@@ -773,10 +783,7 @@ class PulsedMasterLogic(LogicBase):
             PulsedMeasurement snapshot (settings + data + the loaded sequence/ensemble) to a
             single '.pulsedmeasurement' file - see PulsedMeasurementLogic.save_measurement_data().
         """
-        still_busy = (self.status_dict.loading_busy
-                      or self.status_dict.sampload_busy
-                      or self.status_dict.sampling_ensemble_busy
-                      or self.status_dict.sampling_sequence_busy)
+        still_busy = self.status_dict.sampload_busy or self._generator_busy
         if still_busy:
             self.log.error('Can not save measurement data while a load/sample operation is still '
                            'in progress. The currently loaded asset\'s settings have not fully '
@@ -869,10 +876,7 @@ class PulsedMasterLogic(LogicBase):
     #######################################################################
     @QtCore.Slot()
     def clear_pulse_generator(self):
-        still_busy = (self.status_dict.sampling_ensemble_busy
-                      or self.status_dict.sampling_sequence_busy
-                      or self.status_dict.loading_busy
-                      or self.status_dict.sampload_busy)
+        still_busy = self.status_dict.sampload_busy or self._generator_busy
         if still_busy:
             self.log.error('Can not clear pulse generator. Sampling/Loading still in progress.')
         elif self.status_dict.measurement_running:

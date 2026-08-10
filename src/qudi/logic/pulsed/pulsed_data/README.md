@@ -741,6 +741,22 @@ Ten busy/running flags, all defaulting to `False`: `sampling_ensemble_busy`, `sa
 Each has a property getter/setter over the dict entry, so `PulsedMasterLogic` gets typo-proof named
 access while `pulsed_maingui.py`'s existing `status_dict['flag']` reads and writes keep working.
 
+**Six of the ten are now derived — do not write to them.** `PulsedMasterLogic._sync_status_dict()`
+recomputes `predefined_generation_busy`, `sampling_ensemble_busy`, `sampling_sequence_busy`,
+`measurement_running`, `loading_busy` and `sampload_busy` from the three state machines on every
+transition, so anything you assign is silently overwritten at the next one. Change the state instead.
+
+| Flag | Source |
+|---|---|
+| the six above | **derived** from `GeneratorState` / `MeasurementState` / `SampLoadState` |
+| `pulser_running`, `microwave_running` | real, set from the hardware's own running signals |
+| `fitting_busy`, `benchmark_busy` | real, master-owned (the GUI writes `benchmark_busy` itself) |
+
+A second caveat for the derived ones: they are computed from **mirrors** of the other two modules'
+states, which arrive over queued signals and are therefore one hop behind. That is fine for display,
+which is all they are for. **Never gate a decision on them** - ask the owning module directly, as
+`PulsedMasterLogic._generator_busy` does.
+
 #### `FitContainers` *(frozen)*
 
 `primary` and `alternative` `FitContainer` instances, replacing an anonymous `(fc, alt_fc)` tuple.

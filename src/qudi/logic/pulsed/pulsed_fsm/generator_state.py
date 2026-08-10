@@ -81,6 +81,9 @@ class GeneratorStateMachine(StateMachine):
     three-different-cleanup-sequences-per-method arrangement in sequence_generator_logic.py, where
     two of the three exits from sample_pulse_sequence() forget to reset SequenceSamplingState.
 
+    Every event method below raises StateMachineError when the current state does not allow it, and
+    leaves the state untouched.
+
     Parameters
     ----------
     parent : QtCore.QObject, optional
