@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 This file contains the Qudi base state machines for organizing the pulsed toolchain.
@@ -19,10 +19,16 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import logging
+
 from PySide6 import QtCore
 from qudi.util.mutex import RecursiveMutex
 
 __all__ = ['StateMachine', 'StateMachineError']
+
+# These machines are plain QObjects owned by a logic module rather than modules themselves, so they
+# have no qudi `self.log`. Only recover() writes here, and only when the table is malformed.
+_log = logging.getLogger(__name__)
 
 
 class StateMachineError(RuntimeError):
@@ -80,6 +86,15 @@ class StateMachine(QtCore.QObject):
     #: emit, so receivers are never woken for a no-op.
     sigStateChanged = QtCore.Signal(object, object)  # (old_state, new_state)
 
+    #: Name of the event `recover()` fires. Subclasses whose table already names the same move
+    #: something else override this rather than adding a duplicate set of rows - see
+    #: SampLoadStateMachine, where 'abort' is that move.
+    #:
+    #: Recovery deliberately goes through the table like everything else. A `reset()` that assigned
+    #: `_state` directly would be simpler and would break the one property the whole design rests
+    #: on: that every state the machine has ever been in was reachable by a rule someone wrote down.
+    RECOVERY_EVENT = 'fail'
+
     def __init__(self, initial, transitions, parent=None):
         super().__init__(parent)
         # Copied, not stored by reference: the table is this machine's contract, and a caller
@@ -91,6 +106,7 @@ class StateMachine(QtCore.QObject):
                 f'Initial state {initial!r} is the source of no transition, so the machine could '
                 f'never leave it. Check the transition table for a typo.'
             )
+        self._initial = initial
         self._state = initial
         # Recursive: a slot connected to sigStateChanged may call back into trigger(), and the
         # owning logic module may already hold its own lock around the call.
@@ -106,6 +122,17 @@ class StateMachine(QtCore.QObject):
             The state the machine is currently in.
         """
         return self._state
+
+    @property
+    def initial_state(self):
+        """The state the machine was constructed in, and the one `recover()` returns it to.
+
+        Returns
+        -------
+        object
+            The initial state.
+        """
+        return self._initial
 
     def can(self, event) -> bool:
         """Whether `event` is allowed in the current state.
@@ -159,4 +186,51 @@ class StateMachine(QtCore.QObject):
         if old_state is not new_state:
             self.sigStateChanged.emit(old_state, new_state)
         return new_state
+
+    def recover(self):
+        """Return the machine to its initial state after a fault.
+
+        The counterpart to `trigger()` for the paths where something has already gone wrong: an
+        operation raised part-way through, or a step the machine was waiting on never reported back.
+        Where `trigger()` is strict so that a mistake is loud, `recover()` is deliberately the
+        opposite - idempotent, and it never raises. It is called from `except`/`finally` blocks and
+        from watchdogs, where an exception of its own would mask the failure being recovered from
+        and strand the machine anyway.
+
+        The move itself is still an ordinary table lookup of `RECOVERY_EVENT`, so recovery is as
+        auditable as every other transition, and `sigStateChanged` fires normally - which is what
+        releases `module_state` and lets the GUI catch up.
+
+        Returns
+        -------
+        object
+            The state afterwards - the initial state unless the table had no way back, which is a
+            defect in the table rather than something a caller can act on.
+        """
+        with self._lock:
+            if self._state is self._initial:
+                # Already home. Not an error: fault paths overlap, and recovering twice is normal.
+                return self._state
+            recoverable = (self._state, self.RECOVERY_EVENT) in self._transitions
+            stuck_in = self._state
+
+        if recoverable:
+            try:
+                # Outside the lock, so trigger() emits under the same conditions as any other call.
+                # Which also means the state can move in between, hence the catch: two threads
+                # recovering at once, or a completion signal landing just as a watchdog gives up,
+                # must not turn "never raises" into a StateMachineError thrown from a `finally`.
+                return self.trigger(self.RECOVERY_EVENT)
+            except StateMachineError:
+                return self._state
+
+        # Unreachable with a well-formed table - test_every_state_can_recover pins that every state
+        # has a recovery row. Reported rather than raised, per the contract above.
+        _log.error(
+            'No %r transition out of %r, so %s cannot return to %r. The machine is stuck and the '
+            'transition table needs a recovery row for this state.',
+            self.RECOVERY_EVENT, getattr(stuck_in, 'name', stuck_in), type(self).__name__,
+            getattr(self._initial, 'name', self._initial),
+        )
+        return stuck_in
 

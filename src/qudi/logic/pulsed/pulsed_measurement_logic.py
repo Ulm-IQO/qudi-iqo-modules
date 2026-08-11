@@ -608,6 +608,46 @@ class PulsedMeasurementLogic(LogicBase):
         elif was_busy and not is_busy and self.module_state() == 'locked':
             self.module_state.unlock()
 
+    def _best_effort(self, action, description):
+        """Run one shutdown step, logging whatever it raises instead of propagating it.
+
+        Only for fault paths. The steps of a shutdown are independent - a pulse generator that has
+        stopped answering must not be the reason the microwave source stays on - so each one is
+        attempted regardless of how the previous one went.
+
+        Parameters
+        ----------
+        action : callable
+            Takes no arguments; its return value is discarded.
+        description : str
+            What was being attempted, for the log message.
+        """
+        try:
+            action()
+        except Exception:
+            self.log.exception('{0} failed while returning to idle:'.format(description))
+
+    def _return_to_idle(self):
+        """Switch everything off and put the state machine back to IDLE after a fault.
+
+        Between a transition and the hardware calls that are meant to follow it there is a window
+        where the machine says RUNNING but the instruments do not agree. Nothing in the four
+        toggle methods can be made to fail atomically - each device is switched separately - so the
+        recovery is to finish switching off whatever will still answer and then step the machine
+        home, rather than to leave it locked with no way back short of restarting the module.
+
+        Best effort throughout, and never raises: it runs from `except` blocks, where an exception
+        of its own would replace the failure being reported.
+        """
+        self._best_effort(self.sigStopTimer.emit, 'Stopping the analysis timer')
+        self._best_effort(self.fast_counter_off, 'Switching the fast counter off')
+        self._best_effort(self.pulse_generator_off, 'Switching the pulse generator off')
+        if self._settings.microwave_settings.use_ext_microwave:
+            self._best_effort(self.microwave_off, 'Switching the external microwave off')
+        # Unlocks module_state via _sync_module_state(), and is a no-op if we are already idle.
+        self._fsm.recover()
+        self.sigMeasurementStatusUpdated.emit(False, False)
+
     def _sync_measurement_clock(self, old_state, new_state):
         """Drive the elapsed-time clock from the state machine, so the two cannot disagree.
 
@@ -1438,34 +1478,43 @@ class PulsedMeasurementLogic(LogicBase):
                 self.log.warning('Unable to start pulsed measurement. Measurement already running.')
                 return
 
-            # Clear previous fits
-            self.do_fit('No Fit', False)
-            self.do_fit('No Fit', True)
+            # Everything from here on can fail against real hardware, and by this point the machine
+            # already says RUNNING and module_state is already locked. Without the rollback below a
+            # single device error leaves the toolchain believing a measurement is in progress that
+            # is not, and refusing every later start.
+            try:
+                # Clear previous fits
+                self.do_fit('No Fit', False)
+                self.do_fit('No Fit', True)
 
-            # initialize data arrays
-            self._initialize_data_arrays()
+                # initialize data arrays
+                self._initialize_data_arrays()
 
-            # recall stashed raw data
-            if self._data_stash.recall(stashed_raw_data_tag) is not None:
-                self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
-                              ''.format(stashed_raw_data_tag))
-            #On a miss, the recall method will return None,
-            #the log message will not be printed, and the active_tag is cleared internally
+                # recall stashed raw data
+                if self._data_stash.recall(stashed_raw_data_tag) is not None:
+                    self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
+                                  ''.format(stashed_raw_data_tag))
+                #On a miss, the recall method will return None,
+                #the log message will not be printed, and the active_tag is cleared internally
 
-            # start microwave source
-            if self._settings.microwave_settings.use_ext_microwave:
-                self.microwave_on()
-            # start fast counter
-            self.fast_counter_on()
-            # start pulse generator
-            self.pulse_generator_on()
+                # start microwave source
+                if self._settings.microwave_settings.use_ext_microwave:
+                    self.microwave_on()
+                # start fast counter
+                self.fast_counter_on()
+                # start pulse generator
+                self.pulse_generator_on()
 
-            # initialize analysis_timer
-            self.sigTimerUpdated.emit(self.measurement_data.elapsed_time,
-                                      self.measurement_data.elapsed_sweeps,
-                                      self._timer_interval_s)
+                # initialize analysis_timer
+                self.sigTimerUpdated.emit(self.measurement_data.elapsed_time,
+                                          self.measurement_data.elapsed_sweeps,
+                                          self._timer_interval_s)
 
-            self.sigStartTimer.emit()
+                self.sigStartTimer.emit()
+            except Exception:
+                self.log.exception('Starting the pulsed measurement failed. Switching everything '
+                                   'off again and returning to idle:')
+                self._return_to_idle()
         return
 
     @QtCore.Slot(str)
@@ -1489,20 +1538,24 @@ class PulsedMeasurementLogic(LogicBase):
                 self.log.warning('Unable to stop pulsed measurement. No measurement running.')
                 return
 
-            # stopping the timer
-            self.sigStopTimer.emit()
-            # Turn off fast counter
-            self.fast_counter_off()
-            # Turn off pulse generator
-            self.pulse_generator_off()
-            # Turn off microwave source
+            # Independently, and in this order. The machine has already reached IDLE, so a device
+            # raising here does not strand the state - but it would leave the remaining instruments
+            # live, which for the pulse generator and the microwave source is the outcome that
+            # matters. Each is therefore attempted whatever happened to the one before it.
+            self._best_effort(self.sigStopTimer.emit, 'Stopping the analysis timer')
+            self._best_effort(self.fast_counter_off, 'Switching the fast counter off')
+            self._best_effort(self.pulse_generator_off, 'Switching the pulse generator off')
             if self._settings.microwave_settings.use_ext_microwave:
-                self.microwave_off()
+                self._best_effort(self.microwave_off, 'Switching the external microwave off')
 
             # stash raw data if requested
             if stash_raw_data_tag:
-                self._data_stash.stash(stash_raw_data_tag, self.measurement_data.raw_data,
-                                       self.measurement_data.elapsed_sweeps, self.measurement_data.elapsed_time)
+                self._best_effort(
+                    lambda: self._data_stash.stash(
+                        stash_raw_data_tag, self.measurement_data.raw_data,
+                        self.measurement_data.elapsed_sweeps, self.measurement_data.elapsed_time),
+                    'Stashing the raw data'
+                )
             self._data_stash.clear_active()
 
             self.sigMeasurementStatusUpdated.emit(False, False)
@@ -1539,15 +1592,24 @@ class PulsedMeasurementLogic(LogicBase):
                 self.sigMeasurementStatusUpdated.emit(False, False)
                 return
 
-            # pausing the timer
-            if self.__analysis_timer.isActive():
-                # stopping the timer
-                self.sigStopTimer.emit()
+            try:
+                # pausing the timer
+                if self.__analysis_timer.isActive():
+                    # stopping the timer
+                    self.sigStopTimer.emit()
 
-            self.fast_counter_pause()
-            self.pulse_generator_off()
-            if self._settings.microwave_settings.use_ext_microwave:
-                self.microwave_off()
+                self.fast_counter_pause()
+                self.pulse_generator_off()
+                if self._settings.microwave_settings.use_ext_microwave:
+                    self.microwave_off()
+            except Exception:
+                # A pause that failed part-way leaves some instruments running and some not, and
+                # PAUSED would claim otherwise - resuming from there would re-issue the on() calls
+                # to whichever ones never stopped. Going all the way to idle is the only outcome
+                # that matches what the hardware is actually doing.
+                self.log.exception('Pausing the pulsed measurement failed. Stopping it instead:')
+                self._return_to_idle()
+                return
 
             self.sigMeasurementStatusUpdated.emit(True, True)
         return
@@ -1573,14 +1635,23 @@ class PulsedMeasurementLogic(LogicBase):
                 self.sigMeasurementStatusUpdated.emit(False, False)
                 return
 
-            if self._settings.microwave_settings.use_ext_microwave:
-                self.microwave_on()
-            self.fast_counter_continue()
-            self.pulse_generator_on()
+            try:
+                if self._settings.microwave_settings.use_ext_microwave:
+                    self.microwave_on()
+                self.fast_counter_continue()
+                self.pulse_generator_on()
 
-            # un-pausing the timer
-            if not self.__analysis_timer.isActive():
-                self.sigStartTimer.emit()
+                # un-pausing the timer
+                if not self.__analysis_timer.isActive():
+                    self.sigStartTimer.emit()
+            except Exception:
+                # Half-resumed, and RUNNING would claim otherwise. Falling back to PAUSED is not an
+                # option either - whatever did come back on would stay on behind a state that says
+                # it is off - so switch the lot off and go idle.
+                self.log.exception('Continuing the pulsed measurement failed. Switching everything '
+                                   'off again and returning to idle:')
+                self._return_to_idle()
+                return
 
             self.sigMeasurementStatusUpdated.emit(True, False)
         return

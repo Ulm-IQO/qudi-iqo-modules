@@ -89,6 +89,13 @@ class SampLoadStateMachine(StateMachine):
         Qt parent. Pass the owning PulsedMasterLogic so the machine dies with it.
     """
 
+    #: `abort` already is the move recover() needs, out of every state and into IDLE, so this
+    #: machine points RECOVERY_EVENT at it instead of carrying a second identical set of rows under
+    #: another name. The two callers differ only in what they know: a slot that was told the step
+    #: produced nothing calls abort(), the watchdog - which knows only that nothing came back at all
+    #: - calls recover().
+    RECOVERY_EVENT = 'abort'
+
     def __init__(self, parent=None):
         super().__init__(SampLoadState.IDLE, _TRANSITIONS, parent)
 

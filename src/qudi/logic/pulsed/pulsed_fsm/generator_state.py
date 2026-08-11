@@ -70,6 +70,16 @@ _TRANSITIONS = {
     # Pulse generator upload-speed benchmark.
     (GeneratorState.IDLE, 'start_benchmark'): GeneratorState.BENCHMARKING,
     (GeneratorState.BENCHMARKING, 'end_benchmark'): GeneratorState.IDLE,
+
+    # The recovery rows, fired by StateMachine.recover(). Note SAMPLING_SEQUENCE goes straight to
+    # IDLE rather than unwinding one level: unlike 'end_ensemble_sampling', which is a self-
+    # transition so a nested run cannot close the run around it, 'fail' means the whole activity is
+    # over. Which is why recover() belongs to whoever owns the outermost operation - a nested
+    # ensemble step must still use its paired end_ event, not this.
+    (GeneratorState.GENERATING, 'fail'): GeneratorState.IDLE,
+    (GeneratorState.SAMPLING_ENSEMBLE, 'fail'): GeneratorState.IDLE,
+    (GeneratorState.SAMPLING_SEQUENCE, 'fail'): GeneratorState.IDLE,
+    (GeneratorState.BENCHMARKING, 'fail'): GeneratorState.IDLE,
 }
 
 

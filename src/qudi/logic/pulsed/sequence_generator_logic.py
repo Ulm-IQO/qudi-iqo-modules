@@ -443,9 +443,6 @@ class SequenceGeneratorLogic(LogicBase):
         old_state, new_state : GeneratorState
             As delivered by sigStateChanged.
         """
-        # Temporary while the conversion beds in: shows the full transition sequence in the log, so
-        # a missing end_ event is visible as a state that never returns to IDLE.
-        self.log.debug(f'generator: {old_state.name} -> {new_state.name}')
         was_busy = old_state is not GeneratorState.IDLE
         is_busy = new_state is not GeneratorState.IDLE
         if is_busy and not was_busy and self.module_state() == 'idle':
@@ -734,7 +731,32 @@ class SequenceGeneratorLogic(LogicBase):
 
     @QtCore.Slot()
     def clear_pulser(self):
-        """ """
+        """Wipe the pulse generator's memory and forget every asset's sampling information.
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
+        """
+        # Same wrapper shape as the load slots: the asset notification is what re-enables the GUI's
+        # load and sample buttons, so it has to go out even on the paths that refuse or fail - and
+        # the "pulser is running" refusal below used to return without it.
+        try:
+            err = self._clear_pulser()
+        except Exception:
+            self.log.exception('Clearing the pulse generator failed with exception:')
+            err = -1
+        if err == 0:
+            # Everything was just wiped, so this is not a question for the device.
+            self.sigLoadedAssetUpdated.emit('', '')
+        else:
+            # Refused, or failed part-way through: what is still loaded is the device's to say.
+            self._emit_loaded_asset()
+        return err
+
+    def _clear_pulser(self):
+        """Body of clear_pulser(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         if self.pulsegenerator().get_status()[0] > 0:
             self.log.error('Can´t clear the pulser as it is running. Switch off the pulser and try again.')
             return -1
@@ -750,8 +772,25 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_ensemble(ens)
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
-        self.sigLoadedAssetUpdated.emit('', '')
         return 0
+
+    def _emit_loaded_asset(self):
+        """Announce whatever the pulse generator actually holds now.
+
+        The single emit point for every slot that can change what is loaded, because
+        PulsedMasterLogic's SampLoad chain has no other way out of LOADING: a load path that
+        returns without emitting strands it there and every later generate/sample/load is refused
+        as "already in progress" until the module is restarted. Reading `loaded_asset` is itself a
+        device call, so a failure there falls back to the empty asset rather than taking the
+        notification down with it.
+        """
+        try:
+            name, asset_type = self.loaded_asset
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator. '
+                               'Reporting it as empty:')
+            name, asset_type = LoadedAsset.empty()
+        self.sigLoadedAssetUpdated.emit(name, asset_type)
 
     @QtCore.Slot(str)
     @QtCore.Slot(object)
@@ -761,20 +800,42 @@ class SequenceGeneratorLogic(LogicBase):
         Parameters
         ----------
         ensemble : str or PulseBlockEnsemble
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
+        # Wrapper only: the body may fail anywhere, and sigLoadedAssetUpdated still has to go out
+        # exactly once. Catching here also keeps a hardware exception from escaping a queued slot,
+        # which Qt turns into an abort of the whole application rather than an error.
+        try:
+            return self._load_ensemble(ensemble)
+        except Exception:
+            self.log.exception('Loading of PulseBlockEnsemble "{0}" failed with exception:'
+                               ''.format(getattr(ensemble, 'name', ensemble)))
+            return -1
+        finally:
+            self._emit_loaded_asset()
+
+    def _load_ensemble(self, ensemble):
+        """Body of load_ensemble(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         # If str has been passed, get the ensemble object from saved ensembles
         if isinstance(ensemble, str):
-            ensemble = self.saved_pulse_block_ensembles[ensemble]
+            # .get(), not [ensemble]: an unknown name is a routine miss to report, not a KeyError
+            # that escapes the slot.
+            name, ensemble = ensemble, self.saved_pulse_block_ensembles.get(ensemble)
             if ensemble is None:
-                self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                return
+                self.log.error('Unable to load PulseBlockEnsemble "{0}". Not found in saved '
+                               'ensembles.'.format(name))
+                return -1
         if not isinstance(ensemble, PulseBlockEnsemble):
             self.log.error(
                 'Unable to load PulseBlockEnsemble into pulser channels.\nArgument ({0})'
                 ' is no instance of PulseBlockEnsemble.'.format(type(ensemble))
             )
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-            return
+            return -1
 
         # Check if the PulseBlockEnsemble has been sampled already.
         if ensemble.sampling_information:
@@ -787,8 +848,7 @@ class SequenceGeneratorLogic(LogicBase):
                         'found on pulse generator device.\nPlease re-generate the '
                         'PulseBlockEnsemble.'.format(waveform, ensemble.name)
                     )
-                    self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                    return
+                    return -1
 
             if self.pulsegenerator().get_status()[0] > 0:
                 self.log.error('Can´t load a waveform, because pulser running. Switch off the pulser and try again.')
@@ -813,7 +873,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.error(
                 'Loading of PulseBlockEnsemble "{0}" failed.\nIt has not been generated yet.'.format(ensemble.name)
             )
-        self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            return -1
         return 0
 
     @QtCore.Slot(str)
@@ -824,20 +884,39 @@ class SequenceGeneratorLogic(LogicBase):
         Parameters
         ----------
         sequence : str or PulseSequence
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
+        # See load_ensemble() - wrapper only, so the notification goes out exactly once and no
+        # hardware exception escapes the slot.
+        try:
+            return self._load_sequence(sequence)
+        except Exception:
+            self.log.exception('Loading of PulseSequence "{0}" failed with exception:'
+                               ''.format(getattr(sequence, 'name', sequence)))
+            return -1
+        finally:
+            self._emit_loaded_asset()
+
+    def _load_sequence(self, sequence):
+        """Body of load_sequence(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         # If str has been passed, get the sequence object from saved sequences
         if isinstance(sequence, str):
-            sequence = self.saved_pulse_sequences.get(sequence)
+            name, sequence = sequence, self.saved_pulse_sequences.get(sequence)
             if sequence is None:
-                self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                return
+                self.log.error('Unable to load PulseSequence "{0}". Not found in saved sequences.'
+                               ''.format(name))
+                return -1
         if not isinstance(sequence, PulseSequence):
             self.log.error(
                 'Unable to load PulseSequence into pulser channels.\nArgument ({0})'
                 ' is no instance of PulseSequence.'.format(type(sequence))
             )
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-            return
+            return -1
 
         # Check if the PulseSequence has been sampled already.
         if sequence.sampling_information and sequence.name in self.sampled_sequences:
@@ -850,8 +929,7 @@ class SequenceGeneratorLogic(LogicBase):
                         'found on pulse generator device.\nPlease re-generate the '
                         'PulseSequence.'.format(waveform, sequence.name)
                     )
-                    self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                    return
+                    return -1
 
             if self.pulsegenerator().get_status()[0] > 0:
                 self.log.error('Can´t load a sequence, because pulser running. Switch off the pulser and try again.')
@@ -862,7 +940,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.error(
                 'Loading of PulseSequence "{0}" failed.\nIt has not been generated yet.'.format(sequence.name)
             )
-        self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            return -1
         return 0
 
     def _read_settings_from_device(self):
@@ -1502,8 +1580,18 @@ class SequenceGeneratorLogic(LogicBase):
         predefined_sequence_name
         kwargs_dict
         """
-        gen_method = self.generate_methods[predefined_sequence_name]
-        gen_params = self.generate_method_params[predefined_sequence_name]
+        # .get(), not [name]: master's SampLoad chain leaves GENERATING only on
+        # sigPredefinedSequenceGenerated, so an unknown method name has to be reported through that
+        # signal rather than raised as a KeyError that escapes the slot and strands the chain.
+        gen_method = self.generate_methods.get(predefined_sequence_name)
+        gen_params = self.generate_method_params.get(predefined_sequence_name)
+        if gen_method is None or gen_params is None:
+            self.log.error(
+                'No predefined generate method named "{0}". Generation failed.'
+                ''.format(predefined_sequence_name)
+            )
+            self.sigPredefinedSequenceGenerated.emit(None, False)
+            return
         if 'name' not in gen_params:
             self.log.error(
                 'Mandatory generation parameter "name" not found in generate method '
@@ -1532,22 +1620,45 @@ class SequenceGeneratorLogic(LogicBase):
             self.sigPredefinedSequenceGenerated.emit(None, False)
             return
 
+        # Bound before the try so the finally can always emit, including on an exception that
+        # `except Exception` deliberately does not catch.
+        result = (None, False)
         try:
-            self._generate_predefined_sequence(predefined_sequence_name, kwargs_dict, gen_method, gen_params)
+            result = self._generate_predefined_sequence(
+                predefined_sequence_name, kwargs_dict, gen_method, gen_params
+            )
+        except Exception:
+            # The body guards the generate method itself; this catches everything after it -
+            # saving the created blocks/ensembles/sequences, and _add_default_sequence().
+            self.log.exception(
+                'Storing the objects generated by "{0}" failed with exception:'
+                ''.format(predefined_sequence_name)
+            )
         finally:
             self._fsm.end_generating()
+            # Master's SampLoad chain leaves GENERATING only on this signal, so it goes out on
+            # every path. Emitted after the release, so the generator really is idle by the time
+            # the sample request this triggers comes back in.
+            self.sigPredefinedSequenceGenerated.emit(*result)
 
     def _generate_predefined_sequence(self, predefined_sequence_name, kwargs_dict, gen_method, gen_params):
         """Body of generate_predefined_sequence(), split out so the state machine bracket around it
-        stays a plain start / try / finally with nothing in between."""
+        stays a plain start / try / finally with nothing in between.
+
+        Returns
+        -------
+        tuple
+            The `(asset_name, produced_sequence)` pair for sigPredefinedSequenceGenerated, which
+            the caller emits. Returned rather than emitted here so there is exactly one emit site
+            and it sits in the caller's `finally`.
+        """
         try:
             blocks, ensembles, sequences = gen_method(**kwargs_dict)
         except:
             self.log.exception(
                 'Generation of predefined sequence "{0}" failed with exception:'.format(predefined_sequence_name)
             )
-            self.sigPredefinedSequenceGenerated.emit(None, False)
-            return
+            return None, False
 
         # Save objects
         for block in blocks:
@@ -1584,8 +1695,7 @@ class SequenceGeneratorLogic(LogicBase):
         produced_sequence = (
             created_asset.is_sequence if created_asset is not None else len(sequences) > 0
         )
-        self.sigPredefinedSequenceGenerated.emit(created_name, produced_sequence)
-        return
+        return created_name, produced_sequence
 
     def _add_default_sequence(self, ensembles, sequences):
         if not isinstance(ensembles, (list, tuple)) or len(ensembles) < 1:
@@ -2701,8 +2811,10 @@ class SequenceGeneratorLogic(LogicBase):
             self._fsm.start_benchmark()
         except StateMachineError:
             self.log.error("Module is busy, can't sample benchmark chunk")
-            self.sigSampleEnsembleComplete.emit(None)
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            # Both notifications, exactly as on the completion path below: the GUI disabled its
+            # controls the moment the benchmark was requested and only these bring them back.
+            self.sigBenchmarkComplete.emit()
+            self._emit_loaded_asset()
             return
 
         try:
@@ -2779,8 +2891,15 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.info(f"Pulse generator benchmark finished after {i:d} chunks.")
         finally:
             self._fsm.end_benchmark()
-            self.sigSampleEnsembleComplete.emit(None)
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            # sigBenchmarkComplete, not the sigSampleEnsembleComplete(None) that used to go out
+            # here purely to unstick the GUI. Master reads a None there as "the sampling step
+            # failed", which is a claim about an operation that never ran - and there is a window,
+            # while a queued sample request is still in flight, where master says SAMPLING but the
+            # generator is idle enough for a benchmark to start.
+            self.sigBenchmarkComplete.emit()
+            # The benchmark overwrites whatever was loaded, so this is a real change, not a refresh
+            # - and if that does end a chain that was mid-load, it should: its asset is gone.
+            self._emit_loaded_asset()
 
     def _sample_load_benchmark_chunk(
         self, n_samples, waveform_name='qudi_benchmark_chunk', persistent_datapoint=False, ignore_datapoint=False

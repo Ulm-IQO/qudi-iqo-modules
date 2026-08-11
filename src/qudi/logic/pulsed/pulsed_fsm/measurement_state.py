@@ -48,6 +48,14 @@ _TRANSITIONS = {
     (MeasurementState.PAUSED, 'resume'): MeasurementState.RUNNING,
     (MeasurementState.RUNNING, 'stop'): MeasurementState.IDLE,
     (MeasurementState.PAUSED, 'stop'): MeasurementState.IDLE,
+
+    # The recovery rows, fired by StateMachine.recover(). Kept apart from 'stop' although they land
+    # in the same place: 'stop' is the user ending a measurement and the hardware is switched off in
+    # order, 'fail' is a measurement that came apart - most often a device raising between the
+    # transition and the calls that were meant to follow it. Naming them differently is what lets
+    # the log say which of the two happened.
+    (MeasurementState.RUNNING, 'fail'): MeasurementState.IDLE,
+    (MeasurementState.PAUSED, 'fail'): MeasurementState.IDLE,
 }
 
 
