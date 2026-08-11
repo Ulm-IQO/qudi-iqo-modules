@@ -177,13 +177,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
     # Internal state tracking for the SwitchInterface (21 channels, all initially off)
     _switch_states = {
-        'd_ch1':  False, 'd_ch2':  False, 'd_ch3':  False,
-        'd_ch4':  False, 'd_ch5':  False, 'd_ch6':  False,
-        'd_ch7':  False, 'd_ch8':  False, 'd_ch9':  False,
-        'd_ch10': False, 'd_ch11': False, 'd_ch12': False,
-        'd_ch13': False, 'd_ch14': False, 'd_ch15': False,
-        'd_ch16': False, 'd_ch17': False, 'd_ch18': False,
-        'd_ch19': False, 'd_ch20': False, 'd_ch21': False,
+        'd_ch0':  False, 'd_ch1':  False, 'd_ch2':  False,
+        'd_ch3':  False, 'd_ch4':  False, 'd_ch5':  False,
+        'd_ch6':  False, 'd_ch7':  False, 'd_ch8':  False,
+        'd_ch9':  False, 'd_ch10': False, 'd_ch11': False,
+        'd_ch12': False, 'd_ch13': False, 'd_ch14': False,
+        'd_ch15': False, 'd_ch16': False, 'd_ch17': False,
+        'd_ch18': False, 'd_ch19': False, 'd_ch20': False,
     }
     _channel_states = _switch_states.copy()
 
@@ -214,7 +214,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._current_pb_waveform_theoretical  = [{'active_channels': [], 'length': self.LEN_MIN}]
         self._current_pb_waveform              = [{'active_channels': [], 'length': self.LEN_MIN}]
         self._currently_loaded_waveform        = ''
-        self._current_activation_config = list(self.get_constraints().activation_config['4_ch'])
+        self._current_activation_config = list(self.get_constraints().activation_config['all'])
         self._current_activation_config.sort()
 
         # ── Library loading ───────────────────────────────────────────────────
@@ -517,14 +517,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         Must be called before any board communication. If multiple boards are
         present, call select_board() first.
-
-        FIX 8: Protected by threadlock to prevent concurrent initialization.
+        Note: No threadlock here — qudi's framework serializes module calls
+        through Qt's event loop, making explicit DLL-level locking unnecessary.
         """
-        with self.threadlock:
-            self.log.debug('Opening connection to SpinCore PulseBlaster.')
-            ret_val = self.check(self._lib.pb_init())
-            self._set_core_clock(self.SAMPLE_RATE)
-            return ret_val
+        self.log.debug('Opening connection to SpinCore PulseBlaster.')
+        ret_val = self.check(self._lib.pb_init())
+        self._set_core_clock(self.SAMPLE_RATE)
+        return ret_val
 
     def close_connection(self):
         """ End communication with the board.
@@ -532,11 +531,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return int: 0 on success, negative on failure.
 
         Any pulse program currently running will continue to run after this call.
-        FIX 8: Protected by threadlock.
         """
-        with self.threadlock:
-            self.log.debug('Closing connection to SpinCore PulseBlaster.')
-            return self.check(self._lib.pb_close())
+        self.log.debug('Closing connection to SpinCore PulseBlaster.')
+        return self.check(self._lib.pb_close())
 
     def start_programming(self):
         """ Begin a pulse program upload session.
@@ -653,15 +650,15 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @param list sequence_list: Sequence as a list of instruction dicts:
             [
-              {'active_channels': [int, ...], 'length': float},
-              ...
+            {'active_channels': [int, ...], 'length': float},
+            ...
             ]
             'active_channels' is a list of 0-based channel indices to set HIGH.
             'length' is the instruction duration in seconds.
 
         @param bool loop: If True (default), the sequence loops indefinitely by
-                          adding a BRANCH back to the first instruction at the end.
-                          If False, the sequence runs once and stops.
+                        adding a BRANCH back to the first instruction at the end.
+                        If False, the sequence runs once and stops.
 
         @return int: Address of the last written instruction, or negative on error.
 
@@ -669,98 +666,112 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         Previously they always called activate_channels() which always generates
         a BRANCH (infinite loop), silently ignoring loop=False.
 
-        FIX 8: Protected by threadlock for thread safety.
+        FIX 8 (corrected): The original FIX 8 added 'with self.threadlock:' here,
+        which caused a deadlock for single-element sequences because this method
+        called activate_channels() which also tried to acquire the same lock.
+        Removed the lock from write_pulse_form entirely — qudi serializes hardware
+        calls through Qt's event loop so explicit DLL-level locking is not needed.
+        Single-element sequences are now handled inline (without calling
+        activate_channels) to avoid any possibility of nested lock acquisition.
         """
-        with self.threadlock:
 
-            # ── Single-instruction sequence ───────────────────────────────────
-            if len(sequence_list) == 1:
-                active_channels = sequence_list[0]['active_channels']
-                length          = sequence_list[0]['length']
-                bitmask         = self._convert_to_bitmask(active_channels)
-
-                if loop:
-                    # FIX 7: loop=True → call activate_channels which creates
-                    # a BRANCH-to-self infinite loop (correct original behaviour).
-                    return self.activate_channels(
-                        ch_list=active_channels,
-                        length=length,
-                        immediate_start=False   # caller controls when to start
-                    )
-                else:
-                    # FIX 7: loop=False → write a STOP instruction instead of BRANCH.
-                    # Original code ignored loop=False entirely for single-entry sequences.
-                    self.start_programming()
-                    retval = self._write_pulse(
-                        flags=self.ON | bitmask,
-                        inst=self.STOP,
-                        inst_data=0,   # STOP ignores inst_data; pass 0 explicitly
-                        length=length
-                    )
-                    self.stop_programming()
-                    return retval
-
-            # ── Multi-instruction sequence ────────────────────────────────────
-            self.start_programming()
-
-            # Write the first instruction and record its address.
-            # For a looping sequence this address is the BRANCH target at the end.
-            start_pulse = self._convert_pulse_to_inst(
-                sequence_list[0]['active_channels'],
-                sequence_list[0]['length']
-            )
-
-            # Write all middle instructions (all entries except first and last)
-            for pulse in sequence_list[1:-1]:
-                num = self._convert_pulse_to_inst(
-                    pulse['active_channels'],
-                    pulse['length']
-                )
-                if num > 4094:  # 4094 = 2^12 - 2, the maximum instruction address
-                    self.log.error(
-                        'Instruction count {0} exceeds board maximum (4094). '
-                        'Reduce sequence length.'.format(num)
-                    )
-
-            # ── Final instruction: loop (BRANCH) or run-once (STOP) ───────────
-            active_channels = sequence_list[-1]['active_channels']
-            length          = sequence_list[-1]['length']
+        # ── Single-instruction sequence ───────────────────────────────────────
+        # FIX 8 (corrected): Do NOT call activate_channels() here.
+        # The original code called it for all single-element sequences, which
+        # caused a deadlock when FIX 8 added threadlocks to both methods.
+        # Inline the equivalent logic here instead.
+        if len(sequence_list) == 1:
+            active_channels = sequence_list[0]['active_channels']
+            length          = sequence_list[0]['length']
             bitmask         = self._convert_to_bitmask(active_channels)
 
-            # For old boards without LONG_DELAY in the terminal instruction,
-            # split a very long final pulse into a compressible part and a
-            # short remainder that will become the terminal instruction.
-            if self._use_smart_pulse_creation and length > 256 * self.GRAN_MIN:
-                self._convert_pulse_to_inst(active_channels, length - 128 * self.GRAN_MIN)
-                length = 128 * self.GRAN_MIN
+            # Ensure length meets the minimum instruction requirement
+            length = max(length, self.LEN_MIN)
 
-            # Round to the nearest valid clock cycle boundary
-            length = np.round(np.round(length / self.GRAN_MIN + 0.01) * self.GRAN_MIN, 12)
+            self.start_programming()
 
             if loop:
-                # Infinite loop: branch back to the first instruction
-                num = self._write_pulse(
+                # Infinite loop: single BRANCH-to-self instruction holds
+                # the channel pattern indefinitely
+                retval = self._write_pulse(
                     flags=self.ON | bitmask,
                     inst=self.BRANCH,
-                    inst_data=start_pulse,  # address of the first instruction
+                    inst_data=0,   # address 0: branch to this same instruction
                     length=length
                 )
             else:
-                # Run-once: halt after this instruction
-                num = self._write_pulse(
+                # FIX 7: run-once — write STOP instead of always using BRANCH
+                retval = self._write_pulse(
                     flags=self.ON | bitmask,
                     inst=self.STOP,
-                    inst_data=0,   # STOP ignores inst_data
+                    inst_data=0,
                     length=length
                 )
 
-            if num > 4094:
+            self.stop_programming()
+            return retval
+
+        # ── Multi-instruction sequence ────────────────────────────────────────
+        self.start_programming()
+
+        # Write the first instruction and record its address.
+        # For a looping sequence this address is the BRANCH target at the end.
+        start_pulse = self._convert_pulse_to_inst(
+            sequence_list[0]['active_channels'],
+            sequence_list[0]['length']
+        )
+
+        # Write all middle instructions (all entries except first and last)
+        for pulse in sequence_list[1:-1]:
+            num = self._convert_pulse_to_inst(
+                pulse['active_channels'],
+                pulse['length']
+            )
+            if num > 4094:  # 4094 = 2^12 - 2, the maximum instruction address
                 self.log.error(
-                    'Final instruction count {0} exceeds board maximum (4094).'.format(num)
+                    'Instruction count {0} exceeds board maximum (4094). '
+                    'Reduce sequence length.'.format(num)
                 )
 
-            self.stop_programming()
-            return num
+        # ── Final instruction: loop (BRANCH) or run-once (STOP) ───────────────
+        active_channels = sequence_list[-1]['active_channels']
+        length          = sequence_list[-1]['length']
+        bitmask         = self._convert_to_bitmask(active_channels)
+
+        # For old boards without LONG_DELAY in the terminal instruction,
+        # split a very long final pulse into a compressible part and a
+        # short remainder that will become the terminal instruction.
+        if self._use_smart_pulse_creation and length > 256 * self.GRAN_MIN:
+            self._convert_pulse_to_inst(active_channels, length - 128 * self.GRAN_MIN)
+            length = 128 * self.GRAN_MIN
+
+        # Round to the nearest valid clock cycle boundary
+        length = np.round(np.round(length / self.GRAN_MIN + 0.01) * self.GRAN_MIN, 12)
+
+        if loop:
+            # Infinite loop: branch back to the first instruction
+            num = self._write_pulse(
+                flags=self.ON | bitmask,
+                inst=self.BRANCH,
+                inst_data=start_pulse,  # address of the first instruction
+                length=length
+            )
+        else:
+            # Run-once: halt after this instruction
+            num = self._write_pulse(
+                flags=self.ON | bitmask,
+                inst=self.STOP,
+                inst_data=0,
+                length=length
+            )
+
+        if num > 4094:
+            self.log.error(
+                'Final instruction count {0} exceeds board maximum (4094).'.format(num)
+            )
+
+        self.stop_programming()
+        return num
 
     def _convert_pulse_to_inst(self, active_channels, length):
         """ Convert one sequence row to one (or more) board instructions.
@@ -1071,35 +1082,27 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                                     An empty list sets all channels LOW.
         @param float length:        Loop iteration period in seconds.
                                     Defaults to self.LEN_MIN if not specified.
-                                    See note below about why this value exists.
         @param bool immediate_start: If True (default), the board is reset and
                                     started immediately after programming.
 
         @return int: Address of the created instruction (normally 0).
 
         "Constantly on" is implemented by writing a single BRANCH instruction
-        that loops back to itself (instruction address 0). The board will hold
-        the specified channel pattern indefinitely. The 'length' parameter
-        sets the period of each loop iteration — it does NOT limit how long
-        the output stays high. Any value ≥ LEN_MIN is functionally equivalent;
-        LEN_MIN is used by default to minimise latency between successive
-        calls to this method.
+        that loops back to itself. The 'length' parameter sets the loop period
+        only — it does NOT limit how long the output stays high. Any value
+        >= LEN_MIN is functionally equivalent; LEN_MIN minimises latency.
 
-        FIX 3: The switch methods _set_switch_on/_set_switch_off originally
-        passed length=100 (100 seconds per loop iteration) to this function.
-        The output behaviour was technically correct (constantly on) but with
-        a 100-second loop period the board would be unresponsive to new commands
-        during most of that period. length now defaults to self.LEN_MIN.
+        FIX 3: length now defaults to self.LEN_MIN (was 100 seconds in the
+        switch methods that called this function).
 
-        FIX 6: reset_device() is now called before start(). SpinCore docs
-        state: "pb_reset() or pb_stop() must be called before pb_start() if
-        the pulse program is to be run from the beginning." Omitting reset
-        could cause the program to resume mid-instruction rather than from 0.
+        FIX 6: reset_device() is called before start() when immediate_start=True.
 
-        FIX 8: Protected by threadlock.
+        FIX 8 (corrected): Only activate_channels keeps the threadlock, as it is
+        the one method that can be called directly from an external thread via
+        the SwitchInterface (e.g., from the GUI switch panel). write_pulse_form
+        no longer calls this method, so there is no nested lock acquisition.
         """
-        # FIX 3: Use minimum instruction length as default loop period.
-        # Any value ≥ LEN_MIN produces identical "constantly on" output behaviour.
+        # FIX 3: Use minimum instruction length as default loop period
         if length is None:
             length = self.LEN_MIN
 
@@ -1110,13 +1113,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             retval = self._write_pulse(
                 flags=self.ON | bitmask,
                 inst=self.BRANCH,
-                inst_data=0,     # target address 0: branch back to this same instruction
+                inst_data=0,     # branch to address 0: self-loop
                 length=length
             )
             self.stop_programming()
 
             if immediate_start:
-                # FIX 6: Reset must precede start to guarantee execution from address 0
+                # FIX 6: reset_device() must precede start() per SpinCore docs
                 self.reset_device()
                 self.start()
 
@@ -1136,7 +1139,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def _get_switch_state(self, switch_num):
         """ Return the tracked ON/OFF state of a channel by its 1-based number.
 
-        @param int switch_num: 1-based channel number (1 = d_ch1, 2 = d_ch2 …).
+        @param int switch_num: 1-based channel number (1 = d_ch0, 2 = d_ch1 …).
         @return bool: True if ON, False if OFF.
         """
         return self._switch_states['d_ch{0}'.format(switch_num)]
@@ -1178,7 +1181,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         # Collect all channels currently tracked as ON (0-based indices for the DLL)
         ch_list = [
-            int(entry.replace('d_ch', '')) - 1
+            int(entry.replace('d_ch', ''))
             for entry in self._switch_states
             if self._switch_states[entry]
         ]
@@ -1199,7 +1202,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._switch_states['d_ch{0}'.format(switch_num)] = False
 
         ch_list = [
-            int(entry.replace('d_ch', '')) - 1
+            int(entry.replace('d_ch', ''))
             for entry in self._switch_states
             if self._switch_states[entry]
         ]
@@ -1269,9 +1272,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         # Channel activation configurations available to the sequencer logic.
         # '4_ch' is used during initialization; 'all' exposes all 21 outputs.
         activation_config = dict()
-        activation_config['4_ch'] = frozenset({'d_ch1', 'd_ch2', 'd_ch3', 'd_ch4'})
+        activation_config['4_ch'] = frozenset({'d_ch0', 'd_ch1', 'd_ch2', 'd_ch3'})
         activation_config['all']  = frozenset(
-            {'d_ch{0}'.format(i) for i in range(1, 22)}  # d_ch1 … d_ch21
+            {'d_ch{0}'.format(i) for i in range(21)}  # d_ch0 … d_ch20
         )
         constraints.activation_config = activation_config
 
@@ -1420,13 +1423,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         if low:
             low_dict = {chnl: 0.0 for chnl in low}
         else:
-            low_dict = {'d_ch{0:d}'.format(chnl + 1): 0.0 for chnl in range(21)}
+            low_dict = {'d_ch{0:d}'.format(chnl): 0.0 for chnl in range(21)}
 
         if high:
             high_dict = {chnl: 3.3 for chnl in high}
         else:
             # FIX 9: was 5.0 V here — inconsistent with constraints and specific-channel case
-            high_dict = {'d_ch{0:d}'.format(chnl + 1): 3.3 for chnl in range(21)}
+            high_dict = {'d_ch{0:d}'.format(chnl): 3.3 for chnl in range(21)}
 
         return low_dict, high_dict
 
@@ -1606,9 +1609,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
             for ch_name in ch_list:
                 if digital_samples[ch_name][index]:
-                    # Convert 'd_ch1' → 0, 'd_ch2' → 1, …, 'd_ch21' → 20
+                    # Convert 'd_ch0' → 0, 'd_ch1' → 1, …, 'd_ch20' → 20
                     temp_sequence_dict['active_channels'].append(
-                        int(ch_name.replace('d_ch', '')) - 1
+                        int(ch_name.replace('d_ch', ''))
                     )
 
             if last_sequence_dict is None:
