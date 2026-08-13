@@ -23,6 +23,7 @@ __all__ = ['LaserScanSettingsWidget', 'LaserScanSettingsDialog', 'LaserScanSetti
 
 from typing import Optional, Tuple
 from PySide2 import QtCore, QtWidgets
+from scipy.constants import speed_of_light as _SPEED_OF_LIGHT
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.scannable_laser_interface import ScannableLaserConstraints, LaserScanMode
@@ -52,6 +53,8 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
                  constraints: ScannableLaserConstraints,
                  parent: Optional[QtWidgets.QWidget] = None):
         super().__init__(parent=parent)
+
+        self._is_frequency = False
 
         self.min_spinbox = ScienDSpinBox()
         self.min_spinbox.setMinimumWidth(100)
@@ -96,17 +99,17 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
 
         self.wl_min_spinbox = ScienDSpinBox()
         self.wl_min_spinbox.setMinimumWidth(100)
-        self.wl_min_spinbox.setRange(1e-12, 1.0)  # generic wavelength range in meters
-        self.wl_min_spinbox.setSuffix('m')
+        self.wl_min_spinbox.setRange(1.0, 2000.0)  # nm (display)
+        self.wl_min_spinbox.setSuffix('nm')
         self.wl_min_spinbox.setDecimals(9)
-        self.wl_min_spinbox.setValue(500.0e-9)
+        self.wl_min_spinbox.setValue(500.0)
 
         self.wl_max_spinbox = ScienDSpinBox()
         self.wl_max_spinbox.setMinimumWidth(100)
-        self.wl_max_spinbox.setRange(1e-12, 1.0)
-        self.wl_max_spinbox.setSuffix('m')
+        self.wl_max_spinbox.setRange(1.0, 2000.0)  # nm (display)
+        self.wl_max_spinbox.setSuffix('nm')
         self.wl_max_spinbox.setDecimals(9)
-        self.wl_max_spinbox.setValue(750.0e-9)
+        self.wl_max_spinbox.setValue(750.0)
 
         self.device_bounds_radio = QtWidgets.QRadioButton()
         self.wavelength_bounds_radio = QtWidgets.QRadioButton()
@@ -210,13 +213,24 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.wavelength_bounds_radio.blockSignals(False)
 
     def update_wavelength_bounds(self, span: Tuple[float, float]) -> None:
-        lo, hi = min(span), max(span)
+        lo_si, hi_si = min(span), max(span)
+
         self.wl_min_spinbox.blockSignals(True)
         self.wl_max_spinbox.blockSignals(True)
-        self.wl_min_spinbox.setValue(lo)
-        self.wl_max_spinbox.setValue(hi)
+
+        if self._is_frequency:
+            lo_disp = (_SPEED_OF_LIGHT / hi_si) * 1e-12
+            hi_disp = (_SPEED_OF_LIGHT / lo_si) * 1e-12
+        else:
+            lo_disp = lo_si * 1e9
+            hi_disp = hi_si * 1e9
+
+        self.wl_min_spinbox.setValue(min(lo_disp, hi_disp))
+        self.wl_max_spinbox.setValue(max(lo_disp, hi_disp))
+
         self.wl_min_spinbox.blockSignals(False)
         self.wl_max_spinbox.blockSignals(False)
+
         self.__emit_wavelength_bounds()
 
     def _mode_changed(self) -> None:
@@ -232,7 +246,63 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.sigBoundarySourceChanged.emit(self.wavelength_bounds_radio.isChecked())
 
     def __emit_wavelength_bounds(self) -> None:
-        self.sigWavelengthBoundsChanged.emit((self.wl_min_spinbox.value(), self.wl_max_spinbox.value()))
+        self.sigWavelengthBoundsChanged.emit(self.get_wavelength_bounds_si())
+
+    def toggle_is_frequency(self, is_frequency: bool) -> None:
+        """Switch wavelength-bound controls between nm and THz display."""
+        is_frequency = bool(is_frequency)
+        if self._is_frequency == is_frequency:
+            return
+
+        # preserve SI values while changing display
+        lo_si, hi_si = self.get_wavelength_bounds_si()
+
+        self.wl_min_spinbox.blockSignals(True)
+        self.wl_max_spinbox.blockSignals(True)
+
+        if is_frequency:
+            # meters -> THz
+            lo_thz = (_SPEED_OF_LIGHT / hi_si) * 1e-12
+            hi_thz = (_SPEED_OF_LIGHT / lo_si) * 1e-12
+            self.wl_min_spinbox.setRange(0.01, 2000.0)
+            self.wl_max_spinbox.setRange(0.01, 2000.0)
+            self.wl_min_spinbox.setSuffix('THz')
+            self.wl_max_spinbox.setSuffix('THz')
+            self.wl_min_spinbox.setValue(min(lo_thz, hi_thz))
+            self.wl_max_spinbox.setValue(max(lo_thz, hi_thz))
+        else:
+            # THz -> nm
+            lo_nm = (_SPEED_OF_LIGHT / (hi_si if hi_si > 0 else 1e-30)) * 1e9
+            hi_nm = (_SPEED_OF_LIGHT / (lo_si if lo_si > 0 else 1e-30)) * 1e9
+            self.wl_min_spinbox.setRange(1.0, 2000.0)
+            self.wl_max_spinbox.setRange(1.0, 2000.0)
+            self.wl_min_spinbox.setSuffix('nm')
+            self.wl_max_spinbox.setSuffix('nm')
+            self.wl_min_spinbox.setValue(min(lo_nm, hi_nm))
+            self.wl_max_spinbox.setValue(max(lo_nm, hi_nm))
+
+        self.wl_min_spinbox.blockSignals(False)
+        self.wl_max_spinbox.blockSignals(False)
+
+        self._is_frequency = is_frequency
+        self.__emit_wavelength_bounds()
+
+    def get_wavelength_bounds_si(self) -> Tuple[float, float]:
+        """Return wavelength bounds in meters independent of display mode."""
+        lo = float(self.wl_min_spinbox.value())
+        hi = float(self.wl_max_spinbox.value())
+        lo, hi = min(lo, hi), max(lo, hi)
+
+        if self._is_frequency:
+            # THz -> Hz -> m (higher f means lower λ)
+            f_lo_hz = lo * 1e12
+            f_hi_hz = hi * 1e12
+            wl_hi = _SPEED_OF_LIGHT / f_lo_hz
+            wl_lo = _SPEED_OF_LIGHT / f_hi_hz
+            return min(wl_lo, wl_hi), max(wl_lo, wl_hi)
+        else:
+            # nm -> m
+            return lo * 1e-9, hi * 1e-9
 
 
 class LaserScanSettingsDialog(QtWidgets.QDialog):
@@ -264,6 +334,7 @@ class LaserScanSettingsDialog(QtWidgets.QDialog):
         self.sigWavelengthBoundsChanged = self.settings_widget.sigWavelengthBoundsChanged
         self.set_boundary_source = self.settings_widget.set_boundary_source
         self.update_wavelength_bounds = self.settings_widget.update_wavelength_bounds
+        self.toggle_is_frequency = self.settings_widget.toggle_is_frequency
 
 
 class LaserScanSettingsDockWidget(QtWidgets.QDockWidget):
@@ -284,3 +355,4 @@ class LaserScanSettingsDockWidget(QtWidgets.QDockWidget):
         self.sigWavelengthBoundsChanged = self.settings_widget.sigWavelengthBoundsChanged
         self.set_boundary_source = self.settings_widget.set_boundary_source
         self.update_wavelength_bounds = self.settings_widget.update_wavelength_bounds
+        self.toggle_is_frequency = self.settings_widget.toggle_is_frequency

@@ -268,6 +268,7 @@ class LaserScanningLogic(LogicBase):
     sigLaserScanSettingsChanged = QtCore.Signal(object)  # laser_scan_settings
     sigStabilizationTargetChanged = QtCore.Signal(object)  # laser target value
     sigStabilizationStatusChanged = QtCore.Signal(bool)  # stabilizing on/off
+    sigStabilizationConfigChanged = QtCore.Signal(dict)
     sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
     sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
     sigScanDirectionChanged = QtCore.Signal(object)  # LaserScanDirection
@@ -282,16 +283,6 @@ class LaserScanningLogic(LogicBase):
     _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
     _max_samples: int = ConfigOption(name='max_samples', default=-1)
     _laser_channel: str = ConfigOption(name='laser_channel', missing='error')
-    _stabilize_step: float = ConfigOption(name='stabilize_step', default=1e-4)  # V per step
-    _stabilize_tolerance: float = ConfigOption(name='stabilize_tolerance', default=3e-13)  # meters OR Hz (see below)
-    _stabilize_interval_ms: int = ConfigOption(name='stabilize_interval_ms', default=200)
-    _stabilize_max_steps: int = ConfigOption(name='stabilize_max_steps', default=200)
-    _stabilize_invert: bool = ConfigOption(
-        name='stabilize_invert',
-        default=False,
-        missing='warn',
-        constructor=lambda x: bool(x)
-    )
 
     # status variables
     _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs',
@@ -371,6 +362,11 @@ class LaserScanningLogic(LogicBase):
         self._stabilizing = False
         self._stabilize_target_m: Optional[float] = None
         self._stabilize_steps_used = 0
+        self._stabilize_step = 1e-4  # V per step
+        self._stabilize_tolerance = 3e-13  # meters
+        self._stabilize_interval_ms = 200
+        self._stabilize_max_steps = 200
+        self._stabilize_invert = False
 
         self._stabilize_timer = QtCore.QTimer(self)
         self._stabilize_timer.setSingleShot(False)
@@ -401,6 +397,7 @@ class LaserScanningLogic(LogicBase):
         # Emit boundary settings to GUI
         self.sigBoundarySourceChanged.emit(self._use_wavelength_bounds)
         self.sigWavelengthBoundsChanged.emit(self._wavelength_scan_span)
+        self.sigStabilizationConfigChanged.emit(self.stabilization_config)
 
         laser = self._laser()
         if laser is not None:
@@ -745,6 +742,49 @@ class LaserScanningLogic(LogicBase):
         except Exception:
             self.log.exception('Stabilization step failed; stopping stabilization.')
             self.stop_stabilization()
+
+    @property
+    def stabilization_config(self) -> Dict[str, Any]:
+        return {
+            'step': float(self._stabilize_step),
+            'tolerance': float(self._stabilize_tolerance),
+            'interval_ms': int(self._stabilize_interval_ms),
+            'max_steps': int(self._stabilize_max_steps),
+            'invert': bool(self._stabilize_invert),
+        }
+
+    def configure_stabilization(self,
+                                step: float,
+                                tolerance: float,
+                                interval_ms: int,
+                                max_steps: int,
+                                invert: bool) -> None:
+        with self._threadlock:
+            try:
+                step = float(step)
+                tolerance = float(tolerance)
+                interval_ms = int(interval_ms)
+                max_steps = int(max_steps)
+                invert = bool(invert)
+
+                if step <= 0:
+                    raise ValueError('stabilization step must be > 0')
+                if tolerance <= 0:
+                    raise ValueError('stabilization tolerance must be > 0')
+                if interval_ms < 10:
+                    raise ValueError('stabilization interval_ms must be >= 10')
+                if max_steps < 1:
+                    raise ValueError('stabilization max_steps must be >= 1')
+
+                self._stabilize_step = step
+                self._stabilize_tolerance = tolerance
+                self._stabilize_interval_ms = interval_ms
+                self._stabilize_max_steps = max_steps
+                self._stabilize_invert = invert
+
+                self._stabilize_timer.setInterval(self._stabilize_interval_ms)
+            finally:
+                self.sigStabilizationConfigChanged.emit(self.stabilization_config)
 
     def clear_data(self) -> None:
         with self._threadlock:

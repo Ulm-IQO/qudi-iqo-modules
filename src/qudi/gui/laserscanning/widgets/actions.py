@@ -42,6 +42,7 @@ class LaserScanningActions:
     action_restore_view: QtWidgets.QAction
     action_laser_only: QtWidgets.QAction
     action_show_all_data: QtWidgets.QAction
+    action_show_stabilization_configuration: QtWidgets.QAction
     
     def __init__(self):
         super().__init__()
@@ -59,6 +60,7 @@ class LaserScanningActions:
         self.action_restore_view = QtWidgets.QAction('Restore default')
         self.action_laser_only = QtWidgets.QAction('Laser-Only Mode')
         self.action_show_all_data = QtWidgets.QAction('Show all data')
+        self.action_show_stabilization_configuration = QtWidgets.QAction('Stabilization Configuration')
         # Create and set icons
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         exit_icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
@@ -78,6 +80,7 @@ class LaserScanningActions:
         self.action_start_stop_scan.setIcon(play_icon)
         self.action_clear_data.setIcon(clear_icon)
         self.action_autoscale_histogram.setIcon(scale_icon)
+        self.action_show_stabilization_configuration.setIcon(configure_icon)
         # Set tooltips
         self.action_close.setToolTip('Close window. Does NOT deactivate module.')
         self.action_save.setToolTip('Save all data')
@@ -97,6 +100,7 @@ class LaserScanningActions:
         self.action_restore_view.setToolTip('Restores default view of the window')
         self.action_laser_only.setToolTip('If checked, the measurement will record laser data only')
         self.action_show_all_data.setToolTip('Show all recorded data in the plot')
+        self.action_show_stabilization_configuration.setToolTip('Open a dialog to edit stabilization parameters.')
         # Configure checkable flags
         self.action_close.setCheckable(False)
         self.action_save.setCheckable(False)
@@ -110,3 +114,4 @@ class LaserScanningActions:
         self.action_restore_view.setCheckable(False)
         self.action_laser_only.setCheckable(True)
         self.action_show_all_data.setCheckable(False)
+        self.action_show_stabilization_configuration.setCheckable(False)

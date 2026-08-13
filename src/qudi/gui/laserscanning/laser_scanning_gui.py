@@ -136,6 +136,8 @@ class LaserScanningGui(GuiBase):
         self.sigLaserScanSettingsChanged.connect(logic.configure_laser_scan,
                                                  QtCore.Qt.QueuedConnection)
         self.sigStabilizeLaser.connect(logic.start_stabilization, QtCore.Qt.QueuedConnection)
+        self._mw.stabilization_config_dialog.sigConfigChanged.connect(logic.configure_stabilization,
+            QtCore.Qt.QueuedConnection)
         self.sigBoundarySourceChanged.connect(logic.set_boundary_source, QtCore.Qt.QueuedConnection)
         self.sigWavelengthBoundsChanged.connect(logic.configure_wavelength_scan_bounds, QtCore.Qt.QueuedConnection)
 
@@ -151,6 +153,8 @@ class LaserScanningGui(GuiBase):
         logic.sigStabilizationTargetChanged.connect(self._update_stabilization_target,
                                                     QtCore.Qt.QueuedConnection)
         logic.sigStabilizationStatusChanged.connect(self._update_stabilization_status, QtCore.Qt.QueuedConnection)
+        logic.sigStabilizationConfigChanged.connect(self._mw.stabilization_config_dialog.update_from_dict,
+            QtCore.Qt.QueuedConnection)
         logic.sigBoundarySourceChanged.connect(self._update_boundary_source, QtCore.Qt.QueuedConnection)
         logic.sigWavelengthBoundsChanged.connect(self._update_wavelength_bounds, QtCore.Qt.QueuedConnection)
         logic.sigScanDirectionChanged.connect(self._update_scan_direction, QtCore.Qt.QueuedConnection)
@@ -170,6 +174,7 @@ class LaserScanningGui(GuiBase):
         self.sigLaserTypeToggled.disconnect()
         self.sigLaserScanSettingsChanged.disconnect()
         self.sigStabilizeLaser.disconnect()
+        self._mw.stabilization_config_dialog.sigConfigChanged.disconnect(logic.configure_stabilization)
         self.sigBoundarySourceChanged.disconnect()
         self.sigWavelengthBoundsChanged.disconnect()
         # From logic
@@ -180,6 +185,8 @@ class LaserScanningGui(GuiBase):
         logic.sigLaserTypeChanged.disconnect(self._update_laser_type)
         logic.sigLaserScanSettingsChanged.disconnect(self._update_laser_scan_settings)
         logic.sigStabilizationTargetChanged.disconnect(self._update_stabilization_target)
+        logic.sigStabilizationStatusChanged.disconnect(self._update_stabilization_status)
+        logic.sigStabilizationConfigChanged.disconnect(self._mw.stabilization_config_dialog.update_from_dict)
         logic.sigBoundarySourceChanged.disconnect(self._update_boundary_source)
         logic.sigWavelengthBoundsChanged.disconnect(self._update_wavelength_bounds)
 
@@ -279,6 +286,8 @@ class LaserScanningGui(GuiBase):
         self._mw.histogram_settings.toggle_unit(is_frequency)
         if self._mw.laser_stabilization is not None:
             self._mw.laser_stabilization.toggle_is_frequency(is_frequency)
+        if self._mw.laser_scan_settings is not None:
+            self._mw.laser_scan_settings.toggle_is_frequency(is_frequency)
         self._mw.gui_actions.action_show_frequency.setChecked(is_frequency)
         if is_frequency:
             self._mw.scatter_plot.set_labels('frequency', 'time')

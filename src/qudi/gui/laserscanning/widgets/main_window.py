@@ -37,6 +37,7 @@ from qudi.gui.laserscanning.widgets.value_display import LaserValueDisplayWidget
 from qudi.gui.laserscanning.widgets.plots import HistogramPlotWidget, ScatterPlotDockWidget
 from qudi.gui.laserscanning.widgets.stabilization_control import LaserStabilizationDockWidget
 from qudi.gui.laserscanning.widgets.fit import FitControlDockWidget
+from qudi.gui.laserscanning.widgets.stabilization_config_dialog import StabilizationConfigDialog
 
 
 class _CentralWidget(QtWidgets.QWidget):
@@ -124,6 +125,7 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         # Create dialog for fit settings and link it to the fit widget
         self.fit_config_dialog = FitConfigurationDialog(parent=self,
                                                         fit_config_model=fit_config_model)
+        self.stabilization_config_dialog = StabilizationConfigDialog(parent=self)
 
         # Connect some actions
         self.gui_actions.action_close.triggered.connect(self.close)
@@ -131,6 +133,14 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.gui_actions.action_show_fit_configuration.triggered.connect(
             self.fit_config_dialog.show
         )
+        self.gui_actions.action_show_stabilization_configuration.triggered.connect(
+            self.stabilization_config_dialog.show
+        )
+
+        has_laser = laser_constraints is not None
+        self.gui_actions.action_show_stabilization_configuration.setVisible(has_laser)
+        self.gui_actions.action_show_stabilization_configuration.setEnabled(has_laser)
+
         self.restore_default()
 
     def restore_default(self) -> None:

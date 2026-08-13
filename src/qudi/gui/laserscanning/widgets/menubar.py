@@ -47,6 +47,7 @@ class LaserScanningMenuBar(QtWidgets.QMenuBar):
         menu.addAction(actions.action_show_frequency)
         menu.addSeparator()
         menu.addAction(actions.action_show_fit_configuration)
+        menu.addAction(actions.action_show_stabilization_configuration)
         menu = self.addMenu('View')
 
         menu.addAction(actions.action_show_histogram_region)
