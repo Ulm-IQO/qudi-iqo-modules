@@ -99,6 +99,8 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
                                              fit_container=fit_container)
         self.fit_control = self.fit_dock.fit_control
         if laser_constraints is None:
+            self.laser_scan_control_dock = None
+            self.laser_scan_control = None
             self.laser_scan_settings_dock = None
             self.laser_scan_settings = None
             self.laser_stabilization_dock = None

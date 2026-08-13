@@ -259,6 +259,8 @@ class LaserScanningGui(GuiBase):
         if self._mw.laser_stabilization is not None:
             safe_disconnect(self._mw.laser_stabilization.sigStabilizeLaser,
                             self._stabilize_clicked)
+            safe_disconnect(self._mw.laser_stabilization.sigStopStabilize,
+                            self._stop_stabilize_clicked)
 
     def _update_current_laser_value(self, value: float) -> None:
         """ """
