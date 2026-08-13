@@ -23,7 +23,6 @@ If not, see <https://www.gnu.org/licenses/>.
 import numpy as np
 from PySide6 import QtCore
 
-from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
@@ -73,26 +72,11 @@ class PulsedMasterLogic(LogicBase):
         connect:
             pulsedmeasurementlogic: 'pulsed_measurement_logic'
             sequencegeneratorlogic: 'sequence_generator_logic'
-        options:
-            sampload_timeout: 600
     """
 
     # declare connectors
     pulsedmeasurementlogic = Connector(interface=PulsedMeasurementLogic)
     sequencegeneratorlogic = Connector(interface=SequenceGeneratorLogic)
-
-    #: How long one step of the generate -> sample -> load chain may go without reporting back,
-    #: in seconds, before the watchdog gives up on it and returns the chain to IDLE. 0 disables it.
-    #:
-    #: A last-resort net, not a performance limit. The chain advances only on signals from the other
-    #: two modules, so a step that never reports leaves it stuck and every later operation refused -
-    #: and unlike the two worker machines there is no `finally` here that could release it, because
-    #: master is not the thread doing the work. GENERATING and SAMPLING additionally check whether
-    #: the generator is still busy and wait longer if it is, so those two cannot fire on a slow run,
-    #: however long it takes. LOADING has no such check available - the generator does not lock
-    #: itself while uploading - so raise this above the worst-case upload time for the pulse
-    #: generator in use.
-    _sampload_timeout = ConfigOption(name='sampload_timeout', default=600.0, missing='nothing')
 
     # PulsedMeasurementLogic control signals
     sigDoFit = QtCore.Signal(str, bool)
@@ -156,10 +140,14 @@ class PulsedMasterLogic(LogicBase):
     sigGeneratorStateChanged = QtCore.Signal(object, object)
     sigMeasurementStateChanged = QtCore.Signal(object, object)
 
-    # Internal signals. QTimer may only be started and stopped from the thread it lives in, and the
-    # transitions that drive the watchdog arrive from whichever thread called trigger().
-    sigStartSampLoadWatchdog = QtCore.Signal()
-    sigStopSampLoadWatchdog = QtCore.Signal()
+    #: (old_state, new_state) for master's own generate -> sample -> load chain, completing the set.
+    #: Worth relaying for one step in particular: the generator does not lock itself while uploading
+    #: to the device, so LOADING is the only activity in the toolchain that no other machine reports.
+    sigSampLoadStateChanged = QtCore.Signal(object, object)
+
+    #: reset_toolchain() has done what it can. The GUI's cue to re-derive its widget states, which
+    #: is the half of the recovery that lives up there rather than here.
+    sigToolchainReset = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         """ Create PulsedMasterLogic object with connectors.
@@ -174,11 +162,8 @@ class PulsedMasterLogic(LogicBase):
         # The generate -> sample -> load chain, the one multi-step workflow master drives itself.
         self._sampload_fsm = SampLoadStateMachine(parent=self)
         self._sampload_fsm.sigStateChanged.connect(self._sync_status_dict)
-        self._sampload_fsm.sigStateChanged.connect(self._watch_sampload_step)
-
-        # Created in on_activate(), for the same reason as PulsedMeasurementLogic's analysis timer:
-        # a QTimer built in __init__ would run in the manager thread, not this module's.
-        self.__sampload_watchdog = None
+        # Signal-to-signal: republishes every transition unchanged, no handler needed.
+        self._sampload_fsm.sigStateChanged.connect(self.sigSampLoadStateChanged)
 
         # Mirrors of the other two modules' states, kept fresh by their state-changed signals.
         self.generator_state = GeneratorState.IDLE
@@ -207,6 +192,21 @@ class PulsedMasterLogic(LogicBase):
         self.sigMeasurementStateChanged.emit(old_state, new_state)
 
     @property
+    def sampload_state(self):
+        """Where the generate -> sample -> load chain currently is.
+
+        A property rather than a mirror attribute like `generator_state`/`measurement_state`: those
+        two are mirrors because they arrive over queued signals from other modules and there is
+        nothing local to read. This machine belongs to master, so a copy would only be a second
+        thing to keep in step.
+
+        Returns
+        -------
+        SampLoadState
+        """
+        return self._sampload_fsm.state
+
+    @property
     def _generator_busy(self):
         """Whether SequenceGeneratorLogic is doing anything, asked of it directly.
 
@@ -231,50 +231,6 @@ class PulsedMasterLogic(LogicBase):
         self.status_dict.measurement_running = self.measurement_state is not MeasurementState.IDLE
         self.status_dict.loading_busy = sampload is SampLoadState.LOADING
         self.status_dict.sampload_busy = sampload is not SampLoadState.IDLE
-
-    def _watch_sampload_step(self, _old_state, new_state):
-        """Give each step of the chain its own deadline, and drop the deadline once it is over.
-
-        Connected to the chain's own sigStateChanged, so the deadline is renewed by the chain
-        making progress rather than by anyone remembering to renew it.
-
-        Parameters
-        ----------
-        _old_state, new_state : SampLoadState
-            As delivered by sigStateChanged.
-        """
-        if new_state is SampLoadState.IDLE:
-            self.sigStopSampLoadWatchdog.emit()
-        elif self._sampload_timeout > 0:
-            self.sigStartSampLoadWatchdog.emit()
-
-    @QtCore.Slot()
-    def _sampload_timed_out(self):
-        """Nothing has come back from the current step for the whole timeout. Decide and act.
-
-        Being slow is not being stuck, and the two look identical from here, so this asks the
-        generator directly before giving up on a step it is demonstrably still working on. Only
-        LOADING has no such check - see the `_sampload_timeout` note.
-        """
-        state = self._sampload_fsm.state
-        if state is SampLoadState.IDLE:
-            # Raced with the completion signal - it arrived while this was already queued.
-            return
-
-        if state in (SampLoadState.GENERATING, SampLoadState.SAMPLING) and self._generator_busy:
-            self.log.debug('Generate/sample/load step {0} has taken longer than {1} s, but the '
-                           'sequence generator is still working. Waiting another {1} s.'
-                           ''.format(state.name, self._sampload_timeout))
-            self.sigStartSampLoadWatchdog.emit()
-            return
-
-        self.log.error(
-            'No response from the {0} step of the generate/sample/load chain for {1} s. Giving up '
-            'on it and returning to idle, so the toolchain stays usable - the asset was most '
-            'likely not produced, and any earlier error in the log is the reason why.'
-            ''.format(state.name, self._sampload_timeout)
-        )
-        self._recover_sampload_chain()
 
     def _refresh_loaded_asset(self):
         """Announce what the pulse generator holds, without touching the chain.
@@ -341,10 +297,10 @@ class PulsedMasterLogic(LogicBase):
     def reset_sampload_chain(self):
         """Force the generate/sample/load chain back to IDLE.
 
-        The manual counterpart to the watchdog, for when waiting out the timeout is not worth it.
         Safe to call at any time: it is a no-op when no chain is running. It does not stop whatever
         the other modules may still be doing - it only stops master refusing new work - so check
-        the log for why the chain stalled before starting another one.
+        the log for why the chain stalled before starting another one. Most callers want
+        reset_toolchain() instead, which does this and stops the measurement too.
         """
         if self._sampload_fsm.state is SampLoadState.IDLE:
             return
@@ -352,24 +308,41 @@ class PulsedMasterLogic(LogicBase):
                          ''.format(self._sampload_fsm.state.name))
         self._recover_sampload_chain()
 
+    @QtCore.Slot()
+    def reset_toolchain(self):
+        """Return the pulsed toolchain to idle after something has gone wrong.
+
+        The escape hatch behind the GUI's Reset button, and a public slot so an unattended script
+        can call it too. Stops any measurement and releases master's generate/sample/load chain.
+        Operational state only - settings, saved assets and the pulse generator's memory are left
+        exactly as they are.
+
+        SequenceGeneratorLogic is deliberately **not** forced. It does its work synchronously in its
+        own thread, bracketed by `try/finally`, so forcing its machine to IDLE from here would leave
+        that `finally` firing an end event from a state the table has no row for - a StateMachineError
+        raised out of a `finally`, out of a queued slot, which is worse than the stall it was meant
+        to clear. It is also unnecessary: the `finally` releases it on every path it can return from.
+        If it is still busy this says so and leaves it be.
+        """
+        if self.status_dict.measurement_running:
+            self.log.warning('Toolchain reset: stopping the running measurement.')
+            # The queued path the GUI's stop button uses, rather than a direct cross-thread call.
+            self.sigToggleMeasurement.emit(False, '')
+        self.reset_sampload_chain()
+        if self._generator_busy:
+            self.log.warning(
+                'Toolchain reset: the sequence generator is still working and has been left alone - '
+                'it releases itself when it finishes. If it never does, the pulse generator has '
+                'stopped answering and only a restart of the module will clear it.'
+            )
+        self.sigToolchainReset.emit()
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
 
         # Initialize status register
         self.status_dict = PulsedMasterStatus()
-
-        # Single-shot: each step arms it once, and _watch_sampload_step() re-arms it when the chain
-        # moves on. Built here rather than in __init__ so it lives in this module's thread.
-        self.__sampload_watchdog = QtCore.QTimer()
-        self.__sampload_watchdog.setSingleShot(True)
-        self.__sampload_watchdog.setInterval(round(1000. * self._sampload_timeout))
-        self.__sampload_watchdog.timeout.connect(self._sampload_timed_out,
-                                                 QtCore.Qt.ConnectionType.QueuedConnection)
-        self.sigStartSampLoadWatchdog.connect(self.__sampload_watchdog.start,
-                                              QtCore.Qt.ConnectionType.QueuedConnection)
-        self.sigStopSampLoadWatchdog.connect(self.__sampload_watchdog.stop,
-                                             QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Connect signals controlling PulsedMeasurementLogic
         self.sigDoFit.connect(
@@ -553,12 +526,6 @@ class PulsedMasterLogic(LogicBase):
         self.sequencegeneratorlogic().sigSampleSequenceComplete.disconnect()
         self.sequencegeneratorlogic().sigLoadedAssetUpdated.disconnect()
         self.sequencegeneratorlogic().sigBenchmarkComplete.disconnect()
-        # Stopped directly rather than through sigStopSampLoadWatchdog: the queued emit would be
-        # delivered after this module has gone, if at all.
-        self.__sampload_watchdog.stop()
-        self.__sampload_watchdog.timeout.disconnect()
-        self.sigStartSampLoadWatchdog.disconnect()
-        self.sigStopSampLoadWatchdog.disconnect()
         return
 
     #######################################################################
@@ -1069,8 +1036,20 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(object)
     def sample_ensemble_finished(self, ensemble):
         self.sigSampleEnsembleComplete.emit(ensemble)
-        # Not ours to advance if a sequence run is sampling its constituent ensembles.
-        if self._sampload_fsm.state is SampLoadState.SAMPLING:
+        # Both halves are needed, and they answer different questions. The chain being in SAMPLING
+        # says master is running a sample-and-load; `sampling_sequence_busy` says the generator is
+        # part-way through a PulseSequence and this completion is one of its constituent ensembles,
+        # announced by the same signal (sample_pulse_block_ensemble() emits it whether it was called
+        # standalone or from the sequence loop). Advancing on one of those would load a constituent
+        # ensemble and leave the sequence itself never loaded, because the chain would already have
+        # left SAMPLING by the time sample_sequence_finished() arrived.
+        #
+        # The flag is derived from the generator mirror, which lags a queued hop in general but not
+        # here: sigGeneratorStateChanged and sigSampleEnsembleComplete are both queued from the
+        # generator's thread to this one, so Qt delivers them in emission order and the mirror has
+        # already been updated by the time this runs.
+        if (self._sampload_fsm.state is SampLoadState.SAMPLING
+                and not self.status_dict.sampling_sequence_busy):
             if ensemble is None:
                 self._sampload_fsm.abort()
                 self._refresh_loaded_asset()
@@ -1139,6 +1118,19 @@ class PulsedMasterLogic(LogicBase):
                 self.load_sequence(sequence.name)
         return
 
+    def _abort_own_sampling_chain(self):
+        """End the chain if this refusal is the tail of a sample-and-load we ourselves started.
+
+        The distinction the two refusals in the load slots turn on. A chain in SAMPLING got there
+        because sample_ensemble()/sample_sequence() put it there, and the load being refused now is
+        the step that was going to end it - so nothing else ever will, and leaving it running blocks
+        every later operation and keeps the GUI's run/stop action disabled until the module is
+        restarted. A chain in GENERATING or LOADING belongs to an operation still in flight, which
+        is the case the sibling `_enter_loading()` refusal deliberately leaves alone.
+        """
+        if self._sampload_fsm.state is SampLoadState.SAMPLING:
+            self._sampload_fsm.abort()
+
     def _enter_loading(self, asset_name):
         """Move into the LOADING step, continuing a sample-and-load chain or starting a fresh one.
 
@@ -1159,13 +1151,16 @@ class PulsedMasterLogic(LogicBase):
 
     @QtCore.Slot(str)
     def load_ensemble(self, ensemble_name):
-        # Both refusals below refresh the GUI without going through loaded_asset_updated(), which
-        # would finish() the chain. On the second one that chain is precisely the one still running
-        # that caused the refusal, and ending it here would turn a GenSampLo into a bare generate
-        # with nothing to show for the difference.
+        # Neither refusal below goes through loaded_asset_updated(): that would finish() whatever
+        # chain happens to be running, and on the second refusal that is precisely the chain still
+        # in flight which caused the refusal - ending it there would turn a GenSampLo into a bare
+        # generate with nothing to show for the difference. They differ in what they do about the
+        # chain instead. The first is the tail of a sample-and-load of our own, so it ends it (see
+        # _abort_own_sampling_chain); the second belongs to someone else, so it leaves it alone.
         if self.status_dict.measurement_running:
             self.log.error('Loading of ensemble not possible while measurement is running.\n'
                            'PulseBlockEnsemble "{0}" not loaded!'.format(ensemble_name))
+            self._abort_own_sampling_chain()
             self._refresh_loaded_asset()
             return
         if not self._enter_loading(ensemble_name):
@@ -1184,6 +1179,7 @@ class PulsedMasterLogic(LogicBase):
         if self.status_dict.measurement_running:
             self.log.error('Loading of sequence not possible while measurement is running.\n'
                            'PulseSequence "{0}" not loaded!'.format(sequence_name))
+            self._abort_own_sampling_chain()
             self._refresh_loaded_asset()
             return
         if not self._enter_loading(sequence_name):

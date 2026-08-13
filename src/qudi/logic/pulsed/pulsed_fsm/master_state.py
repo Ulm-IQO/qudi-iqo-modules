@@ -92,8 +92,8 @@ class SampLoadStateMachine(StateMachine):
     #: `abort` already is the move recover() needs, out of every state and into IDLE, so this
     #: machine points RECOVERY_EVENT at it instead of carrying a second identical set of rows under
     #: another name. The two callers differ only in what they know: a slot that was told the step
-    #: produced nothing calls abort(), the watchdog - which knows only that nothing came back at all
-    #: - calls recover().
+    #: produced nothing calls abort(), while reset_toolchain() - which knows only that the user has
+    #: given up on whatever the chain was doing - calls recover().
     RECOVERY_EVENT = 'abort'
 
     def __init__(self, parent=None):

@@ -194,8 +194,8 @@ class StateMachine(QtCore.QObject):
         operation raised part-way through, or a step the machine was waiting on never reported back.
         Where `trigger()` is strict so that a mistake is loud, `recover()` is deliberately the
         opposite - idempotent, and it never raises. It is called from `except`/`finally` blocks and
-        from watchdogs, where an exception of its own would mask the failure being recovered from
-        and strand the machine anyway.
+        from operator-driven resets, where an exception of its own would mask the failure being
+        recovered from and strand the machine anyway.
 
         The move itself is still an ordinary table lookup of `RECOVERY_EVENT`, so recovery is as
         auditable as every other transition, and `sigStateChanged` fires normally - which is what
@@ -218,7 +218,7 @@ class StateMachine(QtCore.QObject):
             try:
                 # Outside the lock, so trigger() emits under the same conditions as any other call.
                 # Which also means the state can move in between, hence the catch: two threads
-                # recovering at once, or a completion signal landing just as a watchdog gives up,
+                # recovering at once, or a completion signal landing just as a reset goes through,
                 # must not turn "never raises" into a StateMachineError thrown from a `finally`.
                 return self.trigger(self.RECOVERY_EVENT)
             except StateMachineError:
