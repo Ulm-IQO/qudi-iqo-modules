@@ -115,9 +115,7 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
             )
             self.laser_scan_settings = self.laser_scan_settings_dock.settings_widget
             self.laser_stabilization_dock = LaserStabilizationDockWidget(
-                f'{self.windowTitle()} - Stabilization',
-                unit=laser_constraints.unit,
-                constraint=laser_constraints.value
+                f'{self.windowTitle()} - Stabilization'
             )
             self.laser_stabilization = self.laser_stabilization_dock.control_widget
 

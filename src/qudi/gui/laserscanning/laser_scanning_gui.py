@@ -135,7 +135,7 @@ class LaserScanningGui(GuiBase):
         self.sigLaserTypeToggled.connect(logic.toggle_laser_type, QtCore.Qt.QueuedConnection)
         self.sigLaserScanSettingsChanged.connect(logic.configure_laser_scan,
                                                  QtCore.Qt.QueuedConnection)
-        self.sigStabilizeLaser.connect(logic.stabilize_laser, QtCore.Qt.QueuedConnection)
+        self.sigStabilizeLaser.connect(logic.start_stabilization, QtCore.Qt.QueuedConnection)
         self.sigBoundarySourceChanged.connect(logic.set_boundary_source, QtCore.Qt.QueuedConnection)
         self.sigWavelengthBoundsChanged.connect(logic.configure_wavelength_scan_bounds, QtCore.Qt.QueuedConnection)
 
@@ -150,6 +150,7 @@ class LaserScanningGui(GuiBase):
                                                   QtCore.Qt.QueuedConnection)
         logic.sigStabilizationTargetChanged.connect(self._update_stabilization_target,
                                                     QtCore.Qt.QueuedConnection)
+        logic.sigStabilizationStatusChanged.connect(self._update_stabilization_status, QtCore.Qt.QueuedConnection)
         logic.sigBoundarySourceChanged.connect(self._update_boundary_source, QtCore.Qt.QueuedConnection)
         logic.sigWavelengthBoundsChanged.connect(self._update_wavelength_bounds, QtCore.Qt.QueuedConnection)
         logic.sigScanDirectionChanged.connect(self._update_scan_direction, QtCore.Qt.QueuedConnection)
@@ -237,6 +238,7 @@ class LaserScanningGui(GuiBase):
             )
         if self._mw.laser_stabilization is not None:
             self._mw.laser_stabilization.sigStabilizeLaser.connect(self._stabilize_clicked)
+            self._mw.laser_stabilization.sigStopStabilize.connect(self._stop_stabilize_clicked)
 
     def __disconnect_widgets(self) -> None:
         def safe_disconnect(signal, handler):
@@ -273,6 +275,8 @@ class LaserScanningGui(GuiBase):
             unit = self._mw.histogram_plot.units[1]
         self._mw.current_laser_display.toggle_is_frequency(is_frequency)
         self._mw.histogram_settings.toggle_unit(is_frequency)
+        if self._mw.laser_stabilization is not None:
+            self._mw.laser_stabilization.toggle_is_frequency(is_frequency)
         self._mw.gui_actions.action_show_frequency.setChecked(is_frequency)
         if is_frequency:
             self._mw.scatter_plot.set_labels('frequency', 'time')
@@ -458,6 +462,15 @@ class LaserScanningGui(GuiBase):
         if widget is not None:
             widget.set_target(value)
 
+    @QtCore.Slot(bool)
+    def _update_stabilization_status(self, stabilizing: bool) -> None:
+        # Update stabilize button state
+        if self._mw.laser_stabilization is not None:
+            self._mw.laser_stabilization.set_stabilizing(stabilizing)
+
+        # Disable scanning while stabilizing
+        self._mw.gui_actions.action_start_stop_scan.setEnabled(not stabilizing)
+
     def _start_stop_scan_clicked(self):
         start = self._mw.gui_actions.action_start_stop_scan.isChecked()
         if start:
@@ -532,6 +545,7 @@ class LaserScanningGui(GuiBase):
             self.sigStartDataAcquisition.emit(laser_only)
         else:
             self.sigStopDataAcquisition.emit()
+            self._laser_scanning_logic().stop_stabilization()
 
     def _show_region_clicked(self) -> None:
         if self._mw.gui_actions.action_show_histogram_region.isChecked():
@@ -572,6 +586,18 @@ class LaserScanningGui(GuiBase):
         self.sigLaserTypeToggled.emit(self._mw.gui_actions.action_show_frequency.isChecked())
 
     def _stabilize_clicked(self, target: float) -> None:
-        # Emit laser scan settings before starting
+        # Require recording to be running (wavemeter stream)
+        laser_scanning, data_acquiring, _ = self._laser_scanning_logic().scan_state
+        if not data_acquiring:
+            # revert the toggle and warn (no exception)
+            if self._mw.laser_stabilization is not None:
+                self._mw.laser_stabilization.set_stabilizing(False)
+            self.log.warning('Start recording before enabling stabilization.')
+            return
+
+        # Emit scan settings before starting (kept)
         self._laser_scan_settings_edited()
         self.sigStabilizeLaser.emit(target)
+
+    def _stop_stabilize_clicked(self) -> None:
+        self._laser_scanning_logic().stop_stabilization()

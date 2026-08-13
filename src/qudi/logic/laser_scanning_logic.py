@@ -267,6 +267,7 @@ class LaserScanningLogic(LogicBase):
     sigHistogramSettingsChanged = QtCore.Signal(tuple, int)  # span, bins
     sigLaserScanSettingsChanged = QtCore.Signal(object)  # laser_scan_settings
     sigStabilizationTargetChanged = QtCore.Signal(object)  # laser target value
+    sigStabilizationStatusChanged = QtCore.Signal(bool)  # stabilizing on/off
     sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
     sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
     sigScanDirectionChanged = QtCore.Signal(object)  # LaserScanDirection
@@ -281,6 +282,16 @@ class LaserScanningLogic(LogicBase):
     _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
     _max_samples: int = ConfigOption(name='max_samples', default=-1)
     _laser_channel: str = ConfigOption(name='laser_channel', missing='error')
+    _stabilize_step: float = ConfigOption(name='stabilize_step', default=1e-4)  # V per step
+    _stabilize_tolerance: float = ConfigOption(name='stabilize_tolerance', default=3e-13)  # meters OR Hz (see below)
+    _stabilize_interval_ms: int = ConfigOption(name='stabilize_interval_ms', default=200)
+    _stabilize_max_steps: int = ConfigOption(name='stabilize_max_steps', default=200)
+    _stabilize_invert: bool = ConfigOption(
+        name='stabilize_invert',
+        default=False,
+        missing='warn',
+        constructor=lambda x: bool(x)
+    )
 
     # status variables
     _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs',
@@ -356,6 +367,15 @@ class LaserScanningLogic(LogicBase):
         self._laser_supervisor_timer.setInterval(200)  # ms, same default as hardware used
         self._laser_supervisor_timer.timeout.connect(self._supervise_laser, QtCore.Qt.QueuedConnection)
         self._current_direction: LaserScanDirection = LaserScanDirection.UP
+
+        self._stabilizing = False
+        self._stabilize_target_m: Optional[float] = None
+        self._stabilize_steps_used = 0
+
+        self._stabilize_timer = QtCore.QTimer(self)
+        self._stabilize_timer.setSingleShot(False)
+        self._stabilize_timer.setInterval(int(self._stabilize_interval_ms))
+        self._stabilize_timer.timeout.connect(self._stabilize_tick, QtCore.Qt.QueuedConnection)
 
     def on_activate(self):
         if self._laser_channel not in self.streamer_constraints.channel_units:
@@ -553,6 +573,7 @@ class LaserScanningLogic(LogicBase):
                 finally:
                     self.__data_acquiring = False
             self.sigStatusChanged.emit(*self.scan_state)
+            self.stop_stabilization()
 
     def start_laser_scan(self) -> None:
         """Start the laser scan and logic-side supervision."""
@@ -613,14 +634,117 @@ class LaserScanningLogic(LogicBase):
 
             self.sigStatusChanged.emit(*self.scan_state)
 
-    def stabilize_laser(self, target: float) -> None:
-        """ Move laser to target value and stabilize until further instructions """
-        with self._threadlock:
-            with threaded_exception_watchdog(self.log):
-                laser = self._laser()
-                if laser is not None:
-                    laser.scan_to(target, blocking=True)
-                    self.sigStabilizationTargetChanged.emit(target)
+    def start_stabilization(self, target_si: float) -> None:
+        """
+        target_si: coming from GUI. Interpreted based on GUI mode there, BUT we will
+        convert to wavelength meters and stabilize in wavelength space only.
+        """
+        if self._laser() is None:
+            self.log.warning('No laser connected; cannot stabilize.')
+            return
+
+        # Must already be recording (wavemeter stream must be running)
+        if not self.__data_acquiring:
+            self.log.warning('Start recording before enabling stabilization.')
+            return
+
+        # Convert target to wavelength meters ALWAYS
+        # If GUI is in frequency mode, it likely sent Hz; if not, it sent meters.
+        # Use your existing "laser_is_frequency" to interpret target input,
+        # but store target in meters regardless.
+        if self.__laser_is_frequency:
+            target_hz = float(target_si)
+            if target_hz <= 0:
+                self.log.warning('Invalid target frequency.')
+                return
+            target_m = _SPEED_OF_LIGHT / target_hz
+        else:
+            target_m = float(target_si)
+
+        self._stabilize_target_m = target_m
+        self.sigStabilizationTargetChanged.emit(target_m)  # GUI will display according to mode
+
+        self._stabilize_steps_used = 0
+        self._stabilizing = True
+        self.sigStabilizationStatusChanged.emit(True)
+        self._stabilize_timer.start()
+
+    def stop_stabilization(self) -> None:
+        if not self._stabilizing:
+            return
+        self._stabilizing = False
+        try:
+            self._stabilize_timer.stop()
+        except Exception:
+            pass
+        self.sigStabilizationStatusChanged.emit(False)
+
+    def _latest_wavemeter_wavelength_m(self) -> Optional[float]:
+        # assumes your buffer keeps wavelength_data in meters
+        wl = self._data_buffer.wavelength_data
+        if wl.size == 0:
+            return None
+        v = float(wl[-1])
+        return v if np.isfinite(v) else None
+
+    @QtCore.Slot()
+    def _stabilize_tick(self) -> None:
+        if not self._stabilizing:
+            return
+        if not self.__data_acquiring:
+            # acquisition stopped -> stop stabilization silently
+            self.stop_stabilization()
+            return
+        if self._stabilize_target_m is None:
+            self.stop_stabilization()
+            return
+
+        cur_m = self._latest_wavemeter_wavelength_m()
+        if cur_m is None:
+            # no data yet -> just wait
+            return
+
+        err_m = cur_m - self._stabilize_target_m
+
+        # Always interpret tolerance in meters
+        tol_m = float(self._stabilize_tolerance)
+
+        if abs(err_m) <= tol_m:
+            # reached tolerance -> reset step budget
+            self._stabilize_steps_used = 0
+            return
+
+        if self._stabilize_steps_used >= int(self._stabilize_max_steps):
+            self.log.warning('Stabilization max steps reached; stopping stabilization.')
+            self.stop_stabilization()
+            return
+
+        laser = self._laser()
+        if laser is None:
+            self.stop_stabilization()
+            return
+        if laser.module_state() != 'idle':
+            # don't fight with scanning; just skip this tick
+            return
+
+        # Determine which way to move in VOLTAGE based on wavelength error sign.
+        # You must define the polarity:
+        # - If increasing voltage increases wavelength, then:
+        #   err_m > 0 (too high wavelength) => move voltage DOWN
+        # - If inverted, flip with _stabilize_invert
+        polarity = -1.0 if err_m > 0 else +1.0
+        if self._stabilize_invert:
+            polarity *= -1.0
+
+        step_v = float(self._stabilize_step) * polarity
+
+        try:
+            v_now = float(laser.get_scan_position())  # SirahMatisseCommanderLaser provides this
+            laser.scan_to(v_now + step_v, blocking=False)
+            self._stabilize_steps_used += 1
+        except Exception:
+            self.log.exception('Stabilization step failed; stopping stabilization.')
+            self.stop_stabilization()
 
     def clear_data(self) -> None:
         with self._threadlock:
