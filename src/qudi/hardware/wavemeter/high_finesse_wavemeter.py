@@ -69,7 +69,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     # declare signals
     sigNewWavelength = QtCore.Signal(object)
 
-    _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
+    _proxy = Connector(name='proxy', interface=HighFinesseProxy)
 
     # config options
     _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(
@@ -98,10 +98,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._timestamp_buffer: Optional[np.ndarray] = None
         self._current_buffer_position = 0
         self._buffer_overflow = False
-
-        # channel activity
-        self._hf_active_set: set[int] = set()
-        self._inactive_placeholder_value: float = 1.0
 
         # stored hardware constraints
         self._constraints: Optional[DataInStreamConstraints] = None
@@ -144,7 +140,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
         )
 
     def on_deactivate(self) -> None:
-        self.stop_stream()
+        if self.module_state() == 'locked':
+            self.stop_stream()
 
         # free memory
         self._data_buffer = None
@@ -157,11 +154,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
-        # Snapshot the currently active switch channels in the HF GUI
-        try:
-            self._hf_active_set = set(self._proxy().get_active_channels())
-        except Exception:
-            self._hf_active_set = set()
         with self._lock:
             if self.module_state() == 'idle':
                 self.module_state.lock()
@@ -212,16 +204,12 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """
         self._validate_buffers(data_buffer, timestamp_buffer)
 
-        # wait until requested number of samples is available and raise TimeoutError after 3 seconds
-        start_time = time.time()
+        # wait until requested number of samples is available
         while self.available_samples < samples_per_channel:
             if self.module_state() != 'locked':
                 break
             # wait for 10 ms
             time.sleep(0.01)
-            elapsed_time = time.time() - start_time
-            if elapsed_time > 3:
-                raise TimeoutError('Waiting for samples took longer than 3 seconds.')
 
         with self._lock:
             if self.module_state() != 'locked':
@@ -425,26 +413,12 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self._wm_start_time is None:
                 # set the timing offset to the start of the stream
                 self._wm_start_time = timestamp
+
+            if i != self._current_buffer_position % number_of_channels:
+                # discard the sample if a sample was missed before and the buffer position is off
+                return
+
             timestamp -= self._wm_start_time
-
-            # Advance the interleave position
-            # Only fill placeholders for channels that are inactive in the HF interface.
-            # For HF-active channels: discard out-of-order callbacks.
-            expected_index = self._current_buffer_position % number_of_channels
-            while expected_index != i:
-                expected_ch = self._active_switch_channels[expected_index]
-                if expected_ch not in self._hf_active_set:
-                    self._data_buffer[self._current_buffer_position] = self._inactive_placeholder_value
-                    if expected_index == 0:
-                        # Set a timestamp for the first slot in each interleave group
-                        self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
-                    self._current_buffer_position += 1
-                    expected_index = self._current_buffer_position % number_of_channels
-                    current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
-                else:
-                    # The missing slot is for an HF-active channel; this callback is out-of-order. Discard it.
-                    return
-
             # insert the new data into the buffers
             self._data_buffer[self._current_buffer_position] = converted_value
             if i == 0:
