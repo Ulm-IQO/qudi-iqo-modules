@@ -73,6 +73,7 @@ awg_pb_interfuse:
 """
 
 from math import gcd
+import time
 import numpy as np
 
 from qudi.core.connector import Connector
@@ -473,25 +474,86 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Start combined output with correct device ordering.
 
-        trigger_master = 'pulseblaster':
-          1. Arm AWG  (TRIG mode → status 2, waiting for trigger edge)
-          2. Start PB (its TTL output fires the AWG trigger)
+        Before arming either device:
+          1. Verify the AWG has a waveform loaded (non-empty get_loaded_assets).
+             OUTPUT:STATE ON generates error E11203 if no waveform is assigned,
+             which happens on the very first run after AWG power-on or after
+             activation before any waveform has been uploaded.
+          2. Drain the AWG error queue so that stale events from previous
+             sessions (e.g. the persistent '-500 Power on' event) do not
+             appear as alarming log messages during normal operation.
 
-        trigger_master = 'awg':
-          1. Arm PB
-          2. Start AWG (its output fires the PB trigger)
+        Ordering:
+          trigger_master = 'pulseblaster':
+            1. Arm AWG  (TRIG mode → status 2, waiting for trigger edge)
+            2. Start PB (its TTL output fires the AWG trigger)
 
-        @return int: status code from the master device.
+          trigger_master = 'awg':
+            1. Arm PB
+            2. Start AWG (its output fires the PB trigger)
+
+        @return int: status code from the master device, or -1 on timeout.
         """
-        master = str(self._trigger_master).lower()
+        master   = str(self._trigger_master).lower()
+        timeout  = 10.0
+        interval = 0.25
 
+        # ── Step 1: Wait for AWG to have a waveform loaded ────────────────────
+        # poll get_loaded_assets() until the AWG reports at least one channel
+        # with a non-empty waveform name. This prevents E11203 errors from
+        # OUTPUT:STATE ON when the channel has nothing assigned.
+        elapsed = 0.0
+        while True:
+            loaded, _ = self.awg().get_loaded_assets()
+
+            # loaded is e.g. {1: 'rabi', 2: 'rabi'} — all values must be non-empty
+            if loaded and all(v for v in loaded.values()):
+                break
+
+            if elapsed >= timeout:
+                self.log.error(
+                    'pulser_on: AWG reports no loaded waveform after {0:.1f}s.\n'
+                    'Upload and load a waveform before starting the experiment.'
+                    ''.format(timeout)
+                )
+                return -1
+
+            self.log.debug(
+                'pulser_on: waiting for AWG waveform to be ready '
+                '({0:.1f}s elapsed)...'.format(elapsed)
+            )
+            time.sleep(interval)
+            elapsed += interval
+
+        # ── Step 2: Drain AWG error queue before arming ───────────────────────
+        # The AWG stores a '-500 Power on' event persistently across sessions.
+        # _configure_trigger_mode() calls get_errors() which would surface this
+        # and all E11203 errors accumulated from earlier failed OUTPUT:STATE ON
+        # attempts. Clear the queue now so those stale events do not mislead.
+        try:
+            self.awg().get_errors()
+        except Exception as exc:
+            self.log.debug(
+                'pulser_on: could not drain AWG error queue: {0}'.format(exc)
+            )
+
+        # ── Step 3: Arm and start in the correct order ────────────────────────
         if master == 'pulseblaster':
+            # Arm AWG first so it is already waiting when PB fires the trigger.
+            # If AWG is armed after PB starts, the first trigger edge may be missed.
             awg_status = self.awg().pulser_on()
             self.log.debug('AWG armed, status={0}.'.format(awg_status))
-            pb_status  = self.pulseblaster().pulser_on()
+
+            # Brief settle: ensures AWG has fully entered TRIG-armed state (status=2)
+            # before the PulseBlaster starts cycling and fires the first edge.
+            time.sleep(0.1)
+
+            pb_status = self.pulseblaster().pulser_on()
             self.log.debug('PulseBlaster started, status={0}.'.format(pb_status))
+
         else:
             pb_status  = self.pulseblaster().pulser_on()
+            time.sleep(0.1)
             awg_status = self.awg().pulser_on()
 
         return self.get_status()[0]
