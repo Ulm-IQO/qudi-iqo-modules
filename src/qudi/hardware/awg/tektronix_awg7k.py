@@ -52,9 +52,15 @@ class AWG7k(PulserInterface):
             # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
             # ftp_login: 'anonymous' # optional, the username for ftp login
             # ftp_passwd: 'anonymous@' # optional, the password for ftp login
-            # use_external_trigger: False  # optional, default False
-            # trigger_level: 0.5          # optional, trigger threshold in Volts
-            # trigger_slope: 'POS'        # optional, 'POS' or 'NEG'
+            #
+            # run_mode: 'CONT'   # default — free-running, starts immediately on pulser_on()
+            # run_mode: 'TRIG'   # single shot — one trigger edge fires waveform once
+            # run_mode: 'GAT'    # gated — output runs only while gate signal is high
+            #
+            # Only needed when run_mode is 'TRIG' or 'GAT':
+            # trigger_level: 0.5       # detection threshold in Volts
+            # trigger_slope: 'POS'     # 'POS' rising edge  |  'NEG' falling edge
+            # trigger_impedance: '50OHM'  # '50OHM'  |  '1KOHM''
 
     """
 
@@ -68,7 +74,7 @@ class AWG7k(PulserInterface):
     _username = ConfigOption(name='ftp_login', default='anonymous', missing='warn')
     _password = ConfigOption(name='ftp_passwd', default='anonymous@', missing='warn')
     _visa_timeout = ConfigOption(name='timeout', default=30, missing='nothing')
-    _use_external_trigger = ConfigOption(name='use_external_trigger', default=False, missing='nothing')
+    _run_mode_config = ConfigOption(name='run_mode', default='CONT', missing='nothing') # 'CONT', 'TRIG', or 'GAT'
     _trigger_level = ConfigOption(name='trigger_level', default=0.5, missing='nothing')
     _trigger_slope = ConfigOption(name='trigger_slope', default='POS', missing='nothing')
     _trigger_impedance = ConfigOption(name='trigger_impedance', default='50OHM', missing='nothing')
@@ -327,13 +333,22 @@ class AWG7k(PulserInterface):
         """
         Switches the pulsing device on.
 
-        If use_external_trigger is True the AWG is armed in TRIG mode and
-        waits for a hardware edge on the rear-panel TRIGGER INPUT BNC.
-        The log will confirm the armed state (status 2) or explain why
-        the trigger is not being recognised.
+        Behaviour depends on the 'run_mode' config option:
+            'CONT' — starts output immediately (original behaviour)
+            'TRIG' — arms the AWG; one trigger edge fires the waveform once
+            'GAT'  — arms the AWG; output runs while the gate signal is high
 
-        @return int: error code (0:OK, -1:error, ...)
+        @return int: error code (0:OK, -1:error, higher number = current device status)
         """
+        # Validate run_mode config value once, here, so errors are caught early
+        mode = str(self._run_mode_config).upper()
+        if mode not in ('CONT', 'TRIG', 'GAT'):
+            self.log.error(
+                'Invalid run_mode "{0}" in config. '
+                'Must be CONT, TRIG or GAT. Falling back to CONT.'.format(mode)
+            )
+            mode = 'CONT'
+
         chnl_activation = self.get_active_channels()
         channel_numbers = sorted(
             int(chnl.split('_ch')[1]) for chnl in chnl_activation
@@ -341,17 +356,24 @@ class AWG7k(PulserInterface):
         )
 
         if not self._is_output_on():
-            # Enable channel outputs first
+            # Enable channel outputs first regardless of run mode
             for ch in channel_numbers:
                 self.write('OUTPUT{0}:STATE ON'.format(ch))
 
-            if self._use_external_trigger:
-                # Configure trigger THEN arm
-                self._configure_external_trigger()
+            if mode == 'CONT':
+                # Original behaviour — start immediately
+                self.write('AWGC:RUN')
+                while not self._is_output_on():
+                    time.sleep(0.2)
+
+            else:
+                # TRIG or GAT — configure hardware then arm
+                # AWG will NOT output until a hardware signal arrives
+                self._configure_trigger_mode(mode)
                 self.write('AWGC:RUN')
 
-                # Wait for armed state
-                #   status 0 = stopped, 1 = running, 2 = waiting for trigger
+                # Wait until AWG reaches armed state
+                # status 0 = stopped, 1 = running, 2 = armed/waiting for trigger or gate
                 timeout = 5.0
                 elapsed = 0.0
                 while self.get_status()[0] not in (1, 2):
@@ -359,24 +381,32 @@ class AWG7k(PulserInterface):
                     elapsed += 0.2
                     if elapsed >= timeout:
                         self.log.error(
-                            'AWG failed to arm after {0}s. '
-                            'Check VISA connection and trigger config.'.format(timeout)
-                            )
+                            'AWG failed to arm after {0}s in {1} mode. '
+                            'Check VISA connection and trigger config.'.format(timeout, mode)
+                        )
                         break
 
-                self.log.info(
-                    'AWG armed and waiting for external trigger '
-                    '(level={0}V, slope={1}, impedance={2}).'
-                    ''.format(self._trigger_level,
-                                self._trigger_slope,
-                                self._trigger_impedance)
-                                )
-                
-            else:
-                # Original behaviour: start immediately
-                self.write('AWGC:RUN')
-                while not self._is_output_on():
-                    time.sleep(0.2)
+                final_status = self.get_status()[0]
+                if final_status == 2:
+                    self.log.info(
+                        'AWG armed in {0} mode — waiting for hardware signal '
+                        '(level={1}V, slope={2}, impedance={3}).'
+                        ''.format(mode,
+                                  self._trigger_level,
+                                  self._trigger_slope,
+                                  self._trigger_impedance)
+                    )
+                elif final_status == 1:
+                    self.log.warning(
+                        'AWG started running immediately after AWGC:RUN in {0} mode. '
+                        'TRIG:SOUR may not have been accepted as EXT — '
+                        'query TRIG:SOUR? on the AWG front panel to verify.'.format(mode)
+                    )
+                else:
+                    self.log.error(
+                        'AWG is in unexpected state {0} after arming attempt '
+                        'in {1} mode.'.format(final_status, mode)
+                    )
 
         return self.get_status()[0]
 
@@ -443,16 +473,14 @@ class AWG7k(PulserInterface):
 
         # Load waveforms into channels
         for chnl_num, waveform in load_dict.items():
-            # load into channel
             self.write('SOUR{0:d}:WAV "{1}"'.format(chnl_num, waveform))
             while self.query('SOUR{0:d}:WAV?'.format(chnl_num)) != waveform:
                 time.sleep(0.1)
 
-        # Set run mode: triggered or continuous, depending on config
-        if self._use_external_trigger:
-            self.set_mode('T')
-        else:
-            self.set_mode('C')
+        # Map config run_mode string directly to set_mode() single-letter codes
+        mode_map = {'CONT': 'C', 'TRIG': 'T', 'GAT': 'G'}
+        mode = str(self._run_mode_config).upper()
+        self.set_mode(mode_map.get(mode, 'C'))   # fall back to CONT if invalid
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
@@ -1513,18 +1541,16 @@ class AWG7k(PulserInterface):
                 wfm_file.write(footer.encode())
         return
 
-    def _configure_external_trigger(self):
+    def _configure_trigger_mode(self, mode):
         """
-        Configure AWG hardware for external-trigger operation.
+        Configure AWG hardware for TRIG or GAT operation.
 
-        1. Sets run mode to TRIG and waits for the AWG to acknowledge it (OPC).
-        2. Configures impedance, source, level and slope on the TRIGGER INPUT.
-        3. Waits for all writes to complete (OPC).
-        4. Reads back the actual settings and logs them — inspect the log if
-           the trigger still does not work; the readback will show exactly
-           what the AWG accepted.
-        5. Calls get_errors() so any unsupported command (e.g. TRIG:IMP on a
-           model with fixed impedance) surfaces immediately in the log.
+        Both modes use the same physical trigger/gate input BNC and share the
+        same level, slope and impedance settings. The only difference is the
+        run mode register (TRIG vs GAT), which determines how the AWG
+        interprets the signal (edge vs level).
+
+        @param str mode: 'TRIG' or 'GAT'
         """
         # --- validate slope ---
         slope = str(self._trigger_slope).upper()
@@ -1537,36 +1563,38 @@ class AWG7k(PulserInterface):
         imp = str(self._trigger_impedance).upper()
         if imp not in ('50OHM', '1KOHM'):
             self.log.warning(
-                'Invalid trigger_impedance "{0}", falling back to "1KOHM".'.format(imp))
-            imp = '1KOHM'
+                'Invalid trigger_impedance "{0}", falling back to "50OHM".'.format(imp))
+            imp = '50OHM'
 
-        # 1. Set triggered run mode and wait for AWG to finish the mode switch
-        self.set_mode('T')
+        # 1. Set run mode (TRIG or GAT) and wait for AWG to finish the mode switch
+        mode_map = {'TRIG': 'T', 'GAT': 'G'}
+        self.set_mode(mode_map[mode])
         while int(self.query('*OPC?')) != 1:
             time.sleep(0.1)
 
-        # 2. Configure trigger input
-        self.write('TRIG:IMP {0}'.format(imp))                        # impedance
-        self.write('TRIG:SOUR EXT')                                    # external BNC
-        self.write('TRIG:LEV {0:.4f}'.format(self._trigger_level))    # threshold (V)
-        self.write('TRIG:SLOP {0}'.format(slope))                      # edge polarity
+        # 2. Configure the trigger/gate input — identical for both modes
+        self.write('TRIG:IMP {0}'.format(imp))
+        self.write('TRIG:SOUR EXT')
+        self.write('TRIG:LEV {0:.4f}'.format(self._trigger_level))
+        self.write('TRIG:SLOP {0}'.format(slope))
 
-        # 3. Wait for all writes to complete before arming
+        # 3. Wait for all writes to settle
         while int(self.query('*OPC?')) != 1:
             time.sleep(0.1)
 
-        # 4. Surface any SCPI errors (e.g. unsupported TRIG:IMP command)
+        # 4. Surface any SCPI errors immediately
         self.get_errors()
 
-        # 5. Read back what was actually applied — crucial for diagnosis
+        # 5. Read back and log actual settings for diagnosis
         try:
             src  = self.query('TRIG:SOUR?')
             lev  = self.query('TRIG:LEV?')
             slop = self.query('TRIG:SLOP?')
             imq  = self.query('TRIG:IMP?')
             self.log.info(
-                'Trigger configured — source: {0}  level: {1} V  '
-                'slope: {2}  impedance: {3}'.format(src, lev, slop, imq))
+                '{0} mode configured — source: {1}  level: {2} V  '
+                'slope: {3}  impedance: {4}'.format(mode, src, lev, slop, imq)
+            )
         except Exception as exc:
             self.log.debug('Could not read back trigger settings: {0}'.format(exc))
 
