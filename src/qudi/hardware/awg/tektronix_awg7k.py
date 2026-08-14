@@ -52,6 +52,9 @@ class AWG7k(PulserInterface):
             # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
             # ftp_login: 'anonymous' # optional, the username for ftp login
             # ftp_passwd: 'anonymous@' # optional, the password for ftp login
+            # use_external_trigger: False  # optional, default False
+            # trigger_level: 0.5          # optional, trigger threshold in Volts
+            # trigger_slope: 'POS'        # optional, 'POS' or 'NEG'
 
     """
 
@@ -65,6 +68,10 @@ class AWG7k(PulserInterface):
     _username = ConfigOption(name='ftp_login', default='anonymous', missing='warn')
     _password = ConfigOption(name='ftp_passwd', default='anonymous@', missing='warn')
     _visa_timeout = ConfigOption(name='timeout', default=30, missing='nothing')
+    _use_external_trigger = ConfigOption(name='use_external_trigger', default=False, missing='nothing')
+    _trigger_level = ConfigOption(name='trigger_level', default=0.5, missing='nothing')
+    _trigger_slope = ConfigOption(name='trigger_slope', default='POS', missing='nothing')
+    _trigger_impedance = ConfigOption(name='trigger_impedance', default='50OHM', missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -317,40 +324,79 @@ class AWG7k(PulserInterface):
         return constraints
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
         """
-        # Get all active channels
+        Switches the pulsing device on.
+
+        If use_external_trigger is True the AWG is armed in TRIG mode and
+        waits for a hardware edge on the rear-panel TRIGGER INPUT BNC.
+        The log will confirm the armed state (status 2) or explain why
+        the trigger is not being recognised.
+
+        @return int: error code (0:OK, -1:error, ...)
+        """
         chnl_activation = self.get_active_channels()
-        channel_numbers = sorted(int(chnl.split('_ch')[1]) for chnl in chnl_activation if
-                                 chnl.startswith('a') and chnl_activation[chnl])
-        # do nothing if AWG is already running
+        channel_numbers = sorted(
+            int(chnl.split('_ch')[1]) for chnl in chnl_activation
+            if chnl.startswith('a') and chnl_activation[chnl]
+        )
+
         if not self._is_output_on():
+            # Enable channel outputs first
             for ch in channel_numbers:
                 self.write('OUTPUT{0}:STATE ON'.format(ch))
-            self.write('AWGC:RUN')
-            # wait until the AWG is actually running
-            while not self._is_output_on():
-                time.sleep(0.2)
+
+            if self._use_external_trigger:
+                # Configure trigger THEN arm
+                self._configure_external_trigger()
+                self.write('AWGC:RUN')
+
+                # Wait for armed state
+                #   status 0 = stopped, 1 = running, 2 = waiting for trigger
+                timeout = 5.0
+                elapsed = 0.0
+                while self.get_status()[0] not in (1, 2):
+                    time.sleep(0.2)
+                    elapsed += 0.2
+                    if elapsed >= timeout:
+                        self.log.error(
+                            'AWG failed to arm after {0}s. '
+                            'Check VISA connection and trigger config.'.format(timeout)
+                            )
+                        break
+
+                self.log.info(
+                    'AWG armed and waiting for external trigger '
+                    '(level={0}V, slope={1}, impedance={2}).'
+                    ''.format(self._trigger_level,
+                                self._trigger_slope,
+                                self._trigger_impedance)
+                                )
+                
+            else:
+                # Original behaviour: start immediately
+                self.write('AWGC:RUN')
+                while not self._is_output_on():
+                    time.sleep(0.2)
+
         return self.get_status()[0]
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
+            """ Switches the pulsing device off.
 
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
-        """
-        # do nothing if AWG is already idle
-        if self._is_output_on():
-            self.write('AWGC:STOP')
-            # wait until the AWG has actually stopped
-            while self._is_output_on():
-                time.sleep(0.2)
-        return self.get_status()[0]
+            Works for both continuous and external-trigger modes.
+            In triggered mode this will also disarm the AWG if it is waiting for a trigger.
+
+            @return int: error code (0:OK, -1:error, higher number corresponds to
+                                    current status of the device. Check then the
+                                    class variable status_dic.)
+            """
+            # _is_output_on() returns True for status 1 (running) AND status 2
+            # (armed/waiting for trigger), so this handles both cases correctly.
+            if self._is_output_on():
+                self.write('AWGC:STOP')
+                while self._is_output_on():
+                    time.sleep(0.2)
+            return self.get_status()[0]
 
     def load_waveform(self, load_dict):
         """ Loads a waveform to the specified channel of the pulsing device.
@@ -402,7 +448,11 @@ class AWG7k(PulserInterface):
             while self.query('SOUR{0:d}:WAV?'.format(chnl_num)) != waveform:
                 time.sleep(0.1)
 
-        self.set_mode('C')
+        # Set run mode: triggered or continuous, depending on config
+        if self._use_external_trigger:
+            self.set_mode('T')
+        else:
+            self.set_mode('C')
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
@@ -456,8 +506,12 @@ class AWG7k(PulserInterface):
         loaded_assets = dict()
         current_type = None
 
+        # CONT  = continuous mode 
+        # TRIG  = triggered mode 
+        # GAT   = gated mode
+        # All three are single-waveform run modes, so the asset type is 'waveform'
         run_mode = self.query('AWGC:RMOD?')
-        if run_mode == 'CONT':
+        if run_mode in ('CONT', 'TRIG', 'GAT'):
             current_type = 'waveform'
             for chnl_num in channel_numbers:
                 loaded_assets[chnl_num] = self.query('SOUR{0}:WAV?'.format(chnl_num))
@@ -1458,6 +1512,63 @@ class AWG7k(PulserInterface):
             with open(wfm_path, 'ab') as wfm_file:
                 wfm_file.write(footer.encode())
         return
+
+    def _configure_external_trigger(self):
+        """
+        Configure AWG hardware for external-trigger operation.
+
+        1. Sets run mode to TRIG and waits for the AWG to acknowledge it (OPC).
+        2. Configures impedance, source, level and slope on the TRIGGER INPUT.
+        3. Waits for all writes to complete (OPC).
+        4. Reads back the actual settings and logs them — inspect the log if
+           the trigger still does not work; the readback will show exactly
+           what the AWG accepted.
+        5. Calls get_errors() so any unsupported command (e.g. TRIG:IMP on a
+           model with fixed impedance) surfaces immediately in the log.
+        """
+        # --- validate slope ---
+        slope = str(self._trigger_slope).upper()
+        if slope not in ('POS', 'NEG'):
+            self.log.warning(
+                'Invalid trigger_slope "{0}", falling back to "POS".'.format(slope))
+            slope = 'POS'
+
+        # --- validate impedance ---
+        imp = str(self._trigger_impedance).upper()
+        if imp not in ('50OHM', '1KOHM'):
+            self.log.warning(
+                'Invalid trigger_impedance "{0}", falling back to "1KOHM".'.format(imp))
+            imp = '1KOHM'
+
+        # 1. Set triggered run mode and wait for AWG to finish the mode switch
+        self.set_mode('T')
+        while int(self.query('*OPC?')) != 1:
+            time.sleep(0.1)
+
+        # 2. Configure trigger input
+        self.write('TRIG:IMP {0}'.format(imp))                        # impedance
+        self.write('TRIG:SOUR EXT')                                    # external BNC
+        self.write('TRIG:LEV {0:.4f}'.format(self._trigger_level))    # threshold (V)
+        self.write('TRIG:SLOP {0}'.format(slope))                      # edge polarity
+
+        # 3. Wait for all writes to complete before arming
+        while int(self.query('*OPC?')) != 1:
+            time.sleep(0.1)
+
+        # 4. Surface any SCPI errors (e.g. unsupported TRIG:IMP command)
+        self.get_errors()
+
+        # 5. Read back what was actually applied — crucial for diagnosis
+        try:
+            src  = self.query('TRIG:SOUR?')
+            lev  = self.query('TRIG:LEV?')
+            slop = self.query('TRIG:SLOP?')
+            imq  = self.query('TRIG:IMP?')
+            self.log.info(
+                'Trigger configured — source: {0}  level: {1} V  '
+                'slope: {2}  impedance: {3}'.format(src, lev, slop, imq))
+        except Exception as exc:
+            self.log.debug('Could not read back trigger settings: {0}'.format(exc))
 
     def sequence_set_waveform(self, waveform_name, step, track):
         """
