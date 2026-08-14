@@ -611,122 +611,132 @@ class SequenceGeneratorLogic(LogicBase):
             self.sigGeneratorSettingsUpdated.emit(self.pulse_generator_settings)
             return self.pulse_generator_settings
 
-        # Check if pulse generator is running and do nothing if that is the case
-        pulser_status, status_dict = self.pulsegenerator().get_status()
-        if pulser_status == 0:
-            # Set parameters if present
-            if 'activation_config' in settings_dict:
-                activation_config = settings_dict['activation_config']
-                available_configs = self.pulse_generator_constraints.activation_config
-                set_config = None
-                # Allow argument types str, set and tuple
-                if isinstance(activation_config, str):
-                    if activation_config in available_configs.keys():
-                        set_config = self._apply_activation_config(available_configs[activation_config])
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=activation_config, channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config by name.\n"{0}" not found in pulser constraints.'.format(
-                                activation_config
+        # Every branch below negotiates with the device, and a device that raises used to take the
+        # exception out of this slot entirely - which, on a queued cross-thread connection, has no
+        # caller to receive it. Nothing is locked here and no state machine is involved, so the
+        # recovery is to report and leave the settings wherever the failure left them; the
+        # notification below then resyncs the GUI to what they actually are.
+        changed_settings = dict()
+        try:
+            # Check if pulse generator is running and do nothing if that is the case
+            pulser_status, status_dict = self.pulsegenerator().get_status()
+            if pulser_status == 0:
+                # Set parameters if present
+                if 'activation_config' in settings_dict:
+                    activation_config = settings_dict['activation_config']
+                    available_configs = self.pulse_generator_constraints.activation_config
+                    set_config = None
+                    # Allow argument types str, set and tuple
+                    if isinstance(activation_config, str):
+                        if activation_config in available_configs.keys():
+                            set_config = self._apply_activation_config(available_configs[activation_config])
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=activation_config, channels=set_config),
                             )
-                        )
-                elif isinstance(activation_config, set):
-                    if activation_config in available_configs.values():
-                        set_config = self._apply_activation_config(activation_config)
-                        config_name = list(available_configs)[list(available_configs.values()).index(activation_config)]
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=config_name, channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
-                                activation_config
+                        else:
+                            self.log.error(
+                                'Unable to set activation config by name.\n"{0}" not found in pulser constraints.'.format(
+                                    activation_config
+                                )
                             )
-                        )
-                elif isinstance(activation_config, tuple):
-                    if activation_config in available_configs.items():
-                        set_config = self._apply_activation_config(activation_config[1])
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=activation_config[0], channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
-                                activation_config
+                    elif isinstance(activation_config, set):
+                        if activation_config in available_configs.values():
+                            set_config = self._apply_activation_config(activation_config)
+                            config_name = list(available_configs)[list(available_configs.values()).index(activation_config)]
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=config_name, channels=set_config),
                             )
+                        else:
+                            self.log.error(
+                                'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
+                                    activation_config
+                                )
+                            )
+                    elif isinstance(activation_config, tuple):
+                        if activation_config in available_configs.items():
+                            set_config = self._apply_activation_config(activation_config[1])
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=activation_config[0], channels=set_config),
+                            )
+                        else:
+                            self.log.error(
+                                'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
+                                    activation_config
+                                )
+                            )
+                    # Check if the ultimately set config is part of the constraints
+                    if set_config is not None and set_config not in available_configs.values():
+                        self.log.error('Something went wrong while setting new activation config.')
+                        self._update_pulse_generator_settings(
+                            activation_config=ActivationConfig(name='', channels=set_config),
                         )
-                # Check if the ultimately set config is part of the constraints
-                if set_config is not None and set_config not in available_configs.values():
-                    self.log.error('Something went wrong while setting new activation config.')
+
+                    # search the generation_parameters for channel specifiers and adjust them if
+                    # they are no longer valid
+                    ana_chnls = natural_sort(self.analog_channels)
+                    digi_chnls = natural_sort(self.digital_channels)
+                    active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
+                    for name in [setting for setting in self.generation_parameters if setting.endswith('_channel')]:
+                        channel = self.generation_parameters[name]
+                        if isinstance(channel, str) and channel not in active_channels:
+                            if channel.startswith('a'):
+                                new_channel = ana_chnls[0] if ana_chnls else digi_chnls[0]
+                            elif channel.startswith('d'):
+                                new_channel = digi_chnls[0] if digi_chnls else ana_chnls[0]
+                            else:
+                                continue
+
+                            if new_channel is not None:
+                                self.log.warning(
+                                    'Change of activation config caused sampling_setting '
+                                    '"{0}" to be changed to "{1}".'.format(name, new_channel)
+                                )
+                                changed_settings[name] = new_channel
+
+                if 'sample_rate' in settings_dict:
                     self._update_pulse_generator_settings(
-                        activation_config=ActivationConfig(name='', channels=set_config),
+                        sample_rate=self.pulsegenerator().set_sample_rate(float(settings_dict['sample_rate'])),
                     )
 
-                # search the generation_parameters for channel specifiers and adjust them if they
-                # are no longer valid
-                changed_settings = dict()
-                ana_chnls = natural_sort(self.analog_channels)
-                digi_chnls = natural_sort(self.digital_channels)
-                active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
-                for name in [setting for setting in self.generation_parameters if setting.endswith('_channel')]:
-                    channel = self.generation_parameters[name]
-                    if isinstance(channel, str) and channel not in active_channels:
-                        if channel.startswith('a'):
-                            new_channel = ana_chnls[0] if ana_chnls else digi_chnls[0]
-                        elif channel.startswith('d'):
-                            new_channel = digi_chnls[0] if digi_chnls else ana_chnls[0]
-                        else:
-                            continue
+                if 'analog_levels' in settings_dict:
+                    amplitude, offset = self.pulsegenerator().set_analog_level(*settings_dict['analog_levels'])
+                    self._update_pulse_generator_settings(
+                        analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
+                    )
 
-                        if new_channel is not None:
-                            self.log.warning(
-                                'Change of activation config caused sampling_setting '
-                                '"{0}" to be changed to "{1}".'.format(name, new_channel)
-                            )
-                            changed_settings[name] = new_channel
+                if 'digital_levels' in settings_dict:
+                    low, high = self.pulsegenerator().set_digital_level(*settings_dict['digital_levels'])
+                    self._update_pulse_generator_settings(
+                        digital_levels=DigitalLevels(low=low, high=high),
+                    )
 
-            if 'sample_rate' in settings_dict:
-                self._update_pulse_generator_settings(
-                    sample_rate=self.pulsegenerator().set_sample_rate(float(settings_dict['sample_rate'])),
+                if 'interleave' in settings_dict:
+                    self._update_pulse_generator_settings(
+                        interleave=self.pulsegenerator().set_interleave(bool(settings_dict['interleave'])),
+                    )
+
+                self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
+
+            elif settings_dict:
+                # Only throw warning when arguments have been passed to this method
+                self.log.warning(
+                    'Pulse generator is not idle (status: {0:d}, "{1}").\nUnable to apply new settings.'.format(
+                        pulser_status, status_dict[pulser_status]
+                    )
                 )
-
-            if 'analog_levels' in settings_dict:
-                amplitude, offset = self.pulsegenerator().set_analog_level(*settings_dict['analog_levels'])
-                self._update_pulse_generator_settings(
-                    analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
-                )
-
-            if 'digital_levels' in settings_dict:
-                low, high = self.pulsegenerator().set_digital_level(*settings_dict['digital_levels'])
-                self._update_pulse_generator_settings(
-                    digital_levels=DigitalLevels(low=low, high=high),
-                )
-
-            if 'interleave' in settings_dict:
-                self._update_pulse_generator_settings(
-                    interleave=self.pulsegenerator().set_interleave(bool(settings_dict['interleave'])),
-                )
-
-            self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
-
-        elif settings_dict:
-            # Only throw warning when arguments have been passed to this method
-            self.log.warning(
-                'Pulse generator is not idle (status: {0:d}, "{1}").\nUnable to apply new settings.'.format(
-                    pulser_status, status_dict[pulser_status]
-                )
-            )
+        except Exception:
+            self.log.exception('Negotiating the new pulse generator settings with the device '
+                               'failed. They may be partly applied - re-check them before '
+                               'sampling:')
 
         # emit update signal for master (GUI or other logic module)
         self.sigGeneratorSettingsUpdated.emit(self.pulse_generator_settings)
-        # Apply potential changes to generation_parameters
-        try:
-            if changed_settings:
-                self.generation_parameters = changed_settings
-        except UnboundLocalError:
-            pass
+        # Apply potential changes to generation_parameters. Bound to an empty dict before the try
+        # above, so this no longer needs the `except UnboundLocalError: pass` that used to stand in
+        # for "the activation_config branch may not have run" - and which silently swallowed any
+        # other UnboundLocalError along with it.
+        if changed_settings:
+            self.generation_parameters = changed_settings
         return self.pulse_generator_settings
 
     @QtCore.Slot()

@@ -823,35 +823,46 @@ class PulsedMeasurementLogic(LogicBase):
             self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
             return self.fast_counter_settings
 
-        # Check if fast counter is running and do nothing if that is the case
-        counter_status = self._fastcounter().get_status()
-        if not counter_status >= 2 and not counter_status < 0:
-            # Set parameters, check if it is gated
-            if not self._fastcounter().is_gated():
-                requested = replace(requested, number_of_gates=0)
+        # Every call below goes to the device, and a device that raises here used to take the
+        # exception out of this slot entirely - which, on a queued cross-thread connection, has no
+        # caller to receive it. Reached from start_pulsed_measurement()'s prologue via
+        # _apply_invoked_settings(), so an escape there also stranded the GUI showing "running".
+        # Nothing is locked at this point, so the recovery is simply to report and leave the
+        # settings as they were.
+        try:
+            # Check if fast counter is running and do nothing if that is the case
+            counter_status = self._fastcounter().get_status()
+            if not counter_status >= 2 and not counter_status < 0:
+                # Set parameters, check if it is gated
+                if not self._fastcounter().is_gated():
+                    requested = replace(requested, number_of_gates=0)
 
-            self._apply_fast_counter_settings(requested)
+                self._apply_fast_counter_settings(requested)
 
-            # Apply the settings to hardware
-            bin_width, record_length, number_of_gates = self._fastcounter().configure(
-                self._settings.fast_counter_settings.bin_width,
-                self._settings.fast_counter_settings.record_length,
-                self._settings.fast_counter_settings.number_of_gates
-             )
-            self._apply_fast_counter_settings(
-                replace(
-                    self._settings.fast_counter_settings,
-                    bin_width=bin_width,
-                    record_length=record_length,
-                    number_of_gates=number_of_gates,
-                    is_gated=self._fastcounter().is_gated(),
+                # Apply the settings to hardware
+                bin_width, record_length, number_of_gates = self._fastcounter().configure(
+                    self._settings.fast_counter_settings.bin_width,
+                    self._settings.fast_counter_settings.record_length,
+                    self._settings.fast_counter_settings.number_of_gates
+                 )
+                self._apply_fast_counter_settings(
+                    replace(
+                        self._settings.fast_counter_settings,
+                        bin_width=bin_width,
+                        record_length=record_length,
+                        number_of_gates=number_of_gates,
+                        is_gated=self._fastcounter().is_gated(),
+                    )
                 )
-            )
-        else:
-            self.log.warning('Fast counter is not idle (status: {0}).\n'
-                             'Unable to apply new settings.'.format(counter_status))
+            else:
+                self.log.warning('Fast counter is not idle (status: {0}).\n'
+                                 'Unable to apply new settings.'.format(counter_status))
+        except Exception:
+            self.log.exception('Applying the fast counter settings to the hardware failed. The '
+                               'settings may be partly applied - re-check them before measuring:')
 
-        # emit update signal for master (GUI or other logic module)
+        # emit update signal for master (GUI or other logic module). Outside the try so the GUI is
+        # resynced to whatever the settings actually are now, on the failure path as well.
         self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
         return self.fast_counter_settings
 
@@ -1070,7 +1081,12 @@ class PulsedMeasurementLogic(LogicBase):
                             power=microwave.cw_power,
                         )
                     )
-                
+        except Exception:
+            # The finally below already guaranteed the notification; this stops the exception
+            # itself leaving a queued cross-thread slot, where there is no caller to catch it.
+            # See set_fast_counter_settings() - same shape, same reasoning.
+            self.log.exception('Applying the microwave settings to the hardware failed. The '
+                               'settings may be partly applied - re-check them before measuring:')
         finally:
             # emit update signal for master (GUI or other logic module)
             self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
@@ -1449,26 +1465,38 @@ class PulsedMeasurementLogic(LogicBase):
         """Start the analysis loop."""
         self.sigMeasurementStatusUpdated.emit(True, False)
 
-        self._commit_pending_asset()
+        # Everything up to the lock is preparation, and it runs after the GUI has already been told
+        # a measurement is starting. Each deliberate refusal below sends the corrective
+        # (False, False), but an *exception* used to skip them all - leaving the run/stop action
+        # latched on with no measurement in progress and nothing left that would ever unlatch it.
+        # Nothing is locked yet and the state machine has not moved, so there is no state to unwind:
+        # putting the correction out is the whole recovery.
+        try:
+            self._commit_pending_asset()
 
-        # Verify against the device before anything is applied or switched on.
-        if not self._verify_loaded_asset('start'):
-            self.sigMeasurementStatusUpdated.emit(False, False)
-            return
-
-        # Check if measurement settings need to be invoked
-        if self._settings.readout_settings.invoke_settings:
-            if self.measurement_information:
-                self._apply_invoked_settings()
-                self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
-            else:
-                # abort measurement if settings could not be invoked
-                self.log.error('Unable to invoke measurement settings.\nThis feature can only be '
-                               'used when creating the pulse sequence via predefined methods.\n'
-                               'Aborting measurement start.')
-                self.set_measurement_settings(invoke_settings=False)
+            # Verify against the device before anything is applied or switched on.
+            if not self._verify_loaded_asset('start'):
                 self.sigMeasurementStatusUpdated.emit(False, False)
                 return
+
+            # Check if measurement settings need to be invoked
+            if self._settings.readout_settings.invoke_settings:
+                if self.measurement_information:
+                    self._apply_invoked_settings()
+                    self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
+                else:
+                    # abort measurement if settings could not be invoked
+                    self.log.error('Unable to invoke measurement settings.\nThis feature can only be '
+                                   'used when creating the pulse sequence via predefined methods.\n'
+                                   'Aborting measurement start.')
+                    self.set_measurement_settings(invoke_settings=False)
+                    self.sigMeasurementStatusUpdated.emit(False, False)
+                    return
+        except Exception:
+            self.log.exception('Preparing the pulsed measurement failed before it could be started. '
+                               'Nothing was switched on:')
+            self.sigMeasurementStatusUpdated.emit(False, False)
+            return
 
         with self._threadlock:
             try:

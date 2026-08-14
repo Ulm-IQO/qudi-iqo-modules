@@ -252,6 +252,34 @@ class PulsedMasterLogic(LogicBase):
             name, asset_type = '', ''
         self.sigLoadedAssetUpdated.emit(name, asset_type)
 
+    def _resync_pulser_running(self):
+        """Re-derive the pulser_running flag from the device instead of trusting the cached one.
+
+        The flag is only ever written by pulse_generator_on()/off() reporting what they believe
+        happened, and nothing re-reads it afterwards. That is fine while those calls either fully
+        succeed or fully fail, and wrong when one half-succeeds: a real instrument that accepts the
+        stop command and then times out on the reply raises, so off() leaves the flag saying
+        "running" while the device is off. Nothing would ever correct it, and the GUI's pulser
+        button would stay wrong for the rest of the session.
+
+        Note this is not the same as an off() that never reached the device at all - there the flag
+        stays True and the device really is still running, so it was right all along and this
+        changes nothing. Only the half-succeeded case is what this is for.
+
+        A read, not a change: it stays inside reset_toolchain()'s "operational state only" remit.
+        Guarded because the pulse generator may well be the thing that is unwell.
+        """
+        try:
+            running = self.sequencegeneratorlogic().pulsegenerator().get_status()[0] > 0
+        except Exception:
+            self.log.exception('Could not read the pulse generator status back while resetting, so '
+                               'the reported pulser state may still be wrong:')
+            return
+        if running != self.status_dict.pulser_running:
+            self.log.warning('Toolchain reset: the pulse generator is actually {0}, correcting the '
+                             'reported state.'.format('running' if running else 'off'))
+        self.pulser_running_updated(running)
+
     def _asset_is_loaded_and_running(self, asset_name, asset_type):
         """Whether the pulse generator is running the named asset right now.
 
@@ -324,17 +352,27 @@ class PulsedMasterLogic(LogicBase):
         to clear. It is also unnecessary: the `finally` releases it on every path it can return from.
         If it is still busy this says so and leaves it be.
         """
-        if self.status_dict.measurement_running:
+        was_measuring = self.status_dict.measurement_running
+        if was_measuring:
             self.log.warning('Toolchain reset: stopping the running measurement.')
             # The queued path the GUI's stop button uses, rather than a direct cross-thread call.
             self.sigToggleMeasurement.emit(False, '')
         self.reset_sampload_chain()
+
         if self._generator_busy:
             self.log.warning(
                 'Toolchain reset: the sequence generator is still working and has been left alone - '
                 'it releases itself when it finishes. If it never does, the pulse generator has '
                 'stopped answering and only a restart of the module will clear it.'
             )
+        elif not was_measuring:
+            # Only worth asking, and only safe to ask, when nothing else is talking to the device.
+            # A measurement that is stopping maintains this flag itself on the way down (and the
+            # stop above is queued, so right now the pulser is legitimately still on); a busy
+            # generator may hold the device long enough for the read to block, which is the last
+            # thing this method should do.
+            self._resync_pulser_running()
+
         self.sigToolchainReset.emit()
 
     def on_activate(self):
