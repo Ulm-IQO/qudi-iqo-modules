@@ -21,13 +21,15 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
 from qudi.util.paths import get_artwork_dir
+
+from qudi.logic.laser_logic import LaserLogic
 
 from .laser_control_dockwidget import LaserControlDockWidget
 from .laser_plot_dockwidgets import LaserOutputDockWidget, LaserTemperatureDockWidget
@@ -41,45 +43,45 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         self.setWindowTitle('qudi: Laser')
 
         # Create extra info dialog
-        self.extra_info_dialog = QtWidgets.QDialog(self, QtCore.Qt.Dialog)
+        self.extra_info_dialog = QtWidgets.QDialog(self, QtCore.Qt.WindowType.Dialog)
         self.extra_info_dialog.setWindowTitle('Laser Info')
         self.extra_info_label = QtWidgets.QLabel()
-        self.extra_info_label.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-        extra_info_button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        self.extra_info_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop | QtCore.Qt.AlignmentFlag.AlignLeft)
+        extra_info_button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         extra_info_button_box.setCenterButtons(True)
         extra_info_button_box.accepted.connect(self.extra_info_dialog.accept)
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.extra_info_label)
         layout.addWidget(extra_info_button_box)
         self.extra_info_dialog.setLayout(layout)
-        layout.setSizeConstraint(layout.SetFixedSize)
+        layout.setSizeConstraint(layout.SizeConstraint.SetFixedSize)
 
         # create menu bar and actions
         menu_bar = QtWidgets.QMenuBar(self)
         self.setMenuBar(menu_bar)
 
         menu = menu_bar.addMenu('File')
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)
 
         menu = menu_bar.addMenu('View')
-        self.action_view_controls = QtWidgets.QAction('Show Controls')
+        self.action_view_controls = QtGui.QAction('Show Controls')
         self.action_view_controls.setCheckable(True)
         self.action_view_controls.setChecked(True)
         menu.addAction(self.action_view_controls)
-        self.action_view_output_graph = QtWidgets.QAction('Show Output Graph')
+        self.action_view_output_graph = QtGui.QAction('Show Output Graph')
         self.action_view_output_graph.setCheckable(True)
         self.action_view_output_graph.setChecked(True)
         menu.addAction(self.action_view_output_graph)
-        self.action_view_temperature_graph = QtWidgets.QAction('Show Temperature Graph')
+        self.action_view_temperature_graph = QtGui.QAction('Show Temperature Graph')
         self.action_view_temperature_graph.setCheckable(True)
         self.action_view_temperature_graph.setChecked(True)
         menu.addAction(self.action_view_temperature_graph)
         menu.addSeparator()
-        self.action_view_default = QtWidgets.QAction('Restore Default')
+        self.action_view_default = QtGui.QAction('Restore Default')
         menu.addAction(self.action_view_default)
 
         # Create status bar
@@ -96,11 +98,11 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         font.setPointSize(12)
         label = QtWidgets.QLabel('Laser:')
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label, 0, 0)
         self.shutter_label = QtWidgets.QLabel('Shutter:')
         self.shutter_label.setFont(font)
-        self.shutter_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.shutter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.shutter_label, 1, 0)
         self.laser_status_label = QtWidgets.QLabel('???')
         self.laser_status_label.setFont(font)
@@ -141,11 +143,18 @@ class LaserMainWindow(QtWidgets.QMainWindow):
 
 
 class LaserGui(GuiBase):
-    """ FIXME: Please document
+    """ Main gui class for controlling a laser.
+
+    Example config for copy-paste:
+
+    laser_gui:
+        module.Class: 'laser.laser_gui.LaserGui'
+        connect:
+            laser_logic: laser_logic
     """
 
     # declare connectors
-    _laser_logic = Connector(name='laser_logic', interface='LaserLogic')
+    _laser_logic = Connector(name='laser_logic', interface=LaserLogic)
 
     sigLaserToggled = QtCore.Signal(bool)
     sigShutterToggled = QtCore.Signal(bool)
@@ -165,7 +174,9 @@ class LaserGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
         """
         logic = self._laser_logic()
-
+        # initialize data and start the laser data query loop
+        logic._initialize_data()
+        logic.start_query_loop()
         #####################
         # create main window
         self._mw = LaserMainWindow()
@@ -173,10 +184,10 @@ class LaserGui(GuiBase):
         # set up dock widgets
         self.control_dock_widget = LaserControlDockWidget()
         self.control_dock_widget.setFeatures(
-            QtWidgets.QDockWidget.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetMovable
+            QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
-        self.control_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.control_dock_widget)
+        self.control_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.control_dock_widget)
         self.control_dock_widget.visibilityChanged.connect(self._mw.action_view_controls.setChecked)
         self._mw.action_view_controls.triggered[bool].connect(self.control_dock_widget.setVisible)
         self.control_dock_widget.power_slider.setRange(*logic.power_range)
@@ -187,9 +198,8 @@ class LaserGui(GuiBase):
         self.control_dock_widget.current_spinbox.setSuffix(logic.current_unit)
 
         self.output_graph_dock_widget = LaserOutputDockWidget()
-        self.output_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
-        self.output_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.output_graph_dock_widget)
+        self.output_graph_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.output_graph_dock_widget)
         self.output_graph_dock_widget.visibilityChanged.connect(
             self._mw.action_view_output_graph.setChecked
         )
@@ -204,9 +214,8 @@ class LaserGui(GuiBase):
         self.temperature_graph_dock_widget = LaserTemperatureDockWidget(
             curve_names=tuple(logic.temperatures)
         )
-        self.temperature_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
-        self.temperature_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.temperature_graph_dock_widget)
+        self.temperature_graph_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.temperature_graph_dock_widget)
         self.temperature_graph_dock_widget.visibilityChanged.connect(
             self._mw.action_view_temperature_graph.setChecked
         )
@@ -254,17 +263,17 @@ class LaserGui(GuiBase):
 
         # connect update signals from logic
         logic.sigPowerSetpointChanged.connect(
-            self._power_setpoint_updated, QtCore.Qt.QueuedConnection
+            self._power_setpoint_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
         logic.sigCurrentSetpointChanged.connect(
-            self._current_setpoint_updated, QtCore.Qt.QueuedConnection
+            self._current_setpoint_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
-        logic.sigControlModeChanged.connect(self._control_mode_updated, QtCore.Qt.QueuedConnection)
-        logic.sigLaserStateChanged.connect(self._laser_state_updated, QtCore.Qt.QueuedConnection)
+        logic.sigControlModeChanged.connect(self._control_mode_updated, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigLaserStateChanged.connect(self._laser_state_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigShutterStateChanged.connect(
-            self._shutter_state_updated, QtCore.Qt.QueuedConnection
+            self._shutter_state_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
-        logic.sigDataChanged.connect(self._data_updated, QtCore.Qt.QueuedConnection)
+        logic.sigDataChanged.connect(self._data_updated, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.show()
 
@@ -272,6 +281,11 @@ class LaserGui(GuiBase):
         """ Deactivate the module properly.
         """
         self._mw.close()
+        self.output_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_output_graph.triggered[bool].disconnect()
+        self.temperature_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_temperature_graph.triggered[bool].disconnect()
+
         # disconnect all signals
         logic = self._laser_logic()
         logic.sigPowerSetpointChanged.disconnect(self._power_setpoint_updated)
@@ -280,6 +294,9 @@ class LaserGui(GuiBase):
         logic.sigLaserStateChanged.disconnect(self._laser_state_updated)
         logic.sigShutterStateChanged.disconnect(self._shutter_state_updated)
         logic.sigDataChanged.disconnect(self._data_updated)
+
+        self.control_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_controls.triggered.disconnect()
         self.control_dock_widget.laser_button.clicked[bool].disconnect()
         self.control_dock_widget.shutter_button.clicked[bool].disconnect()
         self.control_dock_widget.sigControlModeChanged.disconnect()
@@ -316,9 +333,9 @@ class LaserGui(GuiBase):
         self.temperature_graph_dock_widget.setFloating(False)
 
         # Arrange docks widgets
-        self._mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.control_dock_widget)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.output_graph_dock_widget)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.temperature_graph_dock_widget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.control_dock_widget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.output_graph_dock_widget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.temperature_graph_dock_widget)
 
     @QtCore.Slot(bool)
     def _laser_clicked(self, checked):

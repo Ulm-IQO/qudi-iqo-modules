@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 
 from qudi.core.module import LogicBase
@@ -28,16 +28,30 @@ from qudi.util.mutex import Mutex
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from scipy.constants import physical_constants
+from qudi.logic.odmr_logic import OdmrLogic
+from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 
 
 class NVCalculatorLogic(LogicBase):
-    """This is the Logic class for Calculator."""
+    """
+    This is the Logic class for magnetic field calculator for the NV center. It calculates the strength
+    and angle relative to the NV-axis of an external magnetic field.
+
+    Example config for copy-paste:
+
+    nv_calculator_logic:
+        module.Class: 'nv_calculator_logic.NVCalculatorLogic'
+        connect:
+            odmr: 'odmrlogic'
+            pulsed: 'pulsedmeasurementlogic'
+
+    """
     _modclass = 'calculatorlogic'
     _modtype = 'logic'
 
     # declare connectors
-    odmr = Connector(interface='OdmrLogic', optional=True)
-    pulsed = Connector(interface='PulsedMeasurementLogic', optional=True)
+    odmr = Connector(interface=OdmrLogic, optional=True)
+    pulsed = Connector(interface=PulsedMeasurementLogic, optional=True)
 
     data_source = 0  # choose the data and fitting source, either from cw-odmr, or pulsedmeasurement 0: "no data_source", 1: "CW_ODMR", 2: "pulsed"
     zero_field_D = StatusVar('ZFS', 2870e6)
@@ -58,8 +72,8 @@ class NVCalculatorLogic(LogicBase):
     sigManualFieldUpdated = QtCore.Signal(float)
     sigNMRUpdated = QtCore.Signal(list, list)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.threadlock = Mutex()
 
     def on_activate(self):

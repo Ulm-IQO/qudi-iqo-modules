@@ -24,7 +24,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
 import numpy as np
@@ -50,8 +53,9 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
 
     cryocon:
         module.Class: 'temperature.cryocon.Cryocon'
-        ip_address: '192.168.1.222'
-        main_channel: 'B'
+        fitlogic
+            ip_address: '192.168.1.222'
+            main_channel: 'B'
 
     """
 

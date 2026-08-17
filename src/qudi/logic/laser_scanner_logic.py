@@ -38,8 +38,12 @@ from qtpy import QtCore
 
 class LaserScannerLogic(LogicBase):
 
-    """This logic module controls scans of DC voltage on the fourth analog
+    """
+    This logic module controls scans of DC voltage on the fourth analog
     output channel of the NI Card.  It collects countrate as a function of voltage.
+
+    Todo: Example config for copy-paste:
+
     """
 
     sig_data_updated = QtCore.Signal()
@@ -101,8 +105,8 @@ class LaserScannerLogic(LogicBase):
         self.goto_voltage(self._static_v)
 
         # Sets connections between signals and functions
-        self.sigChangeVoltage.connect(self._change_voltage, QtCore.Qt.QueuedConnection)
-        self.sigScanNextLine.connect(self._do_next_line, QtCore.Qt.QueuedConnection)
+        self.sigChangeVoltage.connect(self._change_voltage, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigScanNextLine.connect(self._do_next_line, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Initialization of internal counter for scanning
         self._scan_counter_up = 0

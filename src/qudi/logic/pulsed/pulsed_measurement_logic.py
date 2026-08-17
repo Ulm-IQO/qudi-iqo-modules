@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import os.path
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 import time
 import datetime
@@ -33,12 +33,16 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
-from qudi.util.math import compute_ft
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
 from qudi.util.units import ScaledFloat
 from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.pulsed.pulse_alt_plot import AltPlotAnalyzer
+
+from qudi.interface.pulser_interface import PulserInterface
+from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.interface.microwave_interface import MicrowaveInterface
 
 
 def _data_storage_from_cfg_option(cfg_str):
@@ -55,22 +59,36 @@ def _data_storage_from_cfg_option(cfg_str):
 class PulsedMeasurementLogic(LogicBase):
     """
     This is the Logic class for the control of pulsed measurements.
+
+    Example config:
+
+    pulsed_measurement_logic:
+        module.Class: 'pulsed.pulsed_measurement_logic.PulsedMeasurementLogic'
+        options:
+            raw_data_save_type: 'text'
+            #additional_extraction_path: # optional
+            #additional_analysis_path:   # optional
+        connect:
+            fastcounter: 'fast_counter_dummy'
+            pulsegenerator: 'pulser_dummy'
     """
 
     # declare connectors
-    _fastcounter = Connector(name='fastcounter', interface='FastCounterInterface')
-    _pulsegenerator = Connector(name='pulsegenerator', interface='PulserInterface')
-    _microwave = Connector(name='microwave', interface='MicrowaveInterface', optional=True)
+    _fastcounter = Connector(name='fastcounter', interface=FastCounterInterface)
+    _pulsegenerator = Connector(name='pulsegenerator', interface=PulserInterface)
+    _microwave = Connector(name='microwave', interface=MicrowaveInterface, optional=True)
 
     # Config options
     # Optional additional paths to import from
     extraction_import_path = ConfigOption(name='additional_extraction_path', default=None)
     analysis_import_path = ConfigOption(name='additional_analysis_path', default=None)
+    # Optional additional path to import alternative (second) plot methods from
+    alt_plot_import_path = ConfigOption(name='additional_alt_plot_path', default=None)
     # Optional file type descriptor for saving raw data to file.
     # todo: doesn't warn if checker not satisfied
     _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
                                              default='text',
-                                             converter=_data_storage_from_cfg_option)
+                                             constructor=_data_storage_from_cfg_option)
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
 
     # status variables
@@ -106,16 +124,16 @@ class PulsedMeasurementLogic(LogicBase):
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
     _sampling_information = StatusVar(default=dict())
+    _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
 
-    # alternative signal computation settings:
-    _alternative_data_type = StatusVar(default=None)
-    zeropad = StatusVar(default=0)
-    psd = StatusVar(default=False)
-    window = StatusVar(default='none')
-    base_corr = StatusVar(default=True)
+    # alternative (second) plot settings:
+    # Holds the full parameter set of all alternative plot methods plus the currently selected
+    # method (key "method"), persisted analogously to analysis_parameters. Managed by
+    # AltPlotAnalyzer.
+    alt_plot_parameters = StatusVar(default=None)
 
     # notification signals for master module (i.e. GUI)
     sigMeasurementDataUpdated = QtCore.Signal()
@@ -200,13 +218,8 @@ class PulsedMeasurementLogic(LogicBase):
          'custom_parameters': None},
     )
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # timer for measurement
         self.__analysis_timer = None
@@ -232,13 +245,17 @@ class PulsedMeasurementLogic(LogicBase):
         self._time_of_pause = None
         self._elapsed_pause = 0
 
+        # method manager instances (created in on_activate)
+        self._pulseextractor = None
+        self._pulseanalyzer = None
+        self._altplotanalyzer = None
+
         # for fit:
         self.fit_config_model = None  # Model for custom fit configurations
         self.fc = None  # Fit container
         self.alt_fc = None
         self._fit_result = None
         self._fit_result_alt = None
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -246,6 +263,8 @@ class PulsedMeasurementLogic(LogicBase):
         # Create an instance of PulseExtractor
         self._pulseextractor = PulseExtractor(pulsedmeasurementlogic=self)
         self._pulseanalyzer = PulseAnalyzer(pulsedmeasurementlogic=self)
+        # Create an instance of the alternative (second) plot manager
+        self._altplotanalyzer = AltPlotAnalyzer(pulsedmeasurementlogic=self)
 
         # QTimer must be created here instead of __init__ because otherwise the timer will not run
         # in this logic's thread but in the manager instead.
@@ -253,7 +272,7 @@ class PulsedMeasurementLogic(LogicBase):
         self.__analysis_timer.setSingleShot(False)
         self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
         self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -290,8 +309,8 @@ class PulsedMeasurementLogic(LogicBase):
         self._recalled_raw_data_tag = None
 
         # Connect internal signals
-        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
-        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -311,6 +330,10 @@ class PulsedMeasurementLogic(LogicBase):
     @analysis_parameters.representer
     def __repr_analysis_parameters(self, value):
         return self._pulseanalyzer.full_settings_dict
+
+    @alt_plot_parameters.representer
+    def __repr_alt_plot_parameters(self, value):
+        return self._altplotanalyzer.full_settings_dict
 
     @_fit_configs.representer
     def __repr_fit_configs(self, value):
@@ -476,9 +499,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def ext_microwave_constraints(self):
-        if self._microwave.is_connected:
-            return self._microwave().constraints
-        return None
+        microwave = self._microwave()
+        if microwave is None:
+            return None
+        return microwave.constraints
 
     def microwave_on(self):
         """
@@ -486,15 +510,16 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        err = 0
-        if self._microwave.is_connected:
-            self._microwave().cw_on()
-            if not self._microwave().is_running:
-                self.log.error('Failed to turn on external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(self._microwave().is_running)
-        else:
+        microwave = self._microwave()
+        if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
-        return err
+        else:
+            microwave.cw_on()
+            is_running = microwave.module_state() != 'idle'
+            if not is_running:
+                self.log.error('Failed to turn on external CW microwave output.')
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
+        return 0
 
     def microwave_off(self):
         """
@@ -502,15 +527,16 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        err = 0
-        if self._microwave.is_connected:
-            self._microwave().off()
-            if self._microwave().is_running:
-                self.log.error('Failed to turn off external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(self._microwave().is_running)
-        else:
+        microwave = self._microwave()
+        if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
-        return err
+        else:
+            microwave.off()
+            is_running = microwave.module_state() != 'idle'
+            if is_running:
+                self.log.error('Failed to turn off external CW microwave output.')
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
+        return 0
 
     @QtCore.Slot(bool)
     def toggle_microwave(self, switch_on):
@@ -543,33 +569,35 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if microwave is running and do nothing if that is the case
-        if self._microwave.is_connected and self._microwave().is_running:
-            self.log.warning('Microwave device is running.\nUnable to apply new settings.')
-        else:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
+        try:
+            microwave = self._microwave()
+            if (microwave is not None) and (microwave.module_state() != 'idle') :
+                self.log.warning('Microwave device is running.\nUnable to apply new settings.')
             else:
-                settings_dict.update(kwargs)
+                # Determine complete settings dictionary
+                if not isinstance(settings_dict, dict):
+                    settings_dict = kwargs
+                else:
+                    settings_dict.update(kwargs)
 
-            # Set parameters if present
-            if 'power' in settings_dict:
-                self.__microwave_power = float(settings_dict['power'])
-            if 'frequency' in settings_dict:
-                self.__microwave_freq = float(settings_dict['frequency'])
-            if 'use_ext_microwave' in settings_dict:
-                self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and self._microwave.is_connected
+                # Set parameters if present
+                if 'power' in settings_dict:
+                    self.__microwave_power = float(settings_dict['power'])
+                if 'frequency' in settings_dict:
+                    self.__microwave_freq = float(settings_dict['frequency'])
+                if 'use_ext_microwave' in settings_dict:
+                    self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and microwave is not None
 
-            if self.__use_ext_microwave and self._microwave.is_connected:
-                # Apply the settings to hardware
-                self._microwave().set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
-                self.__microwave_freq = self._microwave().cw_frequency
-                self.__microwave_power = self._microwave().cw_power
-
-        # emit update signal for master (GUI or other logic module)
-        self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
-                                                  'frequency': self.__microwave_freq,
-                                                  'use_ext_microwave': self.__use_ext_microwave})
+                if self.__use_ext_microwave and microwave is not None:
+                    # Apply the settings to hardware
+                    microwave.set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
+                    self.__microwave_freq = microwave.cw_frequency
+                    self.__microwave_power = microwave.cw_power
+        finally:
+            # emit update signal for master (GUI or other logic module)
+            self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
+                                                      'frequency': self.__microwave_freq,
+                                                      'use_ext_microwave': self.__use_ext_microwave})
         return self.__microwave_freq, self.__microwave_power, self.__use_ext_microwave
     ############################################################################
 
@@ -680,6 +708,18 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @property
+    def generation_method_parameters(self):
+        return self._generation_method_parameters
+
+    @generation_method_parameters.setter
+    def generation_method_parameters(self, info_dict):
+        if isinstance(info_dict, dict):
+            self._generation_method_parameters = info_dict
+        else:
+            self._generation_method_parameters = dict()
+        return
+
+    @property
     def timer_interval(self):
         return float(self.__timer_interval)
 
@@ -691,13 +731,24 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def alternative_data_type(self):
-        return str(self._alternative_data_type)
+        method = self._altplotanalyzer.current_method
+        return str(method) if method is not None else 'None'
 
     @alternative_data_type.setter
     def alternative_data_type(self, alt_data_type):
         if isinstance(alt_data_type, str) or alt_data_type is None:
             self.set_alternative_data_type(alt_data_type)
         return
+
+    @property
+    def alt_plot_methods(self):
+        """ Naturally sorted list of available alternative (second) plot method names. """
+        return self._altplotanalyzer.alt_plot_methods
+
+    @property
+    def alt_plot_labels(self):
+        """ Axis labels for every alternative plot method (dict of primitive strings). """
+        return self._altplotanalyzer.alt_plot_labels
 
     @property
     def analysis_methods(self):
@@ -1042,24 +1093,23 @@ class PulsedMeasurementLogic(LogicBase):
 
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
-        """
-
-        @param alt_data_type:
-        @return:
-        """
+        """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
         with self._threadlock:
             if alt_data_type != self.alternative_data_type:
                 self.do_fit('No Fit', True)
-            if alt_data_type == 'Delta' and not self._alternating:
-                if self._alternative_data_type == 'Delta':
-                    self._alternative_data_type = None
-                self.log.error('Can not set "Delta" as alternative data calculation if measurement is '
-                               'not alternating.\n'
-                               'Setting to previous type "{0}".'.format(self.alternative_data_type))
-            elif alt_data_type == 'None':
-                self._alternative_data_type = None
+
+            if alt_data_type in (None, 'None', ''):
+                self._altplotanalyzer.current_method = None
+            elif alt_data_type not in self._altplotanalyzer.alt_plot_methods:
+                self.log.error('Unknown alternative plot method "{0}". Keeping previous type "{1}".'
+                               ''.format(alt_data_type, self.alternative_data_type))
+            elif not self._altplotanalyzer.is_available(alt_data_type):
+                self.log.error('Alternative plot method "{0}" is not available for the current '
+                               'measurement settings. Disabling alternative plot.'
+                               ''.format(alt_data_type))
+                self._altplotanalyzer.current_method = None
             else:
-                self._alternative_data_type = alt_data_type
+                self._altplotanalyzer.current_method = alt_data_type
 
             self._compute_alt_data()
             self.sigMeasurementDataUpdated.emit()
@@ -1338,8 +1388,6 @@ class PulsedMeasurementLogic(LogicBase):
         self.sigMeasurementDataUpdated.emit()
         return
 
-    # FIXME: Revise everything below
-
     ############################################################################
     def _get_raw_metadata(self):
         return {'bin width (s)'               : self.__fast_counter_binwidth,
@@ -1358,14 +1406,24 @@ class PulsedMeasurementLogic(LogicBase):
                 'extraction parameters': self.extraction_settings}
 
     def _get_signal_metadata(self):
-        return {'Approx. measurement time (s)': self.__elapsed_time,
-                'Measurement sweeps'          : self.__elapsed_sweeps,
-                'Number of laser pulses'      : self._number_of_lasers,
-                'Laser ignore indices'        : self._laser_ignore_list,
-                'alternating'                 : self._alternating,
-                'analysis parameters'         : self.analysis_settings,
-                'extraction parameters'       : self.extraction_settings,
-                'fast counter settings'       : self.fast_counter_settings}
+        metadata = {'Approx. measurement time (s)': self.__elapsed_time,
+                    'Measurement sweeps'          : self.__elapsed_sweeps,
+                    'Number of laser pulses'      : self._number_of_lasers,
+                    'Laser ignore indices'        : self._laser_ignore_list,
+                    'alternating'                 : self._alternating,
+                    'analysis parameters'         : self.analysis_settings,
+                    'extraction parameters'       : self.extraction_settings,
+                    'fast counter settings'       : self.fast_counter_settings,
+                    # todo: save sequence belonging to signal, not last uploaded one
+                    'generation parameters'       : self.sampling_information.get('generation_parameters'),
+                    'generation method parameters': self.generation_method_parameters}
+        if self._fit_result:
+            export_dict = FitContainer.dict_result(self._fit_result)
+            metadata['fit result'] = export_dict
+        if self._fit_result_alt:
+            export_dict = FitContainer.dict_result(self._fit_result_alt)
+            metadata['fit result alt'] = export_dict
+        return metadata
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -1441,13 +1499,15 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
-                               metadata=self._get_raw_metadata(),
-                               nametag=nametag,
-                               filename=save_filename,
-                               timestamp=timestamp,
-                               notes=notes,
-                               column_headers='Signal (counts)')
+        data_storage.save_data(
+            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
+            metadata=self._get_raw_metadata(),
+            nametag=nametag,
+            filename=save_filename,
+            timestamp=timestamp,
+            notes=notes,
+            column_headers='Signal (counts)'
+        )
 
         ###########################
         # Save extracted laser data
@@ -1601,7 +1661,9 @@ class PulsedMeasurementLogic(LogicBase):
         x_axis_scaled = self.signal_data[0] / scaled_float.scale_val
 
         # Create the figure object
-        if self._alternative_data_type and self._alternative_data_type != 'None':
+        alt_type = self.alternative_data_type
+        alt_active = bool(alt_type) and alt_type != 'None'
+        if alt_active:
             fig, (ax1, ax2) = plt.subplots(2, 1)
         else:
             fig, ax1 = plt.subplots()
@@ -1632,7 +1694,7 @@ class PulsedMeasurementLogic(LogicBase):
             _plot_fit(axis=ax1)
 
         # handle the save of the alternative data plot
-        if self._alternative_data_type and self._alternative_data_type != 'None':
+        if alt_active:
 
             # scale the x_axis for plotting
             max_val = np.max(self.signal_alt_data[0])
@@ -1640,30 +1702,24 @@ class PulsedMeasurementLogic(LogicBase):
             x_axis_prefix = scaled_float.scale
             x_axis_ft_scaled = self.signal_alt_data[0] / scaled_float.scale_val
 
-            # since no ft units are provided, make a small work around:
-            if self._alternative_data_type == 'FFT':
-                if self._data_units[0] == 's':
-                    inverse_cont_var = 'Hz'
-                elif self._data_units[0] == 'Hz':
-                    inverse_cont_var = 's'
-                else:
-                    inverse_cont_var = '(1/{0})'.format(self._data_units[0])
-                x_axis_ft_label = 'FT {0} ({1}{2})'.format(
-                    self._data_labels[0], x_axis_prefix, inverse_cont_var)
-                y_axis_ft_label = 'FT({0}) (arb. u.)'.format(self._data_labels[1])
-                ft_label = 'FT of data trace 1'
-            else:
-                if self._data_units[0]:
-                    x_axis_ft_label = '{0} ({1}{2})'.format(self._data_labels[0], x_axis_prefix,
-                                                            self._data_units[0])
-                else:
-                    x_axis_ft_label = '{0}'.format(self._data_labels[0])
-                if self._data_units[1]:
-                    y_axis_ft_label = '{0} ({1})'.format(self._data_labels[1], self._data_units[1])
-                else:
-                    y_axis_ft_label = '{0}'.format(self._data_labels[1])
+            # Axis labels are provided by the selected alternative plot method. The x-axis unit is
+            # prefixed with the SI scale of the (scaled) x-axis; the y-axis is not scaled.
+            alt_labels = self._altplotanalyzer.current_labels
+            x_alt_label = alt_labels.get('x_label', '')
+            x_alt_unit = alt_labels.get('x_unit', '')
+            y_alt_label = alt_labels.get('y_label', '')
+            y_alt_unit = alt_labels.get('y_unit', '')
 
-                ft_label = '{0} of data traces'.format(self._alternative_data_type)
+            if x_alt_unit:
+                x_axis_ft_label = '{0} ({1}{2})'.format(x_alt_label, x_axis_prefix, x_alt_unit)
+            else:
+                x_axis_ft_label = '{0}'.format(x_alt_label)
+            if y_alt_unit:
+                y_axis_ft_label = '{0} ({1})'.format(y_alt_label, y_alt_unit)
+            else:
+                y_axis_ft_label = '{0}'.format(y_alt_label)
+
+            ft_label = '{0} of data trace 1'.format(alt_type)
 
             ax2.plot(x_axis_ft_scaled, self.signal_alt_data[1],
                      linestyle=':', linewidth=0.5, color=colors[0],
@@ -1704,30 +1760,20 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _compute_alt_data(self):
         """
-        Performing transformations on the measurement data (e.g. fourier transform).
+        Compute the alternative (second) plot data via the selected alternative plot method. Falls
+        back to a flat default plot if no method is selected, it is unavailable, or it fails.
         """
-        if self._alternative_data_type == 'Delta' and len(self.signal_data) == 3:
-            self.signal_alt_data = np.empty((2, self.signal_data.shape[1]), dtype=float)
-            self.signal_alt_data[0] = self.signal_data[0]
-            self.signal_alt_data[1] = self.signal_data[1] - self.signal_data[2]
-        elif self._alternative_data_type == 'FFT' and self.signal_data.shape[1] >= 2:
-            fft_x, fft_y = compute_ft(x_val=self.signal_data[0],
-                                      y_val=self.signal_data[1],
-                                      zeropad_num=self.zeropad,
-                                      window=self.window,
-                                      base_corr=self.base_corr,
-                                      psd=self.psd)
-            self.signal_alt_data = np.empty((len(self.signal_data), len(fft_x)), dtype=float)
-            self.signal_alt_data[0] = fft_x
-            self.signal_alt_data[1] = fft_y
-            for dim in range(2, len(self.signal_data)):
-                dummy, self.signal_alt_data[dim] = compute_ft(x_val=self.signal_data[0],
-                                                              y_val=self.signal_data[dim],
-                                                              zeropad_num=self.zeropad,
-                                                              window=self.window,
-                                                              base_corr=self.base_corr,
-                                                              psd=self.psd)
-        else:
+        alt_data = None
+        try:
+            alt_data = self._altplotanalyzer.compute_alt_data(self.signal_data)
+        except:
+            self.log.exception('Error while computing alternative plot data:')
+            alt_data = None
+
+        if alt_data is None:
             self.signal_alt_data = np.zeros(self.signal_data.shape, dtype=float)
-            self.signal_alt_data[0] = self.signal_data[0]
+            if self.signal_data.shape[1] > 0:
+                self.signal_alt_data[0] = self.signal_data[0]
+        else:
+            self.signal_alt_data = alt_data
         return

@@ -31,12 +31,13 @@ class SwitchDummy(SwitchInterface):
 
     switch_dummy:
         module.Class: 'switches.switch_dummy.SwitchDummy'
-        name: 'First'  # optional
-        remember_states: True  # optional
-        switches:
-            one: ['down', 'up']
-            two: ['down', 'up']
-            three: ['low', 'middle', 'high']
+        options:
+            name: 'First'  # optional
+            remember_states: True  # optional
+            switches:
+                one: ['down', 'up']
+                two: ['down', 'up']
+                three: ['low', 'middle', 'high']
     """
 
     # ConfigOptions
@@ -57,7 +58,7 @@ class SwitchDummy(SwitchInterface):
 
         # Choose config name for this module if no name is given in ConfigOptions
         if self._hardware_name is None:
-            self._hardware_name = self._meta['name']
+            self._hardware_name = self.module_name
 
         # reset states if requested, otherwise use the saved states
         if self._remember_states and isinstance(self._states, dict) and \

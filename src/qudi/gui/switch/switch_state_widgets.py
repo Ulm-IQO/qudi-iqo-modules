@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 
 
@@ -44,11 +44,11 @@ class SwitchRadioButtonWidget(QtWidgets.QWidget):
         self._labels = {state: QtWidgets.QLabel(state) for state in switch_states}
         button_group = QtWidgets.QButtonGroup(self)
         for ii, (state, button) in enumerate(self.radio_buttons.items()):
-            button.setLayoutDirection(QtCore.Qt.RightToLeft)
+            button.setLayoutDirection(QtCore.Qt.LayoutDirection.RightToLeft)
             button_group.addButton(button, ii)
             label = self._labels[state]
-            label.setTextFormat(QtCore.Qt.RichText)
-            label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            label.setTextFormat(QtCore.Qt.TextFormat.RichText)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(button)
             layout.addWidget(label)
         layout.addStretch()
@@ -130,17 +130,17 @@ class ToggleSwitchWidget(QtWidgets.QWidget):
                                           thumb_track_ratio=thumb_track_ratio,
                                           scale_text=scale_text_in_switch,
                                           display_text=text_inside_switch)
-        self.toggle_switch.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                         QtWidgets.QSizePolicy.Preferred)
+        self.toggle_switch.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                         QtWidgets.QSizePolicy.Policy.Preferred)
         if text_inside_switch:
             self.labels = None
             layout.addWidget(self.toggle_switch)
         else:
             self.labels = (QtWidgets.QLabel(switch_states[0]), QtWidgets.QLabel(switch_states[1]))
-            self.labels[0].setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-            self.labels[0].setTextFormat(QtCore.Qt.RichText)
-            self.labels[1].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
-            self.labels[1].setTextFormat(QtCore.Qt.RichText)
+            self.labels[0].setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self.labels[0].setTextFormat(QtCore.Qt.TextFormat.RichText)
+            self.labels[1].setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+            self.labels[1].setTextFormat(QtCore.Qt.TextFormat.RichText)
             layout.addWidget(self.labels[0])
             layout.addWidget(self.toggle_switch)
             layout.addWidget(self.labels[1])

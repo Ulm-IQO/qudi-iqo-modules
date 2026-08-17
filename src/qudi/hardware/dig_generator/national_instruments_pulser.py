@@ -40,8 +40,9 @@ class NationalInstrumentsPulser(Base, PulserInterface):
 
     ni_pulser:
         module.Class: 'national_instruments_pulser.NationalInstrumentsPulser'
-        device: 'Dev0'
-        #pulsed_file_dir: 'C:\\Software\\qudi_pulsed_files' # optional, path
+        options:
+            device: 'Dev0'
+            #pulsed_file_dir: 'C:\\Software\\qudi_pulsed_files' # optional, path
 
     """
 

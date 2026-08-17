@@ -27,7 +27,8 @@ import inspect
 import copy
 import logging
 import numpy as np
-from enum import Enum
+from enum import Enum, EnumMeta
+from dataclasses import dataclass, field
 
 from qudi.util.helpers import iter_modules_recursive
 
@@ -99,12 +100,20 @@ class DDMethods(Enum):
     def phases(self):
         return np.array(self._phases)
 
+    def __repr__(self):
+        return f"{self.__class__.__module__}.{self.__class__.__name__}({self.value})"
+
+
 class SamplingBase:
     """
     Base class for all sampling functions
     """
     params = dict()
     log = logging.getLogger(__name__)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params = dict()
 
     def __repr__(self):
         kwargs = []
@@ -221,4 +230,47 @@ class SamplingFunctions:
         return False
 
 
+class PulseEnvelopeTypeMeta(EnumMeta):
+    # hide special enum types containing '_'
+    def __iter__(self):
+        for x in super().__iter__():
+            if not '_' == x.value[0]:
+                yield x
+
+class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
+
+    rectangle = 'rectangle'
+    sin_n = 'sin_n'
+    parabola = 'parabola'
+    optimal = 'optimal'
+    from_gen_settings = '_from_gen_settings'
+
+    def __repr__(self):
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
+
+@dataclass
+class PulseEnvelope:
+    type: PulseEnvelopeType
+    parameters: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.parameters:
+            self.parameters = self.default_parameters
+
+    @property
+    def default_parameters(self) -> dict:
+        defaults = {'rectangle': {},
+                    'parabola': {'order': 1},
+                    'optimal': {},
+                    'sin_n': {'order': 2},
+                    '_from_gen_settings': {}}
+
+        return defaults[self.type.value]
+
+    def __repr__(self):
+        return f"{self.__class__.__module__}.{self.__class__.__name__}({repr(self.type)}, {self.parameters})"
+
+    @classmethod
+    def from_dict(cls, parameters: dict) -> "PulseEnvelope":
+        return PulseEnvelope(parameters["type"], parameters["parameters"])
 

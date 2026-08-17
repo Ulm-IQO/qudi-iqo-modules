@@ -39,11 +39,13 @@ _Real = Union[int, float]
 class ProcessControlConstraints:
     """ Data object holding the constraints for a set of process/setpoint channels.
     """
-    def __init__(self, setpoint_channels: Optional[Iterable[str]] = None,
+    def __init__(self,
+                 setpoint_channels: Optional[Iterable[str]] = None,
                  process_channels: Optional[Iterable[str]] = None,
                  units: Optional[Mapping[str, str]] = None,
                  limits: Optional[Mapping[str, Tuple[_Real, _Real]]] = None,
-                 dtypes: Optional[Mapping[str, Union[Type[int], Type[float]]]] = None):
+                 dtypes: Optional[Mapping[str, Union[Type[int], Type[float]]]] = None
+                 ) -> None:
         """
         """
         if units is None:
@@ -98,16 +100,12 @@ class ProcessControlConstraints:
     def channel_dtypes(self) -> Dict[str, Union[Type[int], Type[float]]]:
         return self._channel_dtypes.copy()
 
-    def channel_value_in_range(self, value: _Real, channel: str) -> Tuple[bool, _Real]:
+    def channel_value_in_range(self, channel: str, value: _Real) -> Tuple[bool, _Real]:
         return in_range(value, *self._channel_limits[channel])
 
 
-class ProcessSetpointInterface(Base):
-    """ A simple interface to control the setpoint for one or multiple process values.
-
-    This interface is in fact a very general/universal interface that can be used for a lot of
-    things. It can be used to interface any hardware where one to control one or multiple control
-    values, like a temperature or how much a PhD student get paid.
+class _ProcessControlInterfaceBase(Base):
+    """ Abstract base class for all interfaces in this module
     """
 
     @property
@@ -118,40 +116,48 @@ class ProcessSetpointInterface(Base):
         """
         pass
 
-    @property
     @abstractmethod
-    def is_active(self) -> bool:
-        """ Current activity state.
+    def set_activity_state(self, channel: str, active: bool) -> None:
+        """ Set activity state for given channel.
         State is bool type and refers to active (True) and inactive (False).
         """
         pass
 
-    @is_active.setter
-    def is_active(self, active: bool):
-        """ Set activity state.
+    @abstractmethod
+    def get_activity_state(self, channel: str) -> bool:
+        """ Get activity state for given channel.
         State is bool type and refers to active (True) and inactive (False).
         """
         pass
 
+    # Non-abstract default implementations below
+
     @property
-    @abstractmethod
-    def setpoints(self) -> Dict[str, _Real]:
-        """ The current setpoints (values) for all channels (keys) """
-        pass
-
-    @setpoints.setter
-    def setpoints(self, values: Mapping[str, _Real]):
-        """ Set the setpoints (values) for all channels (keys) at once """
-        pass
-
-    @abstractmethod
-    def set_activity_state(self, active: bool) -> None:
-        """ Set activity state. State is bool type and refers to active (True) and inactive (False).
+    def activity_states(self) -> Dict[str, bool]:
+        """ Current activity state (values) for each channel (keys).
+        State is bool type and refers to active (True) and inactive (False).
         """
-        pass
+        return {ch: self.get_activity_state(ch) for ch in self.constraints.all_channels}
+
+    @activity_states.setter
+    def activity_states(self, values: Mapping[str, bool]) -> None:
+        """ Set activity state (values) for multiple channels (keys).
+        State is bool type and refers to active (True) and inactive (False).
+        """
+        for ch, enabled in values.items():
+            self.set_activity_state(ch, enabled)
+
+
+class ProcessSetpointInterface(_ProcessControlInterfaceBase):
+    """ A simple interface to control the setpoint for one or multiple process values.
+
+    This interface is in fact a very general/universal interface that can be used for a lot of
+    things. It can be used to interface any hardware where one to control one or multiple control
+    values, like a temperature or how much a PhD student get paid.
+    """
 
     @abstractmethod
-    def set_setpoint(self, value: _Real, channel: str) -> None:
+    def set_setpoint(self, channel: str, value: _Real) -> None:
         """ Set new setpoint for a single channel """
         pass
 
@@ -160,8 +166,21 @@ class ProcessSetpointInterface(Base):
         """ Get current setpoint for a single channel """
         pass
 
+    # Non-abstract default implementations below
 
-class ProcessValueInterface(Base):
+    @property
+    def setpoints(self) -> Dict[str, _Real]:
+        """ The current setpoints (values) for all channels (keys) """
+        return {ch: self.get_setpoint(ch) for ch in self.constraints.setpoint_channels}
+
+    @setpoints.setter
+    def setpoints(self, values: Mapping[str, _Real]) -> None:
+        """ Set the setpoints (values) for all channels (keys) at once """
+        for ch, setpoint in values.items():
+            self.set_setpoint(ch, setpoint)
+
+
+class ProcessValueInterface(_ProcessControlInterfaceBase):
     """ A simple interface to read one or multiple process values.
 
     This interface is in fact a very general/universal interface that can be used for a lot of
@@ -169,47 +188,19 @@ class ProcessValueInterface(Base):
     values, like a temperature or how much a PhD student get paid.
     """
 
-    @property
-    @abstractmethod
-    def constraints(self) -> ProcessControlConstraints:
-        """ Read-Only property holding the constraints for this hardware module.
-        See class ProcessControlConstraints for more details.
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def is_active(self) -> bool:
-        """ Current activity state.
-        State is bool type and refers to active (True) and inactive (False).
-        """
-        pass
-
-    @is_active.setter
-    def is_active(self, active: bool):
-        """ Set activity state.
-        State is bool type and refers to active (True) and inactive (False).
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def process_values(self) -> Dict[str, _Real]:
-        """ Read-Only property returning a snapshot of current process values (values) for all
-        channels (keys).
-        """
-        pass
-
-    @abstractmethod
-    def set_activity_state(self, active: bool) -> None:
-        """ Set activity state. State is bool type and refers to active (True) and inactive (False).
-        """
-        pass
-
     @abstractmethod
     def get_process_value(self, channel: str) -> _Real:
         """ Get current process value for a single channel """
         pass
+
+    # Non-abstract default implementations below
+
+    @property
+    def process_values(self) -> Dict[str, _Real]:
+        """ Read-Only property returning a snapshot of current process values (values) for all
+        channels (keys).
+        """
+        return {ch: self.get_process_value(ch) for ch in self.constraints.process_channels}
 
 
 class ProcessControlInterface(ProcessSetpointInterface, ProcessValueInterface):

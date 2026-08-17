@@ -20,12 +20,16 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
+import datetime
+
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util.widgets.scan_2d_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import ImageWidget
+from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
-from .camera_settings_dialog import CameraSettingsDialog
+from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
+from qudi.logic.camera_logic import CameraLogic
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -37,17 +41,17 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create menu bar
         menu_bar = QtWidgets.QMenuBar()
         menu = menu_bar.addMenu('File')
-        self.action_save_frame = QtWidgets.QAction('Save Frame')
+        self.action_save_frame = QtGui.QAction('Save Frame')
         path = os.path.join(get_artwork_dir(), 'icons', 'document-save')
         self.action_save_frame.setIcon(QtGui.QIcon(path))
         menu.addAction(self.action_save_frame)
         menu.addSeparator()
-        self.action_show_settings = QtWidgets.QAction('Settings')
+        self.action_show_settings = QtGui.QAction('Settings')
         path = os.path.join(get_artwork_dir(), 'icons', 'configure')
         self.action_show_settings.setIcon(QtGui.QIcon(path))
         menu.addAction(self.action_show_settings)
         menu.addSeparator()
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
@@ -56,27 +60,35 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
         # Create toolbar
         toolbar = QtWidgets.QToolBar()
-        toolbar.setAllowedAreas(QtCore.Qt.AllToolBarAreas)
-        self.action_start_video = QtWidgets.QAction('Start Video')
+        toolbar.setAllowedAreas(QtCore.Qt.ToolBarArea.AllToolBarAreas)
+        self.action_start_video = QtGui.QAction('Start Video')
         self.action_start_video.setCheckable(True)
         toolbar.addAction(self.action_start_video)
-        self.action_capture_frame = QtWidgets.QAction('Capture Frame')
+        self.action_capture_frame = QtGui.QAction('Capture Frame')
         self.action_capture_frame.setCheckable(True)
         toolbar.addAction(self.action_capture_frame)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Create central widget
         self.image_widget = ImageWidget()
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
-        self.image_widget._image_item.setOpts(False, axisOrder='row-major')
+        self.image_widget.image_item.setOpts(False, axisOrder='row-major')
         self.setCentralWidget(self.image_widget)
 
 
 class CameraGui(GuiBase):
-    """ Main spectrometer camera class.
+    """ Main camera gui class.
+
+    Example config for copy-paste:
+
+    camera_gui:
+        module.Class: 'camera.cameragui.CameraGui'
+        connect:
+            camera_logic: camera_logic
+
     """
 
-    _camera_logic = Connector(name='camera_logic', interface='CameraLogic')
+    _camera_logic = Connector(name='camera_logic', interface=CameraLogic)
 
     sigStartStopVideoToggled = QtCore.Signal(bool)
     sigCaptureFrameTriggered = QtCore.Signal()
@@ -98,7 +110,7 @@ class CameraGui(GuiBase):
         # Connect the action of the settings dialog with this module
         self._settings_dialog.accepted.connect(self._update_settings)
         self._settings_dialog.rejected.connect(self._keep_former_settings)
-        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(
             self._update_settings
         )
 
@@ -130,7 +142,7 @@ class CameraGui(GuiBase):
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect(self._acquisition_finished)
-        logic.sigUpdateDisplay.disconnect(self._update_frame)
+        logic.sigFrameChanged.disconnect(self._update_frame)
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
         self._mw.action_capture_frame.triggered.disconnect()
@@ -184,21 +196,21 @@ class CameraGui(GuiBase):
         self._mw.image_widget.set_image(frame_data)
 
     def _save_frame(self):
-        """ Run the save routine from the logic to save the xy confocal data."""
-        print('save clicked')
-        # cb_range = self.get_xy_cb_range()
-        #
-        # # Percentile range is None, unless the percentile scaling is selected in GUI.
-        # pcile_range = None
-        # if not self._mw.xy_cb_manual_RadioButton.isChecked():
-        #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
-        #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
-        #     pcile_range = [low_centile, high_centile]
-        #
-        # self._camera_logic().save_xy_data(colorscale_range=cb_range, percentile_range=pcile_range)
-        #
-        # # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
-        # filepath = self._save_logic.get_path_for_module(module_name='Confocal')
-        # filename = filepath + os.sep + time.strftime('%Y%m%d-%H%M-%S_confocal_xy_scan_raw_pixel_image')
-        #
-        # self._image.save(filename + '_raw.png')
+        logic = self._camera_logic()
+        ds = TextDataStorage(root_dir=self.module_default_data_dir)
+        timestamp = datetime.datetime.now()
+        tag = logic.create_tag(timestamp)
+
+        parameters = {}
+        parameters['gain'] = logic.get_gain()
+        parameters['exposure'] = logic.get_exposure()
+
+        data = logic.last_frame
+        if data is not None:
+            file_path, _, _ = ds.save_data(data, metadata=parameters, nametag=tag,
+                                       timestamp=timestamp, column_headers='Image (columns is X, rows is Y)')
+            figure = logic.draw_2d_image(data, cbar_range=None)
+            ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+        else:
+            self.log.error('No Data acquired. Nothing to save.')
+        return

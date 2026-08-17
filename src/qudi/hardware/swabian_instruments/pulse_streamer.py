@@ -35,12 +35,13 @@ class PulseStreamer(PulserInterface):
 
     pulsestreamer:
         module.Class: 'swabian_instruments.pulse_streamer.PulseStreamer'
-        pulsestreamer_ip: '192.168.1.100'
-        #pulsed_file_dir: 'C:\\Software\\pulsed_files'
-        laser_channel: 0
-        uw_x_channel: 1
-        use_external_clock: False
-        external_clock_option: 0
+        options:
+            pulsestreamer_ip: '192.168.1.100'
+            #pulsed_file_dir: 'C:\\Software\\pulsed_files'
+            laser_channel: 0
+            uw_x_channel: 1
+            use_external_clock: False
+            external_clock_option: 0
     """
 
     _pulsestreamer_ip = ConfigOption('pulsestreamer_ip', '192.168.1.100', missing='warn')
@@ -54,8 +55,8 @@ class PulseStreamer(PulserInterface):
     __current_waveform_name = StatusVar(name='current_waveform_name', default='')
     __sample_rate = StatusVar(name='sample_rate', default=1e9)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.__current_status = -1
         self.__currently_loaded_waveform = ''  # loaded and armed waveform name

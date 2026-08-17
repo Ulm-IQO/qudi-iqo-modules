@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 
@@ -39,9 +42,10 @@ class MicrowaveAnritsu(MicrowaveInterface):
 
     mw_source_anritsu:
         module.Class: 'microwave.mw_source_anritsu.MicrowaveAnritsu'
-        gpib_address: 'GPIB0::12::INSTR'
-        gpib_timeout: 10  # in seconds, optional
-        rising_edge_trigger: True  # optional
+        options:
+            gpib_address: 'GPIB0::12::INSTR'
+            gpib_timeout: 10  # in seconds, optional
+            rising_edge_trigger: True  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')
@@ -80,7 +84,7 @@ class MicrowaveAnritsu(MicrowaveInterface):
             scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP)
         )
 
-        self._cw_power = float(self._gpib_connection.query(':POW?'))
+        self._cw_power = float(self._device.query(':POW?'))
         self._scan_power = self._cw_power
         self._scan_frequencies = None
         self._scan_mode = SamplingOutputMode.JUMP_LIST

@@ -1,6 +1,109 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=61.0",
+    "setuptools-scm>=8.0",
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "qudi-iqo-modules"
+dynamic = ["version"]
+description = "IQO measurement modules collection for qudi"
+readme = "README.md"
+keywords = [
+    "qudi",
+    "diamond",
+    "quantum",
+    "confocal",
+    "experiment",
+    "lab",
+    "laboratory",
+    "instrumentation",
+    "instrument",
+    "modular",
+    "measurement",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Environment :: MacOS X",
+
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: End Users/Desktop",
+
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+
+    "Natural Language :: English",
+
+    "Operating System :: Microsoft :: Windows :: Windows 8",
+    "Operating System :: Microsoft :: Windows :: Windows 8.1",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Unix",
+    "Operating System :: POSIX :: Linux",
+
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+
+    "Topic :: Scientific/Engineering",
+]
+requires-python = ">=3.10"
+# Dependencies with omitted version numbers get a fixed version from qudi-core
+dependencies = [
+    'qudi-core>=1.7.0',
+    'entrypoints>=0.4',
+    'fysom>=2.1.6',
+    'lmfit',
+    'lxml>=6.1.0',
+    'matplotlib',
+    'nidaqmx>=1.5.0',
+    'numpy',
+    'pyqtgraph',
+    'PySide6',
+    'PyVisa>=1.16.2',
+    'scipy',
+    'zaber_motion>=9.2.0'
+]
+
+[project.urls]
+Homepage = "https://github.com/Ulm-IQO/qudi-iqo-modules"
+Repository = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
+"Bug Tracker" = "https://github.com/Ulm-IQO/qudi-iqo-modules/issues"
+Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelog.md"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[project.optional-dependencies]
+dev-test = ["pytest", "pytest-qt>=4.4.0", "coverage"]
+dev-lint-format = ["ruff>=0.7.0",]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "preserve"
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+ignore = [
+    "ERA001",  # Commented-out code
+    "SLF001",  # Private member accessed
+    "N803",  # Argument name should be lowercase
+    "N806",  # Variable in function should be lowercase
+    "C901",  # Init method too complex
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["sitecustomize"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
