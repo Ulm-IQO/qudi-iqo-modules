@@ -20,9 +20,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
 import time
-
+import os
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
@@ -50,10 +49,9 @@ class FastCounterDummy(FastCounterInterface):
         super().__init__(*args, **kwargs)
 
         if self.trace_path is None:
-            self.trace_path = os.path.abspath(os.path.join(
-                os.path.dirname(__file__),
-                'FastComTec_demo_timetrace.asc'
-            ))
+            self.trace_path = os.path.abspath(os.path.join(__file__,
+                                                           '..',
+                                                           'FastComTec_demo_timetrace.asc'))
             self.log.debug(f"Loading dummy fastcounter trace: {self.trace_path}")
 
     def on_activate(self):
@@ -62,8 +60,6 @@ class FastCounterDummy(FastCounterInterface):
         self.statusvar = 0
         self._binwidth = 1
         self._gate_length_bins = 8192
-        self._number_of_gates = 1 if self._gated else 0
-        self._count_data = np.zeros(self._gate_length_bins, dtype='int64')
         return
 
     def on_deactivate(self):
@@ -73,10 +69,10 @@ class FastCounterDummy(FastCounterInterface):
         return
 
     def get_constraints(self):
-        """ Retrieve the hardware constraints from the Fast counting device.
+        """ Retrieve the hardware constrains from the Fast counting device.
 
         @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constraints.
+                      items are the definition for the constaints.
 
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
@@ -109,17 +105,12 @@ class FastCounterDummy(FastCounterInterface):
         constraints = dict()
 
         # the unit of those entries are seconds per bin. In order to get the
-        # current binwidth in seconds use the get_binwidth method.
-        constraints['hardware_binwidth_list'] = [
-            1/950e6,
-            2/950e6,
-            4/950e6,
-            8/950e6
-        ]
+        # current binwidth in seonds use the get_binwidth method.
+        constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6, 8/950e6]
 
         return constraints
 
-    def configure(self, bin_width_s, record_length_s, number_of_gates=0):
+    def configure(self, bin_width_s, record_length_s, number_of_gates = 0):
         """ Configuration of the fast counter.
 
         @param float bin_width_s: Length of a single time bin in the time trace
@@ -136,14 +127,11 @@ class FastCounterDummy(FastCounterInterface):
         """
         self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
         self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
-        self._number_of_gates = (
-            max(1, int(number_of_gates)) if self._gated else 0
-        )
-
         actual_binwidth = self._binwidth * 1000 / 950e9
         actual_length = self._gate_length_bins * actual_binwidth
         self.statusvar = 1
-        return actual_binwidth, actual_length, self._number_of_gates
+        return actual_binwidth, actual_length, number_of_gates
+
 
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
@@ -159,63 +147,15 @@ class FastCounterDummy(FastCounterInterface):
 
     def start_measure(self):
         time.sleep(1)
+        self.statusvar = 2
         try:
-            count_data = np.loadtxt(self.trace_path, dtype='int64')
-        except (OSError, ValueError):
-            self.statusvar = -1
-            self.log.exception(
-                f'Unable to load dummy fastcounter trace: {self.trace_path}'
-            )
+            self._count_data = np.loadtxt(self.trace_path, dtype='int64')
+        except:
             return -1
 
-        self._count_data = self._prepare_count_data(count_data)
-        self.statusvar = 2
-        return 0
-
-    def _prepare_count_data(self, count_data):
-        """Prepare demo trace data for the configured counting mode."""
-        count_data = np.asarray(count_data, dtype='int64').ravel()
-        rebinned_data = self._rebin_count_data(count_data)
         if self._gated:
-            return self._prepare_gated_count_data(rebinned_data)
-        return self._resize_count_data(rebinned_data, self._gate_length_bins)
-
-    def _rebin_count_data(self, count_data):
-        """Sum base clock bins to emulate the configured hardware bin width."""
-        if self._binwidth <= 1 or count_data.size == 0:
-            return count_data
-
-        usable_size = count_data.size - (count_data.size % self._binwidth)
-        if usable_size == 0:
-            return np.zeros(0, dtype='int64')
-        return (
-            count_data[:usable_size]
-            .reshape(-1, self._binwidth)
-            .sum(axis=1)
-            .astype('int64')
-        )
-
-    def _prepare_gated_count_data(self, count_data):
-        """Return a 2D trace with shape (gate_index, timebin_index)."""
-        required_size = self._number_of_gates * self._gate_length_bins
-        return self._resize_count_data(count_data, required_size).reshape(
-            self._number_of_gates,
-            self._gate_length_bins
-        )
-
-    @staticmethod
-    def _resize_count_data(count_data, target_size):
-        """Crop or repeat trace data to the exact configured sample count."""
-        if count_data.size == 0:
-            return np.zeros(target_size, dtype='int64')
-        if count_data.size >= target_size:
-            return count_data[:target_size].astype('int64', copy=False)
-
-        repetitions = int(np.ceil(target_size / count_data.size))
-        return np.tile(count_data, repetitions)[:target_size].astype(
-            'int64',
-            copy=False
-        )
+            self._count_data = self._count_data.transpose()
+        return 0
 
     def pause_measure(self):
         """ Pauses the current measurement.
@@ -266,8 +206,7 @@ class FastCounterDummy(FastCounterInterface):
         The binning, specified by calling configure() in forehand, must be
         taken care of in this hardware class. A possible overflow of the
         histogram bins must be caught here and taken care of.
-        If the counter is NOT GATED it will return a tuple
-        (1D-numpy-array, info_dict) with
+        If the counter is NOT GATED it will return a tuple (1D-numpy-array, info_dict) with
             returnarray[timebin_index]
         If the counter is GATED it will return a tuple (2D-numpy-array, info_dict) with
             returnarray[gate_index, timebin_index]
