@@ -855,10 +855,42 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 )
                 return -1, []
 
-            self.log.debug(
-                'Uploaded "{0}" to PulseBlaster: {1} samples @ {2:.3e} Hz.'
-                ''.format(pb_name, pb_total, self._pb_sample_rate)
-            )
+            # ── Diagnostic: log PB instruction count after compression ────────
+            # The PB hardware maximum is 4094 instructions.
+            # _convert_sample_to_pb_sequence compresses runs of identical
+            # channel states into single entries. Log the compressed count so
+            # you can see how close you are to the hardware limit.
+            try:
+                pb_instr_count = len(self.pulseblaster()._current_pb_waveform)
+                pb_instr_theoretical = len(
+                    self.pulseblaster()._current_pb_waveform_theoretical
+                )
+                self.log.info(
+                    'PB "{0}": {1} samples @ {2:.3e} Hz -> '
+                    '{3} instructions after RLE compression '
+                    '(theoretical {4}, hardware max 4094).'
+                    ''.format(
+                        pb_name,
+                        pb_total,
+                        self._pb_sample_rate,
+                        pb_instr_count,
+                        pb_instr_theoretical,
+                    )
+                )
+                if pb_instr_count > 4000:
+                    self.log.warning(
+                        'PB instruction count {0} is close to the hardware '
+                        'maximum of 4094. Consider reducing the number of '
+                        'transitions in the PB channels or enabling '
+                        'use_smart_pulse_creation in the PB config.'
+                        ''.format(pb_instr_count)
+                    )
+            except Exception:
+                self.log.debug(
+                    'Uploaded "{0}" to PulseBlaster: '
+                    '{1} samples @ {2:.3e} Hz.'
+                    ''.format(pb_name, pb_total, self._pb_sample_rate)
+                )
 
         # ── 5. Track logical name ─────────────────────────────────────────────
         if is_last_chunk and name not in self._written_waveform_names:
