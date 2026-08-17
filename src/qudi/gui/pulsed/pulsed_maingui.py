@@ -40,6 +40,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
@@ -1293,6 +1294,12 @@ class PulsedMeasurementGui(GuiBase):
                     widget.addItem(option.name, option)
                 widget.setCurrentText(value.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
+            elif issubclass(type(value), PulseEnvelope):
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(value.type.name)
+                widget.currentTextChanged.connect(self.generation_parameters_changed)
 
             widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
 
@@ -1669,7 +1676,12 @@ class PulsedMeasurementGui(GuiBase):
                     elif hasattr(widget, 'setText'):
                         widget.setText(settings_dict[param_name])
                     elif hasattr(widget, 'currentText'):
-                        index = widget.findText(str(settings_dict[param_name].name))
+                        text = ""
+                        if issubclass(type(settings_dict[param_name]), Enum):
+                            text = settings_dict[param_name].name
+                        elif isinstance(settings_dict[param_name], PulseEnvelope):
+                            text = settings_dict[param_name].type.name
+                        index = widget.findText(str(text))
                         widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 
@@ -2386,6 +2398,15 @@ class PulsedMeasurementGui(GuiBase):
         # apply hardware constraints
         self._pa_apply_hardware_constraints()
 
+        # Dynamically populate the alternative (second) plot selection from the available methods
+        # discovered by the logic (AltPlotAnalyzer). 'None' is always offered to disable the plot.
+        self._pa.second_plot_ComboBox.blockSignals(True)
+        self._pa.second_plot_ComboBox.clear()
+        self._pa.second_plot_ComboBox.addItem('None')
+        for method_name in natural_sort(self.pulsedmasterlogic().alt_plot_methods):
+            self._pa.second_plot_ComboBox.addItem(method_name)
+        self._pa.second_plot_ComboBox.blockSignals(False)
+
         # Recall StatusVars into widgets
         self._pa.ana_param_errorbars_CheckBox.blockSignals(True)
         self._pa.ana_param_errorbars_CheckBox.setChecked(self._ana_param_errorbars)
@@ -2863,11 +2884,15 @@ class PulsedMeasurementGui(GuiBase):
         if second_plot != self.pulsedmasterlogic().alternative_data_type:
             self.pulsedmasterlogic().set_alternative_data_type(second_plot)
 
-        if self.pulsedmasterlogic().alternative_data_type == 'Delta':
-            self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_x_axis_name_LineEdit.text()
-            self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_x_axis_unit_LineEdit.text()
-            self._ana_param_second_plot_y_axis_name_text = self._as.ana_param_y_axis_name_LineEdit.text()
-            self._ana_param_second_plot_y_axis_unit_text = self._as.ana_param_y_axis_unit_LineEdit.text()
+        # Axis labels for the selected method are provided by the logic (computed from the active
+        # measurement settings), 
+        current_type = self.pulsedmasterlogic().alternative_data_type
+        method_labels = self.pulsedmasterlogic().alt_plot_labels.get(current_type)
+        if method_labels:
+            self._ana_param_second_plot_x_axis_name_text = method_labels.get('x_label', '')
+            self._ana_param_second_plot_x_axis_unit_text = method_labels.get('x_unit', '')
+            self._ana_param_second_plot_y_axis_name_text = method_labels.get('y_label', '')
+            self._ana_param_second_plot_y_axis_unit_text = method_labels.get('y_unit', '')
         else:
             self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_second_plot_x_axis_name_LineEdit.text()
             self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_second_plot_x_axis_unit_LineEdit.text()

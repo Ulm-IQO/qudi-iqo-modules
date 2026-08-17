@@ -356,6 +356,14 @@ class PulsedMasterLogic(LogicBase):
         return self.pulsedmeasurementlogic().analysis_methods
 
     @property
+    def alt_plot_methods(self):
+        return self.pulsedmeasurementlogic().alt_plot_methods
+
+    @property
+    def alt_plot_labels(self):
+        return self.pulsedmeasurementlogic().alt_plot_labels
+
+    @property
     def extraction_methods(self):
         return self.pulsedmeasurementlogic().extraction_methods
 
