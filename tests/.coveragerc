@@ -1,0 +1,10 @@
+[run]
+branch = True
+parallel = True
+source = ../
+timid = True
+
+[report]
+show_missing = True
+
+

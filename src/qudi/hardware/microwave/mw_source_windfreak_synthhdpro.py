@@ -31,13 +31,18 @@ from qudi.util.enums import SamplingOutputMode
 class MicrowaveSynthHDPro(MicrowaveInterface):
     """ Hardware class to controls a SynthHD Pro.
 
+    Important note: This MW source is low active. Using it together with trigger signals make sure
+    to use falling trigger edges. For the ni_x_series_finite_sampling_input there is the
+    `trigger_edge` option. You can change the default value (RISING) to FALLING.
+
     Example config for copy-paste:
 
     mw_source_synthhd:
         module.Class: 'microwave.mw_source_windfreak_synthhdpro.MicrowaveSynthHDPro'
-        serial_port: 'COM3'
-        comm_timeout: 10  # in seconds
-        output_channel: 0  # either 0 or 1
+        options:
+            serial_port: 'COM3'
+            comm_timeout: 10  # in seconds
+            output_channel: 0  # either 0 or 1
     """
 
     _serial_port = ConfigOption('serial_port', missing='error')

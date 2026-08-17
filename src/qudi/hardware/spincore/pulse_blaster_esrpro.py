@@ -66,13 +66,14 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         pulseblaster:
             module.Class: 'spincore.pulse_blaster_esrpro.PulseBlasterESRPRO'
-            clock_frequency: 500e6 # in Hz
-            min_instr_len: 5    # number of clock cycles for minimal instruction
-            debug_mode: False   # optional, to set the debug mode on or off.
-            use_smart_pulse_creation: False # optinal, default is false, try to
-                                            # optimize the memory used on the device.
-            #library_file: 'spinapi64.dll'  # optional, name of the library file
-                                            # or  whole path to the file
+            options:
+                clock_frequency: 500e6 # in Hz
+                min_instr_len: 5    # number of clock cycles for minimal instruction
+                debug_mode: False   # optional, to set the debug mode on or off.
+                use_smart_pulse_creation: False # optinal, default is false, try to
+                                                # optimize the memory used on the device.
+                #library_file: 'spinapi64.dll'  # optional, name of the library file
+                                                # or  whole path to the file
 
     Remark to the config values:
         library_file: if the library does not lay in the default directory of
@@ -1296,20 +1297,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         constraints.sample_rate.min = self._clock_freq
         constraints.sample_rate.max = self._clock_freq
         constraints.step = 0.0
-        constraints.unit = 'Hz'
 
         constraints.d_ch_low.min = 0.0
         constraints.d_ch_low.max = 0.0
         constraints.d_ch_low.step = 0.0
         constraints.d_ch_low.default = 0.0
-        constraints.d_ch_low.unit = 'V'
 
         # it is a LVTTL standard with 3.3V as the logical one
         constraints.d_ch_high.min = 3.3
         constraints.d_ch_high.max = 3.3
         constraints.d_ch_high.step = 3.3
         constraints.d_ch_high.default = 3.3
-        constraints.d_ch_high.unit = 'V'
 
         # Minimum instruction time in clock cycles specified in the config,
         # translates for 6 clock cycles to 12ns at 500MHz.
@@ -2010,7 +2008,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @return str: The name of the hardware
         """
-        return self._meta['name']
+        return self.module_name
 
     @property
     def available_states(self):

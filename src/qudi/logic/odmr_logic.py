@@ -24,7 +24,7 @@ import numpy as np
 import time
 import datetime
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.core.module import LogicBase
@@ -34,15 +34,29 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import TextDataStorage
+from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface
+from qudi.interface.microwave_interface import MicrowaveInterface
 from qudi.util.enums import SamplingOutputMode
 
 
 class OdmrLogic(LogicBase):
-    """ This is the Logic class for CW ODMR measurements """
+    """
+    This is the Logic class for CW ODMR measurements.
+
+    example config for copy-paste:
+
+    odmr_logic:
+        module.Class: 'odmr_logic.OdmrLogic'
+        connect:
+            microwave: <microwave_name>
+            data_scanner: <data_scanner_name>
+        options:
+            default_scan_mode: 'JUMP_LIST'  # optional
+    """
 
     # declare connectors
-    _microwave = Connector(name='microwave', interface='MicrowaveInterface')
-    _data_scanner = Connector(name='data_scanner', interface='FiniteSamplingInputInterface')
+    _microwave = Connector(name='microwave', interface=MicrowaveInterface)
+    _data_scanner = Connector(name='data_scanner', interface=FiniteSamplingInputInterface)
 
     # declare config options
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
@@ -96,8 +110,8 @@ class OdmrLogic(LogicBase):
          'custom_parameters': None},
     )
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._threadlock = RecursiveMutex()
 
@@ -151,7 +165,7 @@ class OdmrLogic(LogicBase):
         self._initialize_odmr_data()
 
         # Connect signals
-        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.QueuedConnection)
+        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -534,7 +548,7 @@ class OdmrLogic(LogicBase):
                 self.sigScanStateUpdated.emit(False)
                 return
 
-            # ToDo: Clear old fit
+            self.clear_all_fits()
             self._elapsed_sweeps = 0
             self._elapsed_time = 0.0
             self.sigElapsedUpdated.emit(self._elapsed_time, self._elapsed_sweeps)
@@ -543,6 +557,12 @@ class OdmrLogic(LogicBase):
             self.sigScanStateUpdated.emit(True)
             self._start_time = time.time()
             self._sigNextLine.emit()
+
+    def clear_all_fits(self):
+        for channel, range_data in self._raw_data.items():
+            for range_index, _ in enumerate(range_data):
+                self._fit_results[channel][range_index] = None
+                self.sigFitUpdated.emit(self._fit_results[channel][range_index], channel, range_index)
 
     @QtCore.Slot()
     def continue_odmr_scan(self):
@@ -678,16 +698,22 @@ class OdmrLogic(LogicBase):
         self.sigFitUpdated.emit(self._fit_results[channel][range_index], channel, range_index)
 
     def _get_metadata(self):
-        return {'Microwave CW Power (dBm)': self._cw_power,
-                'Microwave Scan Power (dBm)': self._scan_power,
-                'Approx. Run Time (s)': self._elapsed_time,
-                'Number of Frequency Sweeps (#)': self._elapsed_sweeps,
-                'Start Frequencies (Hz)': tuple(rng[0] for rng in self._scan_frequency_ranges),
-                'Stop Frequencies (Hz)': tuple(rng[1] for rng in self._scan_frequency_ranges),
-                'Step sizes (Hz)': tuple(rng[2] for rng in self._scan_frequency_ranges),
-                'Data Rate (Hz)': self._data_rate,
-                'Oversampling factor (Hz)': self._oversampling_factor,
-                'Channel Name': ''}
+        metadata = {'Microwave CW Power (dBm)': self._cw_power,
+                    'Microwave Scan Power (dBm)': self._scan_power,
+                    'Approx. Run Time (s)': self._elapsed_time,
+                    'Number of Frequency Sweeps (#)': self._elapsed_sweeps,
+                    'Start Frequencies (Hz)': tuple(rng[0] for rng in self._scan_frequency_ranges),
+                    'Stop Frequencies (Hz)': tuple(rng[1] for rng in self._scan_frequency_ranges),
+                    'Step sizes (Hz)': tuple(rng[2] for rng in self._scan_frequency_ranges),
+                    'Data Rate (Hz)': self._data_rate,
+                    'Oversampling factor (Hz)': self._oversampling_factor,
+                    'Channel Name': ''}
+        for fit_channel in self._fit_results:
+            for ii, fit_result in enumerate(self._fit_results[fit_channel]):
+                if fit_result:
+                    export_dict = FitContainer.dict_result(fit_result[1])
+                    metadata[f'fit result (channel "{fit_channel}" range {ii})'] = export_dict
+        return metadata
 
     def _get_raw_column_headers(self, data_channel):
         channel_unit = self.data_constraints.channel_units[data_channel]

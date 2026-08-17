@@ -155,10 +155,11 @@ class FastComtec(FastCounterInterface):
 
     fastcomtec_p7887:
         module.Class: 'fastcomtec.fastcomtecp7887.FastComtec'
-        gated: False
-        trigger_safety: 200e-9
-        aom_delay: 400e-9
-        minimal_binwidth: 0.25e-9
+        options:
+            gated: False
+            trigger_safety: 200e-9
+            aom_delay: 400e-9
+            minimal_binwidth: 0.25e-9
 
     """
 
@@ -169,14 +170,9 @@ class FastComtec(FastCounterInterface):
     model = ConfigOption('model', '7887')
     use_dma = ConfigOption('use_dma', False)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-        self.log.debug('The following configuration was found.')
-
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.info('{0}: {1}'.format(key,config[key]))
         #this variable has to be added because there is no difference
         #in the fastcomtec it can be on "stopped" or "halt"
         self.stopped_or_halt = "stopped"

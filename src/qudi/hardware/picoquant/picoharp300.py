@@ -93,8 +93,9 @@ class PicoHarp300(FastCounterInterface):
 
     fastcounter_picoharp300:
         module.Class: 'picoquant.picoharp300.PicoHarp300'
-        deviceID: 0 # a device index from 0 to 7.
-        mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode
+        options:
+            deviceID: 0 # a device index from 0 to 7.
+            mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode
         
     """
 
@@ -105,8 +106,8 @@ class PicoHarp300(FastCounterInterface):
     sigAnalyzeData = QtCore.Signal(object, object)
     sigStart = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.errorcode = self._create_errorcode()
         self._set_constants()
@@ -147,8 +148,8 @@ class PicoHarp300(FastCounterInterface):
         # anything to pass through:
 
         self.sigStart.connect(self.start_measure)
-        self.sigReadoutPicoharp.connect(self.get_fresh_data_loop, QtCore.Qt.QueuedConnection) # ,QtCore.Qt.QueuedConnection
-        self.sigAnalyzeData.connect(self.analyze_received_data, QtCore.Qt.QueuedConnection)
+        self.sigReadoutPicoharp.connect(self.get_fresh_data_loop, QtCore.Qt.ConnectionType.QueuedConnection) # ,QtCore.Qt.ConnectionType.QueuedConnection
+        self.sigAnalyzeData.connect(self.analyze_received_data, QtCore.Qt.ConnectionType.QueuedConnection)
         self.result = []
 
 

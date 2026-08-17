@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
-from qudi.core.interface import ScalarConstraint
+from qudi.util.constraints import ScalarConstraint
 
 
 class PulserInterface(Base):
@@ -558,22 +558,22 @@ class SequenceOption(Enum):
 class PulserConstraints:
     def __init__(self):
         # sample rate, i.e. the time base of the pulser
-        self.sample_rate = ScalarConstraint(unit='Hz')
+        self.sample_rate = ScalarConstraint(default=1, bounds=(1e-9, float('inf')))
         # The peak-to-peak amplitude and voltage offset of the analog channels
-        self.a_ch_amplitude = ScalarConstraint(unit='Vpp')
-        self.a_ch_offset = ScalarConstraint(unit='V')
+        self.a_ch_amplitude = ScalarConstraint(default=0, bounds=(0, float('inf')))
+        self.a_ch_offset = ScalarConstraint(default=0, bounds=(0, float('inf')))
         # Low and high voltage level of the digital channels
-        self.d_ch_low = ScalarConstraint(unit='V')
-        self.d_ch_high = ScalarConstraint(unit='V')
+        self.d_ch_low = ScalarConstraint(default=0, bounds=(float('-inf'), float('inf')))
+        self.d_ch_high = ScalarConstraint(default=0, bounds=(float('-inf'), float('inf')))
         # length of the created waveform in samples
-        self.waveform_length = ScalarConstraint(unit='Samples')
+        self.waveform_length = ScalarConstraint(default=1, bounds=(1, 2**64 - 1), enforce_int=True)
         # number of waveforms/sequences to put in a single asset (sequence mode)
-        self.waveform_num = ScalarConstraint(unit='#')
-        self.sequence_num = ScalarConstraint(unit='#')
-        self.subsequence_num = ScalarConstraint(unit='#')
+        self.waveform_num = ScalarConstraint(default=0, bounds=(0, 2**64 - 1), enforce_int=True)
+        self.sequence_num = ScalarConstraint(default=0, bounds=(0, 2**64 - 1), enforce_int=True)
+        self.subsequence_num = ScalarConstraint(default=0, bounds=(0, 2**64 - 1), enforce_int=True)
         # Sequence parameters
-        self.sequence_steps = ScalarConstraint(unit='#', min=0)
-        self.repetitions = ScalarConstraint(unit='#')
+        self.sequence_steps = ScalarConstraint(default=0, bounds=(0, 2**64 - 1), enforce_int=True)
+        self.repetitions = ScalarConstraint(default=0, bounds=(0, 2**64 - 1), enforce_int=True)
         self.event_triggers = list()
         self.flags = list()
 

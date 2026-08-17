@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the qudi hardware module to use a National Instruments X-series card as mixed
-signal input data streamer.
+This file contains the qudi hardware module to use a National Instruments X-series card for input
+of data of a certain length at a given sampling rate and data type.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -37,7 +37,7 @@ from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputIn
 class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     """
     A National Instruments device that can detect and count digital pulses and measure analog
-    voltages as data stream.
+    voltages in a finite sampling way.
 
     !!!!!! NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
 
@@ -46,19 +46,21 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     Example config for copy-paste:
 
     ni_finite_sampling_input:
-        module.Class: 'ni_x_series_finite_sampling_input.NIXSeriesFiniteSamplingInput'
-        device_name: 'Dev1'
-        digital_channel_units:  # optional
-            'PFI15': 'c/s'
-        analog_channel_units:  # optional
-            'ai0': 'V'
-            'ai1': 'V'
-        # external_sample_clock_source: 'PFI0'  # optional
-        # external_sample_clock_frequency: 1000  # optional
-        adc_voltage_range: [-10, 10]  # optional
-        max_channel_samples_buffer: 10000000  # optional
-        read_write_timeout: 10  # optional
-        sample_clock_output: '/Dev1/PFI20'  # optional
+        module.Class: 'ni_x_series.ni_x_series_finite_sampling_input.NIXSeriesFiniteSamplingInput'
+        options:
+            device_name: 'Dev1'
+            digital_channel_units:  # optional
+                'PFI15': 'c/s'
+            analog_channel_units:  # optional
+                'ai0': 'V'
+                'ai1': 'V'
+            # external_sample_clock_source: 'PFI0'  # optional
+            # external_sample_clock_frequency: 1000  # optional
+            adc_voltage_range: [-10, 10]  # optional, default [-10, 10]
+            max_channel_samples_buffer: 10000000  # optional, default 10000000
+            read_write_timeout: 10  # optional, default 10
+            sample_clock_output: '/Dev1/PFI20'  # optional
+            trigger_edge: RISING  # optional
 
     """
 
@@ -72,6 +74,8 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         name='external_sample_clock_frequency', default=None, missing='nothing')
 
     _physical_sample_clock_output = ConfigOption(name='sample_clock_output', default=None)
+    _trigger_edge = ConfigOption(name='trigger_edge', default="RISING",
+                                 constructor=lambda x: ni.constants.Edge[x.upper()], missing='warn')
 
     _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
     _max_channel_samples_buffer = ConfigOption(
@@ -209,6 +213,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         # initialize default settings
         self._sample_rate = self._constraints.max_sample_rate
+        # TODO: Get real sample rate limits depending on specified channels (see NI FSIO), or include in "ni helper".
         self._frame_size = 0
 
         self.set_active_channels(digital_sources.union(analog_sources))
@@ -423,6 +428,9 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     timeout=self._rw_timeout)
                 if read_samples != number_of_samples:
                     return data
+                data_buffer *= self._sample_rate
+                # TODO Multiplication by self._sample_rate to convert to c/s, from counts/clock cycle
+                #  What if unit not c/s?
                 data[reader._task.name.split('_')[-1]] = data_buffer
 
             # Read analog channels
@@ -499,7 +507,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 task.co_channels.add_co_pulse_chan_freq(
                     '/{0}/{1}'.format(self._device_name, src),
                     freq=self._sample_rate,
-                    idle_state=ni.constants.Level.LOW)
+                    idle_state=ni.constants.Level.HIGH if self._trigger_edge==ni.constants.Edge.FALLING else ni.constants.Level.LOW)
                 task.timing.cfg_implicit_timing(
                     sample_mode=ni.constants.AcquisitionType.FINITE,
                     samps_per_chan=self._frame_size + 1)
@@ -570,7 +578,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         # Set up digital counting tasks
         for i, chnl in enumerate(digital_channels):
             chnl_name = '/{0}/{1}'.format(self._device_name, chnl)
-            task_name = 'PeriodCounter_{0}'.format(chnl)
+            task_name = 'PeriodCounterInput_{0}'.format(chnl)
             # Try to find available counter
             for ctr in self.__all_counters:
                 ctr_name = '/{0}/{1}'.format(self._device_name, ctr)
@@ -587,7 +595,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                         min_val=0,
                         max_val=100000000,
                         units=ni.constants.TimeUnits.TICKS,
-                        edge=ni.constants.Edge.RISING)
+                        edge=self._trigger_edge)
                     # NOTE: The following two direct calls to C-function wrappers are a
                     # workaround due to a bug in some NIDAQmx.lib property getters. If one of
                     # these getters is called, it will mess up the task timing.
@@ -708,7 +716,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                                                     min_val=min(self._adc_voltage_range))
             ai_task.timing.cfg_samp_clk_timing(sample_freq,
                                                source=clock_channel,
-                                               active_edge=ni.constants.Edge.RISING,
+                                               active_edge=self._trigger_edge,
                                                sample_mode=ni.constants.AcquisitionType.FINITE,
                                                samps_per_chan=self._frame_size)
         except ni.DaqError:

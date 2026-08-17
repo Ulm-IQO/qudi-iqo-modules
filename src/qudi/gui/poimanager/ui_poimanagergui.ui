@@ -483,208 +483,208 @@
        </item>
       </layout>
      </item>
-     <item>
-      <layout class="QHBoxLayout" name="horizontalLayout_10">
-       <item>
-        <widget class="ScanPlotWidget" name="roi_map_ViewWidget">
-         <property name="sizePolicy">
-          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-           <horstretch>0</horstretch>
-           <verstretch>6</verstretch>
-          </sizepolicy>
-         </property>
-        </widget>
-       </item>
-       <item>
-        <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,1,0,0,0,0">
-         <item>
-          <widget class="ScienDSpinBox" name="roi_cb_max_SpinBox">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="mouseTracking">
-            <bool>true</bool>
-           </property>
-           <property name="acceptDrops">
-            <bool>true</bool>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-           <property name="accelerated">
-            <bool>true</bool>
-           </property>
-           <property name="suffix">
-            <string>c/s</string>
-           </property>
-           <property name="minimum">
-            <double>-1000000000.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>1000000000.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>100000.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="ScienDSpinBox" name="roi_cb_high_percentile_DoubleSpinBox">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-           <property name="suffix">
-            <string>%</string>
-           </property>
-           <property name="decimals">
-            <number>5</number>
-           </property>
-           <property name="minimum">
-            <double>0.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>100.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>100.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="PlotWidget" name="roi_cb_ViewWidget">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="ScienDSpinBox" name="roi_cb_low_percentile_DoubleSpinBox">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-           <property name="suffix">
-            <string>%</string>
-           </property>
-           <property name="decimals">
-            <number>5</number>
-           </property>
-           <property name="minimum">
-            <double>0.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>100.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>0.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="ScienDSpinBox" name="roi_cb_min_SpinBox">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>100</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="mouseTracking">
-            <bool>true</bool>
-           </property>
-           <property name="acceptDrops">
-            <bool>true</bool>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-           </property>
-           <property name="accelerated">
-            <bool>true</bool>
-           </property>
-           <property name="suffix">
-            <string>c/s</string>
-           </property>
-           <property name="minimum">
-            <double>-1000000000.000000000000000</double>
-           </property>
-           <property name="maximum">
-            <double>1000000000.000000000000000</double>
-           </property>
-           <property name="value">
-            <double>1000.000000000000000</double>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QRadioButton" name="roi_cb_centiles_RadioButton">
-           <property name="text">
-            <string>Percentiles</string>
-           </property>
-           <property name="checked">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QRadioButton" name="roi_cb_manual_RadioButton">
-           <property name="text">
-            <string>Manual</string>
-           </property>
-           <property name="checked">
-            <bool>false</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-      </layout>
-     </item>
+<!--     <item>-->
+<!--      <layout class="QHBoxLayout" name="horizontalLayout_10">-->
+<!--       <item>-->
+<!--        <widget class="ImageWidget" name="roi_map_ViewWidget">-->
+<!--         <property name="sizePolicy">-->
+<!--          <sizepolicy hsizetype="Expanding" vsizetype="Expanding">-->
+<!--           <horstretch>0</horstretch>-->
+<!--           <verstretch>6</verstretch>-->
+<!--          </sizepolicy>-->
+<!--         </property>-->
+<!--        </widget>-->
+<!--       </item>-->
+<!--       <item>-->
+<!--        <layout class="QVBoxLayout" name="verticalLayout" stretch="0,0,1,0,0,0,0">-->
+<!--         <item>-->
+<!--          <widget class="ScienDSpinBox" name="roi_cb_max_SpinBox">-->
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">-->
+<!--             <horstretch>0</horstretch>-->
+<!--             <verstretch>0</verstretch>-->
+<!--            </sizepolicy>-->
+<!--           </property>-->
+<!--           <property name="maximumSize">-->
+<!--            <size>-->
+<!--             <width>100</width>-->
+<!--             <height>16777215</height>-->
+<!--            </size>-->
+<!--           </property>-->
+<!--           <property name="mouseTracking">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="acceptDrops">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="alignment">-->
+<!--            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>-->
+<!--           </property>-->
+<!--           <property name="accelerated">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="suffix">-->
+<!--            <string>c/s</string>-->
+<!--           </property>-->
+<!--           <property name="minimum">-->
+<!--            <double>-1000000000.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="maximum">-->
+<!--            <double>1000000000.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="value">-->
+<!--            <double>100000.000000000000000</double>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="ScienDSpinBox" name="roi_cb_high_percentile_DoubleSpinBox">-->
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">-->
+<!--             <horstretch>0</horstretch>-->
+<!--             <verstretch>0</verstretch>-->
+<!--            </sizepolicy>-->
+<!--           </property>-->
+<!--           <property name="maximumSize">-->
+<!--            <size>-->
+<!--             <width>100</width>-->
+<!--             <height>16777215</height>-->
+<!--            </size>-->
+<!--           </property>-->
+<!--           <property name="alignment">-->
+<!--            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>-->
+<!--           </property>-->
+<!--           <property name="suffix">-->
+<!--            <string>%</string>-->
+<!--           </property>-->
+<!--           <property name="decimals">-->
+<!--            <number>5</number>-->
+<!--           </property>-->
+<!--           <property name="minimum">-->
+<!--            <double>0.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="maximum">-->
+<!--            <double>100.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="value">-->
+<!--            <double>100.000000000000000</double>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="PlotWidget" name="roi_cb_ViewWidget">-->
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Preferred" vsizetype="Preferred">-->
+<!--             <horstretch>0</horstretch>-->
+<!--             <verstretch>0</verstretch>-->
+<!--            </sizepolicy>-->
+<!--           </property>-->
+<!--           <property name="maximumSize">-->
+<!--            <size>-->
+<!--             <width>100</width>-->
+<!--             <height>16777215</height>-->
+<!--            </size>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="ScienDSpinBox" name="roi_cb_low_percentile_DoubleSpinBox">-->
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">-->
+<!--             <horstretch>0</horstretch>-->
+<!--             <verstretch>0</verstretch>-->
+<!--            </sizepolicy>-->
+<!--           </property>-->
+<!--           <property name="maximumSize">-->
+<!--            <size>-->
+<!--             <width>100</width>-->
+<!--             <height>16777215</height>-->
+<!--            </size>-->
+<!--           </property>-->
+<!--           <property name="alignment">-->
+<!--            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>-->
+<!--           </property>-->
+<!--           <property name="suffix">-->
+<!--            <string>%</string>-->
+<!--           </property>-->
+<!--           <property name="decimals">-->
+<!--            <number>5</number>-->
+<!--           </property>-->
+<!--           <property name="minimum">-->
+<!--            <double>0.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="maximum">-->
+<!--            <double>100.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="value">-->
+<!--            <double>0.000000000000000</double>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="ScienDSpinBox" name="roi_cb_min_SpinBox">-->
+<!--           <property name="sizePolicy">-->
+<!--            <sizepolicy hsizetype="Fixed" vsizetype="Fixed">-->
+<!--             <horstretch>0</horstretch>-->
+<!--             <verstretch>0</verstretch>-->
+<!--            </sizepolicy>-->
+<!--           </property>-->
+<!--           <property name="maximumSize">-->
+<!--            <size>-->
+<!--             <width>100</width>-->
+<!--             <height>16777215</height>-->
+<!--            </size>-->
+<!--           </property>-->
+<!--           <property name="mouseTracking">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="acceptDrops">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="alignment">-->
+<!--            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>-->
+<!--           </property>-->
+<!--           <property name="accelerated">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--           <property name="suffix">-->
+<!--            <string>c/s</string>-->
+<!--           </property>-->
+<!--           <property name="minimum">-->
+<!--            <double>-1000000000.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="maximum">-->
+<!--            <double>1000000000.000000000000000</double>-->
+<!--           </property>-->
+<!--           <property name="value">-->
+<!--            <double>1000.000000000000000</double>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="QRadioButton" name="roi_cb_centiles_RadioButton">-->
+<!--           <property name="text">-->
+<!--            <string>Percentiles</string>-->
+<!--           </property>-->
+<!--           <property name="checked">-->
+<!--            <bool>true</bool>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--         <item>-->
+<!--          <widget class="QRadioButton" name="roi_cb_manual_RadioButton">-->
+<!--           <property name="text">-->
+<!--            <string>Manual</string>-->
+<!--           </property>-->
+<!--           <property name="checked">-->
+<!--            <bool>false</bool>-->
+<!--           </property>-->
+<!--          </widget>-->
+<!--         </item>-->
+<!--        </layout>-->
+<!--       </item>-->
+<!--      </layout>-->
+<!--     </item>-->
     </layout>
    </widget>
   </widget>
@@ -1106,32 +1106,16 @@
   <customwidget>
    <class>ScienDSpinBox</class>
    <extends>QDoubleSpinBox</extends>
-   <header>qtwidgets.scientific_spinbox.h</header>
+   <header>qudi.util.widgets.scientific_spinbox.h</header>
   </customwidget>
-  <customwidget>
-   <class>ScanPlotWidget</class>
-   <extends>QGraphicsView</extends>
-   <header>qtwidgets.scan_plotwidget.h</header>
-  </customwidget>
+  #<customwidget>
+  # <class>ImageWidget</class>
+  # <extends>QtWidgets.QWidget</extends>
+  # <header>qudi.util.widgets.plotting.image_widget.h</header>
+  #</customwidget>
  </customwidgets>
  <resources/>
  <connections>
-  <connection>
-   <sender>poi_editor_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_editor_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>103</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
   <connection>
    <sender>poi_editor_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
@@ -1145,22 +1129,6 @@
     <hint type="destinationlabel">
      <x>-1</x>
      <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>roi_map_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>roi_map_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>353</x>
-     <y>225</y>
     </hint>
    </hints>
   </connection>
@@ -1181,22 +1149,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>poi_tracker_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_tracker_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>297</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>poi_tracker_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>poi_tracker_view_Action</receiver>
@@ -1213,22 +1165,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>sample_shift_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>sample_shift_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>547</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>sample_shift_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>sample_shift_view_Action</receiver>
@@ -1241,22 +1177,6 @@
     <hint type="destinationlabel">
      <x>-1</x>
      <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>poi_tools_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>384</x>
-     <y>41</y>
     </hint>
    </hints>
   </connection>
@@ -1293,22 +1213,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>roi_management_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>roi_management_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>45</x>
-     <y>41</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>roi_management_ToolBar</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>roi_management_view_Action</receiver>
@@ -1317,38 +1221,6 @@
     <hint type="sourcelabel">
      <x>45</x>
      <y>41</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>auto_pois_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>auto_pois_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>863</x>
-     <y>264</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>auto_pois_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>auto_find_POIs_Action</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
     </hint>
     <hint type="destinationlabel">
      <x>-1</x>

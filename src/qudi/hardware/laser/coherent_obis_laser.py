@@ -36,7 +36,8 @@ class OBISLaser(SimpleLaserInterface):
 
     obis_laser:
         module.Class: 'laser.coherent_obis_laser.OBISLaser'
-        com_port: 'COM3'
+        options:
+            com_port: 'COM3'
 
     """
 

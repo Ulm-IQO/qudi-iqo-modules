@@ -33,7 +33,7 @@
      <x>0</x>
      <y>0</y>
      <width>1440</width>
-     <height>21</height>
+     <height>17</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -42,6 +42,7 @@
     </property>
     <addaction name="separator"/>
     <addaction name="action_close_window"/>
+    <addaction name="action_save_all_scans"/>
    </widget>
    <widget class="QMenu" name="menu_Settings">
     <property name="title">
@@ -49,7 +50,6 @@
     </property>
     <addaction name="action_scanner_settings"/>
     <addaction name="action_optimizer_settings"/>
-    <addaction name="action_display_settings"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -59,10 +59,12 @@
     <addaction name="action_view_optimizer"/>
     <addaction name="action_view_toolbar"/>
     <addaction name="action_view_line_scan"/>
+    <addaction name="action_view_tilt_correction"/>
     <addaction name="separator"/>
     <addaction name="action_restore_default_view"/>
     <addaction name="separator"/>
     <addaction name="action_autorange_2d_scans"/>
+
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -90,7 +92,6 @@
    <addaction name="action_optimize_position"/>
    <addaction name="action_utility_zoom"/>
    <addaction name="action_utility_full_range"/>
-   <addaction name="separator"/>
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
   </widget>
@@ -252,6 +253,9 @@ Shortcut:Ctrl+Z</string>
    <property name="checkable">
     <bool>true</bool>
    </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Line scan</string>
    </property>
@@ -290,15 +294,6 @@ Shortcut: Shift+R</string>
     <string>Shift+R</string>
    </property>
   </action>
-  <action name="action_display_settings">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Display Settings</string>
-   </property>
-  </action>
   <action name="action_view_toolbar">
    <property name="checkable">
     <bool>true</bool>
@@ -315,6 +310,23 @@ Shortcut:Alt+T</string>
    </property>
    <property name="shortcut">
     <string>Alt+T</string>
+   </property>
+  </action>
+  <action name="action_save_all_scans">
+   <property name="icon">
+    <iconset>
+     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Save all</string>
+   </property>
+  </action>
+  <action name="action_view_tilt_correction">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Tilt correction</string>
    </property>
   </action>
  </widget>

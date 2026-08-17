@@ -22,20 +22,28 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
-from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
+from qudi.util.network import netobtain
+from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState, SimpleLaserInterface
 
 
 class LaserLogic(LogicBase):
-    """ ToDo: Document
+    """ Logic class for controlling a laser.
+
+    Example config for copy-paste:
+
+    laser_logic:
+        module.Class: 'laser_logic.LaserLogic'
+        connect:
+            laser: laser_hardware
     """
 
-    _laser = Connector(name='laser', interface='SimpleLaserInterface')
+    _laser = Connector(name='laser', interface=SimpleLaserInterface)
 
     # waiting time between queries im seconds
     _query_interval = ConfigOption(name='query_interval', default=0.2)
@@ -71,29 +79,18 @@ class LaserLogic(LogicBase):
         self.__timer = QtCore.QTimer()
         self.__timer.setInterval(1000 * self._query_interval)
         self.__timer.setSingleShot(True)
-        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.QueuedConnection)
+        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # initialize data buffer
         laser = self._laser()
         allowed_modes = laser.allowed_control_modes()
-        self._data = {name: np.zeros(self._buffer_length) for name in laser.get_temperatures()}
-        self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
-        if ControlMode.POWER in allowed_modes:
-            self._data['power'] = np.zeros(self._buffer_length)
-        else:
-            self._data['power'] = None
-        if ControlMode.CURRENT in allowed_modes:
-            self._data['current'] = np.zeros(self._buffer_length)
-        else:
-            self._data['current'] = None
-        self._last_shutter_state = laser.get_shutter_state()
-        self._last_laser_state = laser.get_laser_state()
-        self._last_power_setpoint = laser.get_power_setpoint()
-        self._last_current_setpoint = laser.get_current_setpoint()
-        self._last_control_mode = laser.get_control_mode()
+        self._initialize_data()
+        self._last_shutter_state = netobtain(laser.get_shutter_state())
+        self._last_laser_state = netobtain(laser.get_laser_state())
+        self._last_power_setpoint = netobtain(laser.get_power_setpoint())
+        self._last_current_setpoint = netobtain(laser.get_current_setpoint())
+        self._last_control_mode = netobtain(laser.get_control_mode())
 
-        # start timed query loop
-        QtCore.QTimer.singleShot(0, self.start_query_loop)
 
     def on_deactivate(self):
         """ Deactivate module
@@ -106,7 +103,7 @@ class LaserLogic(LogicBase):
     @property
     def allowed_control_modes(self):
         with self._thread_lock:
-            return self._laser().allowed_control_modes()
+            return netobtain(self._laser().allowed_control_modes())
 
     @property
     def extra_info(self):
@@ -140,7 +137,7 @@ class LaserLogic(LogicBase):
     @property
     def laser_state(self):
         with self._thread_lock:
-            self._last_laser_state = self._laser().get_laser_state()
+            self._last_laser_state = netobtain(self._laser().get_laser_state())
             return self._last_laser_state
 
     @laser_state.setter
@@ -150,7 +147,7 @@ class LaserLogic(LogicBase):
     @property
     def shutter_state(self):
         with self._thread_lock:
-            self._last_shutter_state = self._laser().get_shutter_state()
+            self._last_shutter_state = netobtain(self._laser().get_shutter_state())
             return self._last_shutter_state
 
     @shutter_state.setter
@@ -190,7 +187,7 @@ class LaserLogic(LogicBase):
     @property
     def control_mode(self):
         with self._thread_lock:
-            self._last_control_mode = self._laser().get_control_mode()
+            self._last_control_mode = netobtain(self._laser().get_control_mode())
             return self._last_control_mode
 
     @control_mode.setter
@@ -207,14 +204,14 @@ class LaserLogic(LogicBase):
             laser = self._laser()
             # Check if settings have changed by e.g. a device front panel
             try:
-                laser_state = laser.get_laser_state()
+                laser_state = netobtain(laser.get_laser_state())
                 if laser_state != self._last_laser_state:
                     self._last_laser_state = laser_state
                     self.sigLaserStateChanged.emit(self._last_laser_state)
             except:
                 pass
             try:
-                shutter_state = laser.get_shutter_state()
+                shutter_state = netobtain(laser.get_shutter_state())
                 if shutter_state != self._last_shutter_state:
                     self._last_shutter_state = shutter_state
                     self.sigShutterStateChanged.emit(self._last_shutter_state)
@@ -235,7 +232,7 @@ class LaserLogic(LogicBase):
             except:
                 pass
             try:
-                control_mode = laser.get_control_mode()
+                control_mode = netobtain(laser.get_control_mode())
                 if control_mode != self._last_control_mode:
                     self._last_control_mode = control_mode
                     self.sigControlModeChanged.emit(self._last_control_mode, None)
@@ -267,11 +264,15 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def start_query_loop(self):
-        """ Start the readout loop. """
+        """ Start the readout loop.
+        Offload self.start_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'start_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:
@@ -281,11 +282,15 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_query_loop(self):
-        """ Stop the readout loop. """
+        """ Stop the readout loop.
+        Offload self.stop_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'stop_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:
@@ -350,3 +355,9 @@ class LaserLogic(LogicBase):
         with self._thread_lock:
             self._laser().set_current(current)
             self.sigCurrentSetpointChanged.emit(self.current_setpoint, caller_id)
+
+    def _initialize_data(self):
+        self._data = {name: np.zeros(self._buffer_length) for name in self._laser().get_temperatures()}
+        self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
+        self._data['power'] = np.zeros(self._buffer_length)
+        self._data['current'] = np.zeros(self._buffer_length)

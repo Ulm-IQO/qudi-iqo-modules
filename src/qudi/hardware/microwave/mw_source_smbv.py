@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 
@@ -37,10 +40,11 @@ class MicrowaveSmbv(MicrowaveInterface):
 
     mw_source_smbv:
         module.Class: 'microwave.mw_source_smbv.MicrowaveSmbv'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10  # in seconds, optional
-        rising_edge_trigger: True  # optional
-        max_power: null  # optional
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10  # in seconds, optional
+            rising_edge_trigger: True  # optional
+            max_power: null  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')
@@ -76,7 +80,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         self._command_wait('*RST')
 
         # Generate constraints
-        if self.model == 'SMB100A':
+        if self._model == 'SMB100A':
             freq_limits = (9e3, 3.2e9)
         else:
             freq_limits = (9e3, 6e9)
@@ -238,7 +242,7 @@ class MicrowaveSmbv(MicrowaveInterface):
             self._scan_sample_rate = sample_rate
             self._scan_power = power
             self._scan_frequencies = np.asarray(frequencies, dtype=np.float64)
-            self._write_list()
+            self._write_sweep()
             self._set_trigger_edge()
 
     def off(self):
@@ -284,7 +288,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                if not self._in_cw_mode:
+                if not self._in_cw_mode():
                     return
                 raise RuntimeError('Unable to start frequency scan. CW microwave output is active.')
             assert self._scan_frequencies is not None, \
@@ -305,7 +309,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 return
-            if self._in_cw_mode:
+            if self._in_cw_mode():
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')
 
             self._command_wait(':ABOR:SWE')
