@@ -468,9 +468,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         if not self.is_running:
             return self._number_of_pending_samples
 
-        if self._ai_task_handle is None and self._di_task_handles is not None:
+        if self._ai_task_handle is None and len(self._di_task_handles) > 0:
             return self._di_task_handles[0].in_stream.avail_samp_per_chan
-        elif self._ai_task_handle is not None and self._di_task_handles is None:
+        elif self._ai_task_handle is not None and len(self._di_task_handles) == 0:
             return self._ai_task_handle.in_stream.avail_samp_per_chan
         else:
             return min(self._ai_task_handle.in_stream.avail_samp_per_chan,

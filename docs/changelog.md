@@ -12,11 +12,14 @@
 - Fixed tests for `rpyc>6`
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
 - Fix several `POIManagerGUI` `PySide6` bugs
+- Fix discovery of `AltPlotMethodBase` subclasses
+- Fix NI IO for only analog input channels.
 
 ### New Features
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 - Added pulse shaping to the `pulsed` tool chain
+- supporting custom alternative plots in pulsed analysis
 - Added selectable `ScanningOptimizeLogic` optimization methods
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 
