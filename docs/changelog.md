@@ -23,6 +23,7 @@
 - supporting custom alternative plots in pulsed analysis
 - Added selectable `ScanningOptimizeLogic` optimization methods
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
+- Supported pyvisa for coherent obis laser
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
