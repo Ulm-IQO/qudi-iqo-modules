@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -32,6 +32,8 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+from qudi.interface.spectrometer_interface import SpectrometerInterface
+from qudi.interface.modulation_interface import ModulationInterface
 
 
 class SpectrometerLogic(LogicBase):
@@ -47,8 +49,8 @@ class SpectrometerLogic(LogicBase):
     """
 
     # declare connectors
-    spectrometer = Connector(interface='SpectrometerInterface')
-    modulation_device = Connector(interface='ModulationInterface', optional=True)
+    spectrometer = Connector(interface=SpectrometerInterface)
+    modulation_device = Connector(interface=ModulationInterface, optional=True)
 
     # declare status variables
     _spectrum = StatusVar(name='spectrum', default=[None, None])
@@ -104,8 +106,8 @@ class SpectrometerLogic(LogicBase):
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self.fit_region = self._fit_region
 
-        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
-        self._sig_get_background.connect(self.get_background, QtCore.Qt.QueuedConnection)
+        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._sig_get_background.connect(self.get_background, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.

@@ -30,7 +30,7 @@ from typing import List, Optional, Tuple, Dict, Set, Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
@@ -61,7 +61,7 @@ class ScanningDataLogic(LogicBase):
     """
 
     # declare connectors
-    _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
+    _scan_logic = Connector(name='scan_logic', interface=ScanningProbeLogic)
 
     # config options
     _max_history_length: int = ConfigOption(name='max_history_length', default=10)
@@ -134,7 +134,7 @@ class ScanningDataLogic(LogicBase):
 
         if data_dropped:
             self.log.warning("Deleted scan history entries containing an incompatible scan axes configuration.")
-            
+
         return history
 
     def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\

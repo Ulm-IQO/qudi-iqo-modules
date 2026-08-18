@@ -29,7 +29,9 @@ import qudi.util.uic as uic
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.units import create_formatted_output
 from qudi.core.module import GuiBase
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
+
+from qudi.logic.pid_logic import PIDLogic
 
 
 class PIDMainWindow(QtWidgets.QMainWindow):
@@ -59,7 +61,7 @@ class PIDGui(GuiBase):
     """
 
     # declare connectors
-    pidlogic = Connector(name='pid_logic', interface='PIDLogic')
+    pidlogic = Connector(name='pid_logic', interface=PIDLogic)
 
     sigStart = QtCore.Signal()
     sigStop = QtCore.Signal()

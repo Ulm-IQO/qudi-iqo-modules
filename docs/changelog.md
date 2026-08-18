@@ -3,6 +3,77 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
+
+### Bugfixes
+- Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
+- Fix several `POIManagerGUI` `PySide6` bugs
+- Fix discovery of `AltPlotMethodBase` subclasses
+- Fix NI IO for only analog input channels.
+- bug fixes for millennia eV laser
+
+### New Features
+- Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
+- Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
+- Added pulse shaping to the `pulsed` tool chain
+- supporting custom alternative plots in pulsed analysis
+- Added selectable `ScanningOptimizeLogic` optimization methods
+- Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
+- Supported pyvisa for coherent obis laser
+- Added Magnet Toolchain
+
+### Other
+- Displaying Qudi logs in the test workflow upon test failure
+
+## Version 1.0.0
+
+### Breaking Changes
+
+- Dropped `Python 3.8` support
+- Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Dropped `Python 3.9` support
+
+### Bugfixes
+- Fixed scanning_probe_logic with netobtain so that the module works with a remote server connection
+- Fixed code suggestions for `Connector` objects
+- Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
+- Fixed ``laser_logic`` to work with remote laser hardware
+- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating
+- Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
+- Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
+- Fixed sampling functions inheritance of parameters
+- Improved error handling of `sample_pulse_block_sequence`, `sample_pulse_sequence`
+
+### New Features
+- changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
+- Added Spectrum Instrumentation AD converter as fast counter hardware file
+- Added workflows for verifying that new versions of dependencies do not break qudi
+- Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
+- Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
+- Restricted `gaussian` optimization logic to optimization range
+
+### Other
+- Updated versions for Github actions to fix Node.js 20 deprecation warnings
+- Fixed testing workflow by removing deprecated `python 3.8`
+- Configured Github Action bot as author for the testing branch commits
+- Workflows automatically fetch all possible python versions from the `pyproject.toml` for testing, tests that only use a singular Python version now use the latest possible Python version
+- Tests now use `QudiKernel` instead of a custom remote server
+- Added install script
+- Updated install documentation
+- Improved Github Actions dependency testing
+- Added tests for scanning tool chain
+- No more automatic multi-switch channel deactivation on the wavemeter by the `high_finesse_proxy` upon starting/stopping of instreamers. Only reactivate channels (e.g. after deactivation through GUI) if they are associated to a running instreamer.
+
+## Version 0.6.0
+
+**⚠ DEPRECATION WARNING**
+In future releases, `python 3.8` support will be dropped to be able to upgrade to `numpy > 1.24` package versions.
+
+### Breaking Changes
 - Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
   implementing this interface.
 - Add back scan data and back scan settings getter and setter methods
@@ -31,6 +102,15 @@
 - Fixed potential `scanning_optimize_logic` deadlock when starting the optimizer
 - Fixed loading of most recent target when starting scanning GUI
 - added `waiting_element` to `generate_t1_sequencing` method
+- Fixed example config typo in `tektronix_awg70k.py`
+- Fixed issue when using same pfi channel on two different ni cards for NI instreamer
+- Fixed POI manager auto-find
+- Fixed overwriting of file in scanner GUI when using custom nametag
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used
+- Fixed StatusVar initialization in POI manager
+- Fixed checker for optimizer plot dimensions in scanning toolchain
+- Disconnect GUI widgets on deactivation of laser `LaserGui`
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 
 
 ### New Features
@@ -55,11 +135,18 @@
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
-- Added Magnet Toolchain
+- Added ruff configuration to `pyproject.toml` to standardize formatting
+- Added Windfreak synthHD documentation
+- Added cursor position in `Scan2DWidget` of the scanning toolchain
+- Added scanning settings to scanning toolchain
+- Updated Documentation in `basic_predefined_methods`
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 - Removed `setup.py` and moved fully to `pyproject.toml` instead.
+- Updated .gitignore to better exclude unwanted files
+- Fix typos in repo management documentation
+- Added documentation on testing of `test.pypi.org` release
 - Added some integration tests that run automatically via Github Actions on PRs and commits to main.
 
 ## Version 0.5.1

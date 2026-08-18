@@ -28,7 +28,7 @@ import importlib
 import numpy as np
 import warnings
 
-from qudi.logic.pulsed.sampling_functions import SamplingFunctions
+from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
 
 
@@ -82,7 +82,8 @@ class PulseBlockElement(object):
 
     def __repr__(self):
         repr_str = 'PulseBlockElement(init_length_s={0}, increment_s={1}, laser_on={2}, pulse_function='.format(
-            self.init_length_s, self.increment_s, self.laser_on)
+            self.init_length_s, self.increment_s, self.laser_on
+        )
         repr_str += '{'
         for ind, (channel, sampling_func) in enumerate(self.pulse_function.items()):
             repr_str += '\'{0}\': {1}'.format(channel, 'SamplingFunctions.' + repr(sampling_func))
@@ -94,12 +95,12 @@ class PulseBlockElement(object):
 
     def __str__(self):
         pulse_func_dict = {chnl: type(func).__name__ for chnl, func in self.pulse_function.items()}
-        return_str = 'PulseBlockElement\n\tinitial length: {0}s\n\tlength increment: {1}s\n\tlaser_on : {2},' \
-                     'analog channels: {3}\n\tdigital channels: {4}'.format(self.init_length_s,
-                                                                            self.increment_s,
-                                                                            self.laser_on,
-                                                                            pulse_func_dict,
-                                                                            dict(self.digital_high))
+        return_str = (
+            'PulseBlockElement\n\tinitial length: {0}s\n\tlength increment: {1}s\n\tlaser_on : {2},'
+            'analog channels: {3}\n\tdigital channels: {4}'.format(
+                self.init_length_s, self.increment_s, self.laser_on, pulse_func_dict, dict(self.digital_high)
+            )
+        )
         return return_str
 
     def __eq__(self, other):
@@ -110,7 +111,10 @@ class PulseBlockElement(object):
         if self.channel_set != other.channel_set:
             return False
         if (self.init_length_s, self.increment_s, self.laser_on) != (
-                other.init_length_s, other.increment_s, other.laser_on):
+            other.init_length_s,
+            other.increment_s,
+            other.laser_on,
+        ):
             return False
         if set(self.digital_high.items()) != set(other.digital_high.items()):
             return False
@@ -167,12 +171,11 @@ class PulseBlock(object):
         return repr_str
 
     def __str__(self):
-        return_str = 'PulseBlock "{0}"\n\tnumber of elements: {1}\n\t'.format(
-            self.name, len(self.element_list))
-        return_str += 'initial length: {0}s\n\tlength increment: {1}s\n\t'.format(
-            self.init_length_s, self.increment_s)
+        return_str = 'PulseBlock "{0}"\n\tnumber of elements: {1}\n\t'.format(self.name, len(self.element_list))
+        return_str += 'initial length: {0}s\n\tlength increment: {1}s\n\t'.format(self.init_length_s, self.increment_s)
         return_str += 'active analog channels: {0}\n\tactive digital channels: {1}'.format(
-            natural_sort(self.analog_channels), natural_sort(self.digital_channels))
+            natural_sort(self.analog_channels), natural_sort(self.digital_channels)
+        )
         return return_str
 
     def __len__(self):
@@ -186,16 +189,19 @@ class PulseBlock(object):
     def __setitem__(self, key, value):
         if isinstance(key, int):
             if not isinstance(value, PulseBlockElement):
-                raise TypeError('PulseBlock element list entries must be of type PulseBlockElement,'
-                                ' not {0}'.format(type(value)))
+                raise TypeError(
+                    'PulseBlock element list entries must be of type PulseBlockElement, not {0}'.format(type(value))
+                )
             if not self.channel_set:
                 self.channel_set = value.channel_set.copy()
                 self.analog_channels = {chnl for chnl in self.channel_set if chnl.startswith('a')}
                 self.digital_channels = {chnl for chnl in self.channel_set if chnl.startswith('d')}
             elif value.channel_set != self.channel_set:
-                raise ValueError('Usage of different sets of analog and digital channels in the '
-                                 'same PulseBlock is prohibited. Used channel sets are:\n{0}\n{1}'
-                                 ''.format(self.channel_set, value.channel_set))
+                raise ValueError(
+                    'Usage of different sets of analog and digital channels in the '
+                    'same PulseBlock is prohibited. Used channel sets are:\n{0}\n{1}'
+                    ''.format(self.channel_set, value.channel_set)
+                )
 
             self.init_length_s -= self.element_list[key].init_length_s
             self.increment_s -= self.element_list[key].increment_s
@@ -206,19 +212,19 @@ class PulseBlock(object):
             add_increment = 0
             for element in value:
                 if not isinstance(element, PulseBlockElement):
-                    raise TypeError('PulseBlock element list entries must be of type '
-                                    'PulseBlockElement, not {0}'.format(type(value)))
+                    raise TypeError(
+                        'PulseBlock element list entries must be of type PulseBlockElement, not {0}'.format(type(value))
+                    )
                 if not self.channel_set:
                     self.channel_set = element.channel_set.copy()
-                    self.analog_channels = {chnl for chnl in self.channel_set if
-                                            chnl.startswith('a')}
-                    self.digital_channels = {chnl for chnl in self.channel_set if
-                                             chnl.startswith('d')}
+                    self.analog_channels = {chnl for chnl in self.channel_set if chnl.startswith('a')}
+                    self.digital_channels = {chnl for chnl in self.channel_set if chnl.startswith('d')}
                 elif element.channel_set != self.channel_set:
                     raise ValueError(
                         'Usage of different sets of analog and digital channels in the '
                         'same PulseBlock is prohibited. Used channel sets are:\n{0}\n{1}'
-                        ''.format(self.channel_set, element.channel_set))
+                        ''.format(self.channel_set, element.channel_set)
+                    )
 
                 add_length += element.init_length_s
                 add_increment += element.increment_s
@@ -269,7 +275,7 @@ class PulseBlock(object):
         return True
 
     def refresh_parameters(self):
-        """ Initialize the parameters which describe this Pulse_Block object.
+        """Initialize the parameters which describe this Pulse_Block object.
 
         The information is gained from all the Pulse_Block_Element objects,
         which are attached in the element_list.
@@ -286,10 +292,11 @@ class PulseBlock(object):
             if not self.channel_set:
                 self.channel_set = elem.channel_set
             elif self.channel_set != elem.channel_set:
-                raise ValueError('Usage of different sets of analog and digital channels in the '
-                                 'same PulseBlock is prohibited.\nPulseBlock creation failed!\n'
-                                 'Used channel sets are:\n{0}\n{1}'.format(self.channel_set,
-                                                                           elem.channel_set))
+                raise ValueError(
+                    'Usage of different sets of analog and digital channels in the '
+                    'same PulseBlock is prohibited.\nPulseBlock creation failed!\n'
+                    'Used channel sets are:\n{0}\n{1}'.format(self.channel_set, elem.channel_set)
+                )
         self.analog_channels = {chnl for chnl in self.channel_set if chnl.startswith('a')}
         self.digital_channels = {chnl for chnl in self.channel_set if chnl.startswith('d')}
         return
@@ -304,8 +311,7 @@ class PulseBlock(object):
             return self.element_list.pop()
 
         if not isinstance(position, int):
-            raise TypeError('PulseBlock.pop position argument expects integer, not {0}'
-                            ''.format(type(position)))
+            raise TypeError('PulseBlock.pop position argument expects integer, not {0}'.format(type(position)))
 
         if position < 0:
             position = len(self.element_list) + position
@@ -318,15 +324,14 @@ class PulseBlock(object):
         return self.element_list.pop(position)
 
     def insert(self, position, element):
-        """ Insert a PulseBlockElement at the given position. The old element at this position and
+        """Insert a PulseBlockElement at the given position. The old element at this position and
         all consecutive elements after that will be shifted to higher indices.
 
         @param int position: position in the element list
         @param PulseBlockElement element: PulseBlockElement instance
         """
         if not isinstance(element, PulseBlockElement):
-            raise ValueError('PulseBlock elements must be of type PulseBlockElement, not {0}'
-                             ''.format(type(element)))
+            raise ValueError('PulseBlock elements must be of type PulseBlockElement, not {0}'.format(type(element)))
 
         if position < 0:
             position = len(self.element_list) + position
@@ -339,9 +344,11 @@ class PulseBlock(object):
             self.analog_channels = {chnl for chnl in self.channel_set if chnl.startswith('a')}
             self.digital_channels = {chnl for chnl in self.channel_set if chnl.startswith('d')}
         elif element.channel_set != self.channel_set:
-            raise ValueError('Usage of different sets of analog and digital channels in the '
-                             'same PulseBlock is prohibited. Used channel sets are:\n{0}\n{1}'
-                             ''.format(self.channel_set, element.channel_set))
+            raise ValueError(
+                'Usage of different sets of analog and digital channels in the '
+                'same PulseBlock is prohibited. Used channel sets are:\n{0}\n{1}'
+                ''.format(self.channel_set, element.channel_set)
+            )
 
         self.init_length_s += element.init_length_s
         self.increment_s += element.increment_s
@@ -350,8 +357,7 @@ class PulseBlock(object):
         return
 
     def append(self, element):
-        """
-        """
+        """ """
         self.insert(position=len(self.element_list), element=element)
         return
 
@@ -429,16 +435,19 @@ class PulseBlockEnsemble(object):
         # generated the pulse block ensemble.
         self.generation_method_parameters = dict()
 
-
     def __repr__(self):
         repr_str = 'PulseBlockEnsemble(name=\'{0}\', block_list={1}, rotating_frame={2})'.format(
-            self.name, repr(self.block_list), self.rotating_frame)
+            self.name, repr(self.block_list), self.rotating_frame
+        )
         return repr_str
 
     def __str__(self):
-        return_str = 'PulseBlockEnsemble "{0}"\n\trotating frame: {1}\n\t' \
-                     'has been sampled: {2}\n\t<block name>\t<repetitions>\n\t'.format(
-            self.name, self.rotating_frame, bool(self.sampling_information))
+        return_str = (
+            'PulseBlockEnsemble "{0}"\n\trotating frame: {1}\n\t'
+            'has been sampled: {2}\n\t<block name>\t<repetitions>\n\t'.format(
+                self.name, self.rotating_frame, bool(self.sampling_information)
+            )
+        )
         return_str += '\n\t'.join(('{0}\t{1}'.format(name, reps) for name, reps in self.block_list))
         return return_str
 
@@ -460,34 +469,31 @@ class PulseBlockEnsemble(object):
 
     def __getitem__(self, key):
         if not isinstance(key, (slice, int)):
-            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'
-                            ''.format(type(key)))
+            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
         return self.block_list[key]
 
     def __setitem__(self, key, value):
         if isinstance(key, int):
             if not isinstance(value, (tuple, list)) or len(value) != 2:
-                raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of '
-                                'length 2')
+                raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of length 2')
             elif not isinstance(value[0], str):
-                raise ValueError('PulseBlockEnsemble element tuple index 0 must contain str, '
-                                 'not {0}'.format(type(value[0])))
+                raise ValueError(
+                    'PulseBlockEnsemble element tuple index 0 must contain str, not {0}'.format(type(value[0]))
+                )
             elif not isinstance(value[1], int) or value[1] < 0:
                 raise ValueError('PulseBlockEnsemble element tuple index 1 must contain int >= 0')
         elif isinstance(key, slice):
             for element in value:
                 if not isinstance(element, (tuple, list)) or len(value) != 2:
-                    raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list '
-                                    'of length 2')
+                    raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of length 2')
                 elif not isinstance(element[0], str):
-                    raise ValueError('PulseBlockEnsemble element tuple index 0 must contain str, '
-                                     'not {0}'.format(type(element[0])))
+                    raise ValueError(
+                        'PulseBlockEnsemble element tuple index 0 must contain str, not {0}'.format(type(element[0]))
+                    )
                 elif not isinstance(element[1], int) or element[1] < 0:
-                    raise ValueError('PulseBlockEnsemble element tuple index 1 must contain int >= '
-                                     '0')
+                    raise ValueError('PulseBlockEnsemble element tuple index 1 must contain int >= 0')
         else:
-            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'
-                            ''.format(type(key)))
+            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
         self.block_list[key] = tuple(value)
         self.sampling_information = dict()
         self.measurement_information = dict()
@@ -496,8 +502,7 @@ class PulseBlockEnsemble(object):
 
     def __delitem__(self, key):
         if not isinstance(key, (slice, int)):
-            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'
-                            ''.format(type(key)))
+            raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
 
         del self.block_list[key]
         self.sampling_information = dict()
@@ -515,8 +520,7 @@ class PulseBlockEnsemble(object):
             return self.block_list.pop()
 
         if not isinstance(position, int):
-            raise TypeError('PulseBlockEnsemble.pop position argument expects integer, not {0}'
-                            ''.format(type(position)))
+            raise TypeError('PulseBlockEnsemble.pop position argument expects integer, not {0}'.format(type(position)))
 
         if position < 0:
             position = len(self.block_list) + position
@@ -530,18 +534,18 @@ class PulseBlockEnsemble(object):
         return self.block_list.pop(position)
 
     def insert(self, position, element):
-        """ Insert a (PulseBlock.name, repetitions) tuple at the given position. The old element
+        """Insert a (PulseBlock.name, repetitions) tuple at the given position. The old element
         at this position and all consecutive elements after that will be shifted to higher indices.
 
         @param int position: position in the element list
         @param tuple element: (PulseBlock name (str), repetitions (int))
         """
         if not isinstance(element, (tuple, list)) or len(element) != 2:
-            raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of '
-                            'length 2')
+            raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of length 2')
         elif not isinstance(element[0], str):
-            raise ValueError('PulseBlockEnsemble element tuple index 0 must contain str, '
-                             'not {0}'.format(type(element[0])))
+            raise ValueError(
+                'PulseBlockEnsemble element tuple index 0 must contain str, not {0}'.format(type(element[0]))
+            )
         elif not isinstance(element[1], int) or element[1] < 0:
             raise ValueError('PulseBlockEnsemble element tuple index 1 must contain int >= 0')
 
@@ -557,8 +561,7 @@ class PulseBlockEnsemble(object):
         return
 
     def append(self, element):
-        """
-        """
+        """ """
         self.insert(position=len(self), element=element)
         return
 
@@ -593,9 +596,11 @@ class PulseBlockEnsemble(object):
 
     @staticmethod
     def ensemble_from_dict(ensemble_dict):
-        new_ens = PulseBlockEnsemble(name=ensemble_dict['name'],
-                                     block_list=ensemble_dict['block_list'],
-                                     rotating_frame=ensemble_dict['rotating_frame'])
+        new_ens = PulseBlockEnsemble(
+            name=ensemble_dict['name'],
+            block_list=ensemble_dict['block_list'],
+            rotating_frame=ensemble_dict['rotating_frame'],
+        )
         new_ens.sampling_information = ensemble_dict['sampling_information']
         new_ens.measurement_information = ensemble_dict['measurement_information']
         new_ens.generation_method_parameters = ensemble_dict['generation_method_parameters']
@@ -621,13 +626,15 @@ class SequenceStep(dict):
         mystep.repetitions = 0
     """
 
-    __default_parameters = {'repetitions': 0,
-                            'go_to': -1,
-                            'event_jump_to': -1,
-                            'event_trigger': 'OFF',
-                            'wait_for': 'OFF',
-                            'flag_trigger': list(),
-                            'flag_high': list()}
+    __default_parameters = {
+        'repetitions': 0,
+        'go_to': -1,
+        'event_jump_to': -1,
+        'event_trigger': 'OFF',
+        'wait_for': 'OFF',
+        'flag_trigger': list(),
+        'flag_high': list(),
+    }
 
     def __init__(self, *args, **kwargs):
         if len(args) > 2:
@@ -648,13 +655,17 @@ class SequenceStep(dict):
         # ensemble name.
         # Also check presence of a valid mandatory "ensemble" entry
         if not isinstance(self.get('ensemble'), str):
-            raise KeyError('"ensemble" entry of type str must be present in SequenceStep. Either '
-                           'include it as dict item or pass it as positional argument in the '
-                           'constructor.')
+            raise KeyError(
+                '"ensemble" entry of type str must be present in SequenceStep. Either '
+                'include it as dict item or pass it as positional argument in the '
+                'constructor.'
+            )
         for attribute in dir(dict):
             if attribute in self:
-                raise KeyError('It is not allowed to overwrite built-in dict attributes. '
-                               'Please use another key than "{0}".'.format(attribute))
+                raise KeyError(
+                    'It is not allowed to overwrite built-in dict attributes. '
+                    'Please use another key than "{0}".'.format(attribute)
+                )
 
         # Merge namespaces (this is where the magic happens)
         self.__dict__ = self
@@ -676,8 +687,11 @@ class SequenceStep(dict):
         members/attributes.
         """
         if key in dir(dict):
-            raise KeyError('It is not allowed to overwrite built-in dict attributes. '
-                           'Please use another key than "{0}".'.format(key))
+            raise KeyError(
+                'It is not allowed to overwrite built-in dict attributes. Please use another key than "{0}".'.format(
+                    key
+                )
+            )
         super().__setitem__(key, value)
         return
 
@@ -774,16 +788,18 @@ class PulseSequence(object):
 
     def __repr__(self):
         repr_str = 'PulseSequence(name=\'{0}\', ensemble_list={1}, rotating_frame={2})'.format(
-            self.name, self.ensemble_list, self.rotating_frame)
+            self.name, self.ensemble_list, self.rotating_frame
+        )
         return repr_str
 
     def __str__(self):
-        return_str = 'PulseSequence "{0}"\n\trotating frame: {1}\n\t' \
-                     'has finite length: {2}\n\thas been sampled: {3}\n\t<ensemble name>\t' \
-                     '<sequence parameters>\n\t'.format(self.name,
-                                                        self.rotating_frame,
-                                                        self.is_finite,
-                                                        bool(self.sampling_information))
+        return_str = (
+            'PulseSequence "{0}"\n\trotating frame: {1}\n\t'
+            'has finite length: {2}\n\thas been sampled: {3}\n\t<ensemble name>\t'
+            '<sequence parameters>\n\t'.format(
+                self.name, self.rotating_frame, self.is_finite, bool(self.sampling_information)
+            )
+        )
         return_str += '\n\t'.join(('{0}\t{1}'.format(name, param) for name, param in self))
         return return_str
 
@@ -819,13 +835,15 @@ class PulseSequence(object):
                 value = SequenceStep(*value)
 
             if not isinstance(value, SequenceStep):
-                raise TypeError('PulseSequence ensemble list entries must be either:\n'
-                                '\t- a tuple or list of length 2 with one entry being the '
-                                'PulseBlockEnsemble name and the other being a sequence parameter '
-                                'dictionary\n'
-                                '\t- a str containing the PulseBlockEnsemble name\n'
-                                '\t- a dict containing the sequence parameters including the '
-                                'PulseBlockEnsemble name')
+                raise TypeError(
+                    'PulseSequence ensemble list entries must be either:\n'
+                    '\t- a tuple or list of length 2 with one entry being the '
+                    'PulseBlockEnsemble name and the other being a sequence parameter '
+                    'dictionary\n'
+                    '\t- a str containing the PulseBlockEnsemble name\n'
+                    '\t- a dict containing the sequence parameters including the '
+                    'PulseBlockEnsemble name'
+                )
 
             if value.repetitions < 0:
                 self.is_finite = False
@@ -844,13 +862,15 @@ class PulseSequence(object):
                 value = tmp_value
             for element in value:
                 if not isinstance(element, SequenceStep):
-                    raise TypeError('PulseSequence ensemble list entries must be either:\n'
-                                    '\t- a tuple or list of length 2 with one entry being the '
-                                    'PulseBlockEnsemble name and the other being a sequence parameter '
-                                    'dictionary\n'
-                                    '\t- a str containing the PulseBlockEnsemble name\n'
-                                    '\t- a dict containing the sequence parameters including the '
-                                    'PulseBlockEnsemble name')
+                    raise TypeError(
+                        'PulseSequence ensemble list entries must be either:\n'
+                        '\t- a tuple or list of length 2 with one entry being the '
+                        'PulseBlockEnsemble name and the other being a sequence parameter '
+                        'dictionary\n'
+                        '\t- a str containing the PulseBlockEnsemble name\n'
+                        '\t- a dict containing the sequence parameters including the '
+                        'PulseBlockEnsemble name'
+                    )
 
                 if element.repetitions < 0:
                     self.is_finite = False
@@ -893,8 +913,7 @@ class PulseSequence(object):
             position = len(self.ensemble_list) - 1
 
         if not isinstance(position, int):
-            raise TypeError('PulseSequence.pop position argument expects integer, not {0}'
-                            ''.format(type(position)))
+            raise TypeError('PulseSequence.pop position argument expects integer, not {0}'.format(type(position)))
 
         if position < 0:
             position = len(self.ensemble_list) + position
@@ -930,13 +949,15 @@ class PulseSequence(object):
             element = SequenceStep(*element)
 
         if not isinstance(element, SequenceStep):
-            raise TypeError('PulseSequence ensemble list entries must be either:\n'
-                            '\t- a tuple or list of length 2 with one entry being the '
-                            'PulseBlockEnsemble name and the other being a sequence parameter '
-                            'dictionary\n'
-                            '\t- a str containing the PulseBlockEnsemble name\n'
-                            '\t- a dict containing the sequence parameters including the '
-                            'PulseBlockEnsemble name')
+            raise TypeError(
+                'PulseSequence ensemble list entries must be either:\n'
+                '\t- a tuple or list of length 2 with one entry being the '
+                'PulseBlockEnsemble name and the other being a sequence parameter '
+                'dictionary\n'
+                '\t- a str containing the PulseBlockEnsemble name\n'
+                '\t- a dict containing the sequence parameters including the '
+                'PulseBlockEnsemble name'
+            )
 
         if position < 0:
             position = len(self.ensemble_list) + position
@@ -952,8 +973,7 @@ class PulseSequence(object):
         return
 
     def append(self, element):
-        """
-        """
+        """ """
         self.insert(position=len(self.ensemble_list), element=element)
         return
 
@@ -989,9 +1009,11 @@ class PulseSequence(object):
 
     @staticmethod
     def sequence_from_dict(sequence_dict):
-        new_seq = PulseSequence(name=sequence_dict['name'],
-                                ensemble_list=sequence_dict['ensemble_list'],
-                                rotating_frame=sequence_dict['rotating_frame'])
+        new_seq = PulseSequence(
+            name=sequence_dict['name'],
+            ensemble_list=sequence_dict['ensemble_list'],
+            rotating_frame=sequence_dict['rotating_frame'],
+        )
         new_seq.sampling_information = sequence_dict['sampling_information']
         new_seq.measurement_information = sequence_dict['measurement_information']
         new_seq.generation_method_parameters = sequence_dict['generation_method_parameters']
@@ -1125,12 +1147,19 @@ class PredefinedGeneratorBase:
     def sample_rate(self):
         return self.pulse_generator_settings.get('sample_rate')
 
+    @property
+    def optimal_control_assets_path(self) -> str:
+        return self.generation_parameters.get('optimal_control_assets_path')
+
+    @property
+    def pulse_envelope(self) -> PulseEnvelope:
+        return self.generation_parameters.get("pulse_envelope")
+
     ################################################################################################
     #                                   Helper methods                                          ####
     ################################################################################################
 
-    def tau_2_pulse_spacing(self, t, inverse=False,
-                           custom_func=[None, None], **custom_kwargs):
+    def tau_2_pulse_spacing(self, t, inverse=False, custom_func=[None, None], **custom_kwargs):
         """
         Converts tau to the physical pulse spacing between (microwave) pulses.
         By definition, tau = 1/f where f is the filter frequency of a dynamical decoupling
@@ -1155,9 +1184,10 @@ class PredefinedGeneratorBase:
             t_phys = np.asarray(t_phys)
             tau = np.asarray(tau)
             if np.any(t_phys < 0):
-                self.log.warning("Adjusting negative physical pulse spacing to 0. Affected tau: {}."
-                                 "Depending on generate method, more taus might be invalid!"
-                                 .format(tau[t_phys < 0]))
+                self.log.warning(
+                    "Adjusting negative physical pulse spacing to 0. Affected tau: {}."
+                    "Depending on generate method, more taus might be invalid!".format(tau[t_phys < 0])
+                )
                 t_phys[t_phys < 0] = 0
 
             return t_phys
@@ -1188,7 +1218,8 @@ class PredefinedGeneratorBase:
             init_length_s=length,
             increment_s=increment,
             pulse_function={chnl: SamplingFunctions.Idle() for chnl in self.analog_channels},
-            digital_high={chnl: False for chnl in self.digital_channels})
+            digital_high={chnl: False for chnl in self.digital_channels},
+        )
 
     def _get_trigger_element(self, length, increment, channels):
         """
@@ -1215,10 +1246,9 @@ class PredefinedGeneratorBase:
                 pulse_function[channel] = SamplingFunctions.DC(voltage=self.analog_trigger_voltage)
 
         # return trigger element
-        return PulseBlockElement(init_length_s=length,
-                                 increment_s=increment,
-                                 pulse_function=pulse_function,
-                                 digital_high=digital_high)
+        return PulseBlockElement(
+            init_length_s=length, increment_s=increment, pulse_function=pulse_function, digital_high=digital_high
+        )
 
     def _get_laser_element(self, length, increment):
         """
@@ -1229,23 +1259,20 @@ class PredefinedGeneratorBase:
 
         @return: PulseBlockElement, two elements for laser and gate trigger (delay element)
         """
-        laser_element = self._get_trigger_element(length=length,
-                                                  increment=increment,
-                                                  channels=self.laser_channel)
+        laser_element = self._get_trigger_element(length=length, increment=increment, channels=self.laser_channel)
         laser_element.laser_on = True
         return laser_element
 
     def _get_laser_gate_element(self, length, increment):
-        """
-        """
-        laser_gate_element = self._get_laser_element(length=length,
-                                                     increment=increment)
+        """ """
+        laser_gate_element = self._get_laser_element(length=length, increment=increment)
         if self.gate_channel:
             if self.gate_channel.startswith('d'):
                 laser_gate_element.digital_high[self.gate_channel] = True
             elif self.gate_channel.startswith('a'):
                 laser_gate_element.pulse_function[self.gate_channel] = SamplingFunctions.DC(
-                    voltage=self.analog_trigger_voltage)
+                    voltage=self.analog_trigger_voltage
+                )
         return laser_gate_element
 
     def _get_delay_element(self):
@@ -1254,8 +1281,7 @@ class PredefinedGeneratorBase:
 
         @return PulseBlockElement: The delay element
         """
-        return self._get_idle_element(length=self.laser_delay,
-                                      increment=0)
+        return self._get_idle_element(length=self.laser_delay, increment=0)
 
     def _get_delay_gate_element(self):
         """
@@ -1265,19 +1291,38 @@ class PredefinedGeneratorBase:
         @return PulseBlockElement: The delay element
         """
         if self.gate_channel:
-            return self._get_trigger_element(length=self.laser_delay,
-                                             increment=0,
-                                             channels=self.gate_channel)
+            return self._get_trigger_element(length=self.laser_delay, increment=0, channels=self.gate_channel)
         else:
             return self._get_delay_element()
 
     def _get_sync_element(self):
-        """
-
-        """
+        """ """
         return self._get_trigger_element(length=50e-9, increment=0, channels=self.sync_channel)
 
-    def _get_mw_element(self, length, increment, amp=None, freq=None, phase=None):
+    def _get_envelope(self, envelope: PulseEnvelope):
+        if envelope.type == PulseEnvelopeType.from_gen_settings:
+            # if auto setting, take from generation parameters
+            # if there also auto setting, default to rectangle
+            envelope = (
+                PulseEnvelope(PulseEnvelopeType.rectangle)
+                if self.generation_parameters['pulse_envelope'].type == PulseEnvelopeType.from_gen_settings
+                else self.generation_parameters['pulse_envelope']
+            )
+            if 'order' in envelope.parameters:
+                envelope.parameters["order"] = self.generation_parameters["pulse_envelope_order"]
+            return envelope
+        else:
+            return envelope
+
+    def _get_mw_element(
+        self,
+        length,
+        increment,
+        amp=None,
+        freq=None,
+        phase=None,
+        envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings),
+    ):
         """
         Creates a MW pulse PulseBlockElement
 
@@ -1289,22 +1334,38 @@ class PredefinedGeneratorBase:
 
         @return: PulseBlockElement, the generated MW element
         """
+        envelope = self._get_envelope(envelope)
+        self.log.debug(f"_get_mw_element called with envelope {envelope}")
+
         if self.microwave_channel.startswith('d'):
-            mw_element = self._get_trigger_element(
-                length=length,
-                increment=increment,
-                channels=self.microwave_channel)
+            mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
         else:
-            mw_element = self._get_idle_element(
-                length=length,
-                increment=increment)
-            mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
-                amplitude=amp,
-                frequency=freq,
-                phase=phase)
+            mw_element = self._get_idle_element(length=length, increment=increment)
+            if envelope.type == PulseEnvelopeType.rectangle:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
+                    amplitude=amp, frequency=freq, phase=phase
+                )
+            elif envelope.type == PulseEnvelopeType.parabola:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeParabola(
+                    amplitude=amp, frequency=freq, phase=phase, order=envelope.parameters['order']
+                )
+            elif envelope.type == PulseEnvelopeType.sin_n:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
+                    amplitude=amp, frequency=freq, phase=phase, order=envelope.parameters['order']
+                )
+            else:
+                raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
         return mw_element
 
-    def _get_multiple_mw_element(self, length, increment, amps=None, freqs=None, phases=None):
+    def _get_multiple_mw_element(
+        self,
+        length,
+        increment,
+        amps=None,
+        freqs=None,
+        phases=None,
+        envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings),
+    ):
         """
         Creates single, double or triple sine mw element.
 
@@ -1322,42 +1383,187 @@ class PredefinedGeneratorBase:
         if isinstance(phases, (int, float)):
             phases = [phases]
 
+        envelope = self._get_envelope(envelope)
+
         if self.microwave_channel.startswith('d'):
-            mw_element = self._get_trigger_element(
-                length=length,
-                increment=increment,
-                channels=self.microwave_channel)
+            mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
         else:
-            mw_element = self._get_idle_element(
-                length=length,
-                increment=increment)
+            mw_element = self._get_idle_element(length=length, increment=increment)
 
             sine_number = min(len(amps), len(freqs), len(phases))
 
             if sine_number < 2:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
-                    amplitude=amps[0],
-                    frequency=freqs[0],
-                    phase=phases[0])
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.Sin(
+                        amplitude=amps[0], frequency=freqs[0], phase=phases[0]
+                    )
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeParabola(
+                        amplitude=amps[0], frequency=freqs[0], phase=phases[0], order=envelope.parameters['order']
+                    )
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
+                        amplitude=amps[0], frequency=freqs[0], phase=phases[0], order=envelope.parameters['order']
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+
             elif sine_number == 2:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSum(
-                    amplitude_1=amps[0],
-                    amplitude_2=amps[1],
-                    frequency_1=freqs[0],
-                    frequency_2=freqs[1],
-                    phase_1=phases[0],
-                    phase_2=phases[1])
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                    )
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        order=envelope.parameters['order'],
+                    )
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        order=envelope.parameters['order'],
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 3:
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                    )
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        order=envelope.parameters['order'],
+                    )
+                elif envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        order=envelope.parameters['order'],
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 4:
+                if envelope.type == PulseEnvelopeType.rectangle:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuadSinSum(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                    )
+                elif envelope.type == PulseEnvelopeType.parabola:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuadSinSumEnvelopeParabola(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        order=envelope.parameters['order'],
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 5:
+                if envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.QuintupleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        amplitude_5=amps[4],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        frequency_5=freqs[4],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        phase_5=phases[4],
+                        order=envelope.parameters['order'],
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
+            elif sine_number == 6:
+                if envelope.type == PulseEnvelopeType.sin_n:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SextupleSinSumEnvelopeSinn(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        amplitude_4=amps[3],
+                        amplitude_5=amps[4],
+                        amplitude_6=amps[5],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        frequency_4=freqs[3],
+                        frequency_5=freqs[4],
+                        frequency_6=freqs[5],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        phase_4=phases[3],
+                        phase_5=phases[4],
+                        phase_6=phases[5],
+                        order=envelope.parameters['order'],
+                    )
+                else:
+                    raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
             else:
-                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSum(
-                    amplitude_1=amps[0],
-                    amplitude_2=amps[1],
-                    amplitude_3=amps[2],
-                    frequency_1=freqs[0],
-                    frequency_2=freqs[1],
-                    frequency_3=freqs[2],
-                    phase_1=phases[0],
-                    phase_2=phases[1],
-                    phase_3=phases[2])
+                raise ValueError(f"Unsupported number of sines: {sine_number}")
         return mw_element
 
     def _get_mw_laser_element(self, length, increment, amp=None, freq=None, phase=None):
@@ -1370,21 +1576,20 @@ class PredefinedGeneratorBase:
         @param phase:
         @return:
         """
-        mw_laser_element = self._get_mw_element(length=length,
-                                                increment=increment,
-                                                amp=amp,
-                                                freq=freq,
-                                                phase=phase)
+        mw_laser_element = self._get_mw_element(length=length, increment=increment, amp=amp, freq=freq, phase=phase)
         if self.laser_channel.startswith('d'):
             mw_laser_element.digital_high[self.laser_channel] = True
         elif self.laser_channel.startswith('a'):
             mw_laser_element.pulse_function[self.laser_channel] = SamplingFunctions.DC(
-                voltage=self.analog_trigger_voltage)
+                voltage=self.analog_trigger_voltage
+            )
 
         mw_laser_element.laser_on = True
         return mw_laser_element
 
-    def _get_mw_element_linearchirp(self, length, increment, amplitude=None, start_freq=None, stop_freq=None, phase=None):
+    def _get_mw_element_linearchirp(
+        self, length, increment, amplitude=None, start_freq=None, stop_freq=None, phase=None
+    ):
         """
         Creates a MW pulse PulseBlockElement
 
@@ -1398,25 +1603,22 @@ class PredefinedGeneratorBase:
         @return: PulseBlockElement, the generated MW element
         """
         if self.microwave_channel.startswith('d'):
-            mw_element = self._get_trigger_element(
-                length=length,
-                increment=increment,
-                channels=self.microwave_channel)
+            mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
             self.log.warning('You are trying to create chirped pulses on a digital channel.')
         else:
-            mw_element = self._get_idle_element(
-                length=length,
-                increment=increment)
+            mw_element = self._get_idle_element(length=length, increment=increment)
 
             sampling_function_name = 'Chirp'
             kwargs = {'amplitude': amplitude, 'start_freq': start_freq, 'stop_freq': stop_freq, 'phase': phase}
 
-            mw_element.pulse_function[self.microwave_channel] = \
-                getattr(SamplingFunctions, sampling_function_name)(**kwargs)
+            mw_element.pulse_function[self.microwave_channel] = getattr(SamplingFunctions, sampling_function_name)(
+                **kwargs
+            )
         return mw_element
 
-    def _get_mw_element_AEchirp(self, length, increment, amp=None, start_freq=None, stop_freq=None, phase=None,
-                                truncation_ratio=0.1):
+    def _get_mw_element_AEchirp(
+        self, length, increment, amp=None, start_freq=None, stop_freq=None, phase=None, truncation_ratio=0.1
+    ):
         """
         Creates a MW pulse PulseBlockElement
 
@@ -1430,22 +1632,23 @@ class PredefinedGeneratorBase:
         @return: PulseBlockElement, the generated MW element
         """
         if self.microwave_channel.startswith('d'):
-            mw_element = self._get_trigger_element(
-                length=length,
-                increment=increment,
-                channels=self.microwave_channel)
+            mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
             self.log.warning('You are trying to create chirped pulses on a digital channel.')
         else:
-            mw_element = self._get_idle_element(
-                length=length,
-                increment=increment)
+            mw_element = self._get_idle_element(length=length, increment=increment)
 
             sampling_function_name = 'AllenEberlyChirp'
-            kwargs = {'amplitude': amp, 'start_freq': start_freq, 'stop_freq': stop_freq, 'phase': phase,
-                      'tau_pulse': truncation_ratio * length}
+            kwargs = {
+                'amplitude': amp,
+                'start_freq': start_freq,
+                'stop_freq': stop_freq,
+                'phase': phase,
+                'tau_pulse': truncation_ratio * length,
+            }
 
-            mw_element.pulse_function[self.microwave_channel] = \
-                getattr(SamplingFunctions, sampling_function_name)(**kwargs)
+            mw_element.pulse_function[self.microwave_channel] = getattr(SamplingFunctions, sampling_function_name)(
+                **kwargs
+            )
         return mw_element
 
     def _get_readout_element(self):
@@ -1463,15 +1666,26 @@ class PredefinedGeneratorBase:
             block_ensemble.append((sync_block.name, 0))
         return created_blocks, block_ensemble
 
-    def _add_metadata_to_settings(self, block_ensemble, created_blocks, alternating=False,
-                                  laser_ignore_list=None, controlled_variable=None, units=('s', ''),
-                                  labels=('Tau', 'Signal'), number_of_lasers=None, counting_length=None):
+    def _add_metadata_to_settings(
+        self,
+        block_ensemble,
+        created_blocks,
+        alternating=False,
+        laser_ignore_list=None,
+        controlled_variable=None,
+        units=('s', ''),
+        labels=('Tau', 'Signal'),
+        number_of_lasers=None,
+        counting_length=None,
+    ):
 
         block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information[
-            'laser_ignore_list'] = laser_ignore_list if laser_ignore_list is not None else list()
-        block_ensemble.measurement_information[
-            'controlled_variable'] = controlled_variable if controlled_variable is not None else [0, 1]
+        block_ensemble.measurement_information['laser_ignore_list'] = (
+            laser_ignore_list if laser_ignore_list is not None else list()
+        )
+        block_ensemble.measurement_information['controlled_variable'] = (
+            controlled_variable if controlled_variable is not None else [0, 1]
+        )
         block_ensemble.measurement_information['units'] = units
         block_ensemble.measurement_information['labels'] = labels
         if number_of_lasers is None:
@@ -1483,7 +1697,8 @@ class PredefinedGeneratorBase:
             block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
         if counting_length is None:
             block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
-                ensemble=block_ensemble, created_blocks=created_blocks)
+                ensemble=block_ensemble, created_blocks=created_blocks
+            )
         else:
             block_ensemble.measurement_information['counting_length'] = counting_length
 
@@ -1526,14 +1741,26 @@ class PredefinedGeneratorBase:
             length = 0.0
             for block_name, reps in ensemble.block_list:
                 length += blocks[block_name].init_length_s * (reps + 1)
-                length += blocks[block_name].increment_s * ((reps ** 2 + reps) / 2)
+                length += blocks[block_name].increment_s * ((reps**2 + reps) / 2)
+        return length
+
+    def _get_sequence_count_length(
+        self, sequence: PulseSequence, created_ensembles: list[PulseBlockEnsemble], created_blocks: list[PulseBlock]
+    ) -> float:
+        if self.gate_channel:
+            length = self.laser_length + self.laser_delay
+        else:
+            ensembles = {ensemble.name: ensemble for ensemble in created_ensembles}
+            length = 0.0
+            for seq_param in sequence.ensemble_list:
+                length += self._get_ensemble_count_length(ensembles[seq_param['ensemble']], created_blocks) * (
+                    seq_param['repetitions'] + 1
+                )
         return length
 
 
 class PulseObjectGenerator(PredefinedGeneratorBase):
-    """
-
-    """
+    """ """
 
     def __init__(self, sequencegeneratorlogic):
         # Initialize base class
@@ -1555,12 +1782,15 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # Import predefined generator modules and get a list of generator classes
         generator_classes = list()
-        for mod_finder in iter_modules_recursive(_default_generator_ns.__path__,
-                                                 _default_generator_ns.__name__ + '.'):
+        for mod_finder in iter_modules_recursive(_default_generator_ns.__path__, _default_generator_ns.__name__ + '.'):
             try:
                 generator_classes.extend(
-                    [cls for _, cls in inspect.getmembers(importlib.import_module(mod_finder.name),
-                                                          self.is_generator_class)]
+                    [
+                        cls
+                        for _, cls in inspect.getmembers(
+                            importlib.import_module(mod_finder.name), self.is_generator_class
+                        )
+                    ]
                 )
             except:
                 self.log.exception(
@@ -1595,7 +1825,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         return self._generate_method_parameters.copy()
 
     def __import_external_generators(self, path):
-        """ Helper method to import all modules from given directory path.
+        """Helper method to import all modules from given directory path.
         Find all classes in those modules that inherit exclusively from PredefinedGeneratorBase
         class and return a list of them.
 
@@ -1606,8 +1836,9 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         # Get all python modules to import from.
         # The assumption is that in the path, there are *.py files,
         # which contain only generator classes!
-        module_list = [name[:-3] for name in os.listdir(path) if
-                       os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
+        module_list = [
+            name[:-3] for name in os.listdir(path) if os.path.isfile(os.path.join(path, name)) and name.endswith('.py')
+        ]
 
         # append import path to sys.path
         if path not in sys.path:
@@ -1662,18 +1893,19 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         @return bool: True if obj is a valid generator class, False otherwise
         """
         if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.__bases__# and len(obj.__bases__) == 1
+            return PredefinedGeneratorBase in obj.mro()
         return False
 
     def activate_plugins(self):
         [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]
 
 
-class PredefinedGeneratorPlugin():
+class PredefinedGeneratorPlugin:
     """
     PredefinedGeneratorPlugin is a PredefinedGenerator that can run code after the PulseObjectGenerator
     in order to manipulate all loaded predefined methods.
     """
+
     def __init__(self, *args, **kwargs):
         # should by of type DeprecationWarning, currently broken
         warnings.warn(f'PredefinedGeneratorPlugin is an experimental feature and can be deprecated any time in future.')
@@ -1682,5 +1914,3 @@ class PredefinedGeneratorPlugin():
     def activate_plugin(self):
         # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
         pass
-
-

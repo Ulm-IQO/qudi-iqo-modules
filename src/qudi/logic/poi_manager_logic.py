@@ -32,7 +32,7 @@ import numpy as np
 import time
 from datetime import datetime
 from collections import OrderedDict
-from PySide2 import QtCore
+from PySide6 import QtCore
 from matplotlib import pyplot as plt, patches
 from matplotlib.figure import Figure
 
@@ -44,6 +44,9 @@ from qudi.interface.scanning_probe_interface import ScanImage
 from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+
+from qudi.logic.scanning_optimize_logic import ScanningOptimizeLogic
+from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 
 
 class RegionOfInterest:
@@ -420,9 +423,9 @@ class PoiManagerLogic(LogicBase):
     """
 
     # declare connectors
-    _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
-    _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
-    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
+    _optimizelogic = Connector(name='optimize_logic', interface=ScanningOptimizeLogic)
+    _scanninglogic = Connector(name='scanning_logic', interface=ScanningProbeLogic)
+    _data_logic = Connector(name='data_logic', interface=ScanningDataLogic)
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))
@@ -476,12 +479,12 @@ class PoiManagerLogic(LogicBase):
 
         # Connect callback for a finished refocus
         self._optimizelogic().sigOptimizeStateChanged.connect(
-            self._optimisation_callback, QtCore.Qt.QueuedConnection)
+            self._optimisation_callback, QtCore.Qt.ConnectionType.QueuedConnection)
         # Connect internal start/stop signals to decouple QTimer from other threads
         self.__sigStartPeriodicRefocus.connect(
-            self.start_periodic_refocus, QtCore.Qt.QueuedConnection)
+            self.start_periodic_refocus, QtCore.Qt.ConnectionType.QueuedConnection)
         self.__sigStopPeriodicRefocus.connect(
-            self.stop_periodic_refocus, QtCore.Qt.QueuedConnection)
+            self.stop_periodic_refocus, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Initialise the ROI scan image (xy confocal image) if not present
         if self._roi.scan_image is None:
@@ -664,7 +667,7 @@ class PoiManagerLogic(LogicBase):
         """
         with self._thread_lock:
             # Get current scanner position from  if no position is provided.
-            if position is None:
+            if position is None or position is False:
                 position = self.scanner_position
 
             current_poi_set = set(self.poi_names)
@@ -801,7 +804,7 @@ class PoiManagerLogic(LogicBase):
             if position is None:
                 position = self.scanner_position
 
-            if name is None:
+            if name is None or isinstance(name, bool):
                 if self.active_poi is None:
                     self.log.error('Unable to set POI position. '
                                    'No POI name given and no active POI set.')
@@ -814,7 +817,7 @@ class PoiManagerLogic(LogicBase):
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
-
+                return
             shift = position - self.get_poi_position(name)
             self.add_roi_position(self.roi_origin + shift)
             return
@@ -825,7 +828,7 @@ class PoiManagerLogic(LogicBase):
             if position is None:
                 position = self.scanner_position
 
-            if name is None:
+            if name is None or isinstance(name, bool):
                 if self.active_poi is None:
                     self.log.error('Unable to set POI position. '
                                    'No POI name given and no active POI set.')
@@ -838,6 +841,7 @@ class PoiManagerLogic(LogicBase):
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
+                return
 
             shift = position - self.get_poi_position(name)
             self._roi.set_poi_anchor(name, self.get_poi_anchor(name) + shift)
