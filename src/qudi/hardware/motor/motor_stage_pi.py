@@ -660,6 +660,14 @@ class MotorStagePI(MotorInterface):
                 stopped = False
         return stopped
 
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
+        """
+        self.log.warning("For use as a magnet I need to be implemented")
+        return False  # todo: add proper implementation
+
 
 
             #########################################################################################

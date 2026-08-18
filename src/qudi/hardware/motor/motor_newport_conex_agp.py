@@ -310,3 +310,10 @@ class MotorNewportConexAGP(MotorInterface):
             Afterwards, moving to the home position with calibrate() is necessary.
         """
         self.write('RS')
+
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
+        """
+        return False # todo: add proper implementation
