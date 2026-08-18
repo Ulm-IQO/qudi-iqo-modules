@@ -14,6 +14,7 @@
 - Fix several `POIManagerGUI` `PySide6` bugs
 - Fix discovery of `AltPlotMethodBase` subclasses
 - Fix NI IO for only analog input channels.
+- bug fixes for millennia eV laser
 - Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
@@ -23,6 +24,7 @@
 - supporting custom alternative plots in pulsed analysis
 - Added selectable `ScanningOptimizeLogic` optimization methods
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
+- Supported pyvisa for coherent obis laser
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
