@@ -734,7 +734,24 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         awg_seq_name = 'awg_' + name
 
-        # Write AWG sequence
+        # Stop AWG before writing.
+        # If armed (status 2) from a previous run, OUTPUT:STATE? queries in the
+        # AWG reflect the OLD hardware state, not the current activation config.
+        # Stopping first ensures _internal_ch_state is the source of truth.
+        if self.awg()._is_output_on():
+            self.log.info(
+                'write_sequence: stopping AWG (status={0}) before sequence write.'
+                ''.format(self.awg().get_status()[0])
+            )
+            self.awg().pulser_off()
+
+        # Drain error queue to remove stale events (E11506, E11203, power-on)
+        # so they don't appear as alarming errors during normal write operations.
+        try:
+            self.awg().get_errors()
+        except Exception:
+            pass
+
         result = self.awg().write_sequence(awg_seq_name, sequence_parameter_list)
 
         if result < 0:

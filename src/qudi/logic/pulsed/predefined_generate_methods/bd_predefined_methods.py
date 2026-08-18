@@ -1265,37 +1265,214 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     ################################################################################################
     #                             Generation methods for sequences                                 #
     ################################################################################################
+    # def generate_bd_t1_sequencing(self, name='t1_seq', tau_start=1.0e-6,
+    #                         tau_max=1.0e-3, num_of_points=10):
+    #     """
+    #     T1 sequence adapted for combined AWG + PulseBlaster interfuse.
+
+    #     Key differences from the standalone AWG version:
+    #     - laser_channel, gate_channel, sync_channel now point to PB channels
+    #         (d_ch5, d_ch6, d_ch7 — set in Generator Settings, NOT changed here).
+    #     - The interfuse's write_sequence() builds a combined PB waveform that
+    #         tiles the per-step PB content in the correct order and inserts an AWG
+    #         trigger at the start of each loop cycle.
+    #     - The AWG sequence steps contain only AWG channels (idle for T1 without
+    #         MW pulse, or pi pulse for inversion-recovery T1). PB channels (laser,
+    #         gate) are handled transparently by the interfuse.
+    #     - All other logic, element building, and sequence construction is unchanged.
+    #     """
+    #     created_blocks    = list()
+    #     created_ensembles = list()
+    #     created_sequences = list()
+
+    #     # ── Tau array (same as original) ─────────────────────────────────────────
+    #     k_array   = np.unique(
+    #         np.rint(
+    #             np.logspace(0., np.log10(tau_max / tau_start), num_of_points)
+    #         ).astype(int)
+    #     )
+    #     tau_array = k_array * tau_start
+
+    #     # ── Readout block (same as original) ─────────────────────────────────────
+    #     # _get_laser_gate_element uses self.laser_channel which is now a PB channel
+    #     # (e.g. d_ch5). No change needed here — the element builder is channel-agnostic.
+    #     laser_element   = self._get_laser_gate_element(length=self.laser_length, increment=0)
+    #     delay_element   = self._get_delay_gate_element()
+    #     waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+    #     readout_block = PulseBlock(name='{0}_readout'.format(name))
+    #     readout_block.append(laser_element)
+    #     readout_block.append(delay_element)
+    #     readout_block.append(waiting_element)
+    #     created_blocks.append(readout_block)
+
+    #     readout_ensemble = PulseBlockEnsemble(
+    #         name='{0}_readout'.format(name), rotating_frame=False
+    #     )
+    #     readout_ensemble.append((readout_block.name, 0))
+    #     created_ensembles.append(readout_ensemble)
+
+    #     # ── Sync readout block (same as original) ─────────────────────────────────
+    #     # sync_channel now points to a PB channel (e.g. d_ch7).
+    #     # _get_sync_element() is channel-agnostic — no change needed.
+    #     if self.sync_channel:
+    #         sync_element = self._get_sync_element()
+
+    #         sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
+    #         sync_readout_block.append(laser_element)
+    #         sync_readout_block.append(delay_element)
+    #         sync_readout_block.append(waiting_element)
+    #         sync_readout_block.append(sync_element)
+    #         created_blocks.append(sync_readout_block)
+
+    #         sync_readout_ensemble = PulseBlockEnsemble(
+    #             name='{0}_readout_sync'.format(name), rotating_frame=False
+    #         )
+    #         sync_readout_ensemble.append((sync_readout_block.name, 0))
+    #         created_ensembles.append(sync_readout_ensemble)
+
+    #     # ── Tau block (same as original) ──────────────────────────────────────────
+    #     # _get_idle_element creates a LOW-on-all-channels element.
+    #     # In the combined setup this means both AWG and PB channels are idle —
+    #     # the interfuse handles routing each channel to the correct device.
+    #     tau_element = self._get_idle_element(length=tau_start, increment=0)
+
+    #     tau_block = PulseBlock(name='{0}_tau'.format(name))
+    #     tau_block.append(tau_element)
+    #     created_blocks.append(tau_block)
+
+    #     tau_ensemble = PulseBlockEnsemble(
+    #         name='{0}_tau'.format(name), rotating_frame=False
+    #     )
+    #     tau_ensemble.append((tau_block.name, 0))
+    #     created_ensembles.append(tau_ensemble)
+
+    #     # ── Build PulseSequence (same as original) ────────────────────────────────
+    #     # The interfuse's write_sequence() will:
+    #     #   1. Write the AWG sequence (tau + readout waveforms, with repetitions)
+    #     #   2. Build a combined PB waveform by tiling per-step PB content:
+    #     #        [tau PB content × k_1] + [readout PB content] +
+    #     #        [tau PB content × k_2] + [readout PB content] + ...
+    #     #   3. Insert AWG trigger at t=0 of the combined PB waveform
+    #     #   4. Both devices loop at identical rates → stay synchronised
+    #     t1_sequence = PulseSequence(name=name, rotating_frame=False)
+
+    #     for k in k_array:
+    #         t1_sequence.append(tau_ensemble.name)
+    #         t1_sequence[-1].repetitions = int(k) - 1
+
+    #         if self.sync_channel and k == k_array[-1]:
+    #             t1_sequence.append(sync_readout_ensemble.name)
+    #         else:
+    #             t1_sequence.append(readout_ensemble.name)
+
+    #     # Loop infinitely (same as original)
+    #     t1_sequence[-1].go_to = 1
+
+    #     t1_sequence.refresh_parameters()
+
+    #     # ── Measurement metadata (same as original) ───────────────────────────────
+    #     t1_sequence.measurement_information['alternating']        = False
+    #     t1_sequence.measurement_information['laser_ignore_list']  = list()
+    #     t1_sequence.measurement_information['controlled_variable'] = tau_array
+    #     t1_sequence.measurement_information['units']              = ('s', '')
+    #     t1_sequence.measurement_information['labels']             = (
+    #         'Tau<sub>pulse spacing</sub>', 'Signal'
+    #     )
+    #     t1_sequence.measurement_information['number_of_lasers']   = len(tau_array)
+    #     t1_sequence.measurement_information['counting_length']    = \
+    #         self._get_sequence_count_length(
+    #             t1_sequence, created_ensembles, created_blocks
+    #         )
+
+    #     created_sequences.append(t1_sequence)
+    #     return created_blocks, created_ensembles, created_sequences
+
     def generate_bd_t1_sequencing(self, name='t1_seq', tau_start=1.0e-6,
                             tau_max=1.0e-3, num_of_points=10):
         """
-        T1 sequence adapted for combined AWG + PulseBlaster interfuse.
+        T1 relaxation sequence for combined AWG + PulseBlaster setup.
 
-        Key differences from the standalone AWG version:
-        - laser_channel, gate_channel, sync_channel now point to PB channels
-            (d_ch5, d_ch6, d_ch7 — set in Generator Settings, NOT changed here).
-        - The interfuse's write_sequence() builds a combined PB waveform that
-            tiles the per-step PB content in the correct order and inserts an AWG
-            trigger at the start of each loop cycle.
-        - The AWG sequence steps contain only AWG channels (idle for T1 without
-            MW pulse, or pi pulse for inversion-recovery T1). PB channels (laser,
-            gate) are handled transparently by the interfuse.
-        - All other logic, element building, and sequence construction is unchanged.
+        Sequence structure
+        ------------------
+        Step 1  TWAIT=ON (forced by interfuse):
+            trigger_ensemble — sync_channel HIGH for one sync pulse duration.
+            PB fires this at t=0 of every loop, releasing the AWG's TWAIT and
+            starting a complete T1 sweep. AWG idles during this step.
+
+        Steps 2..2N+1 (no TWAIT, alternating):
+            tau_ensemble   x k  — free evolution, all channels idle.
+            readout_ensemble    — laser HIGH + detector gate HIGH on PB channels.
+
+        Last step: go_to = 1  -> AWG returns to trigger step and waits.
+        PB loop restarts      -> fires trigger -> next average begins.
+
+        Required Generator Settings
+        ---------------------------
+            sync_channel:  d_ch{N}  (PB channel wired to AWG TRIGGER IN BNC)
+            laser_channel: d_ch{N}  (PB channel wired to laser AOM)
+            gate_channel:  d_ch{N}  (PB channel wired to photon counter gate)
+
+        With default config (pb_channel_d_offset=5):
+            d_ch5  = PB hw ch 0
+            d_ch6  = PB hw ch 1
+            ...
+            d_ch13 = PB hw ch 8
+
+        Parameters
+        ----------
+        name : str
+            Name of the PulseSequence to be generated.
+        tau_start : float
+            Minimum free evolution time in seconds.
+        tau_max : float
+            Maximum free evolution time in seconds.
+        num_of_points : int
+            Number of logarithmically spaced tau points.
+
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks    = list()
         created_ensembles = list()
         created_sequences = list()
 
-        # ── Tau array (same as original) ─────────────────────────────────────────
-        k_array   = np.unique(
+        # ── Tau array (logarithmically spaced) ───────────────────────────────────
+        k_array = np.unique(
             np.rint(
                 np.logspace(0., np.log10(tau_max / tau_start), num_of_points)
             ).astype(int)
         )
         tau_array = k_array * tau_start
 
-        # ── Readout block (same as original) ─────────────────────────────────────
-        # _get_laser_gate_element uses self.laser_channel which is now a PB channel
-        # (e.g. d_ch5). No change needed here — the element builder is channel-agnostic.
+        # =========================================================================
+        # BLOCK AND ENSEMBLE CREATION
+        # =========================================================================
+
+        # ── 1. Trigger ensemble (sequence step 1, TWAIT=ON set by interfuse) ─────
+        # sync_channel is the PB channel wired to the AWG TRIGGER IN BNC.
+        # _get_sync_element() creates an element with sync_channel HIGH.
+        # On the AWG side: this step is analog idle (a_ch outputs zero).
+        # On the PB side: sync_channel fires HIGH, triggering the AWG to advance.
+        sync_element = self._get_sync_element()
+
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(sync_element)
+        created_blocks.append(trigger_block)
+
+        trigger_ensemble = PulseBlockEnsemble(
+            name='{0}_trigger'.format(name),
+            rotating_frame=False
+        )
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        # ── 2. Readout ensemble ───────────────────────────────────────────────────
+        # laser_channel HIGH, gate_channel HIGH during readout window.
+        # AWG analog output is idle (no MW pulse during readout in standard T1).
         laser_element   = self._get_laser_gate_element(length=self.laser_length, increment=0)
         delay_element   = self._get_delay_gate_element()
         waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
@@ -1307,34 +1484,16 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_blocks.append(readout_block)
 
         readout_ensemble = PulseBlockEnsemble(
-            name='{0}_readout'.format(name), rotating_frame=False
+            name='{0}_readout'.format(name),
+            rotating_frame=False
         )
         readout_ensemble.append((readout_block.name, 0))
         created_ensembles.append(readout_ensemble)
 
-        # ── Sync readout block (same as original) ─────────────────────────────────
-        # sync_channel now points to a PB channel (e.g. d_ch7).
-        # _get_sync_element() is channel-agnostic — no change needed.
-        if self.sync_channel:
-            sync_element = self._get_sync_element()
-
-            sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
-            sync_readout_block.append(laser_element)
-            sync_readout_block.append(delay_element)
-            sync_readout_block.append(waiting_element)
-            sync_readout_block.append(sync_element)
-            created_blocks.append(sync_readout_block)
-
-            sync_readout_ensemble = PulseBlockEnsemble(
-                name='{0}_readout_sync'.format(name), rotating_frame=False
-            )
-            sync_readout_ensemble.append((sync_readout_block.name, 0))
-            created_ensembles.append(sync_readout_ensemble)
-
-        # ── Tau block (same as original) ──────────────────────────────────────────
-        # _get_idle_element creates a LOW-on-all-channels element.
-        # In the combined setup this means both AWG and PB channels are idle —
-        # the interfuse handles routing each channel to the correct device.
+        # ── 3. Tau ensemble ───────────────────────────────────────────────────────
+        # All channels idle for the full tau_start duration.
+        # AWG analog = 0V, all PB channels LOW.
+        # Repeated k-1 times by the sequence, giving total free evolution = k * tau_start.
         tau_element = self._get_idle_element(length=tau_start, increment=0)
 
         tau_block = PulseBlock(name='{0}_tau'.format(name))
@@ -1342,235 +1501,65 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_blocks.append(tau_block)
 
         tau_ensemble = PulseBlockEnsemble(
-            name='{0}_tau'.format(name), rotating_frame=False
+            name='{0}_tau'.format(name),
+            rotating_frame=False
         )
         tau_ensemble.append((tau_block.name, 0))
         created_ensembles.append(tau_ensemble)
 
-        # ── Build PulseSequence (same as original) ────────────────────────────────
-        # The interfuse's write_sequence() will:
-        #   1. Write the AWG sequence (tau + readout waveforms, with repetitions)
-        #   2. Build a combined PB waveform by tiling per-step PB content:
-        #        [tau PB content × k_1] + [readout PB content] +
-        #        [tau PB content × k_2] + [readout PB content] + ...
-        #   3. Insert AWG trigger at t=0 of the combined PB waveform
-        #   4. Both devices loop at identical rates → stay synchronised
+        # =========================================================================
+        # SEQUENCE CONSTRUCTION
+        # =========================================================================
+        #
+        # Full sequence layout (N tau points):
+        #
+        #   Step 1      : trigger_ensemble   repetitions=0  (plays once)  TWAIT=ON
+        #   Step 2      : tau_ensemble       repetitions=k1-1             TWAIT=OFF
+        #   Step 3      : readout_ensemble   repetitions=0                TWAIT=OFF
+        #   Step 4      : tau_ensemble       repetitions=k2-1             TWAIT=OFF
+        #   Step 5      : readout_ensemble   repetitions=0                TWAIT=OFF
+        #   ...
+        #   Step 2N     : tau_ensemble       repetitions=kN-1             TWAIT=OFF
+        #   Step 2N+1   : readout_ensemble   repetitions=0  go_to=1       TWAIT=OFF
+        #
+        # Total AWG sequence steps = 1 + 2*N
+
         t1_sequence = PulseSequence(name=name, rotating_frame=False)
 
+        # Step 1: trigger — TWAIT=ON is forced on this step by the interfuse's
+        # write_sequence() method, making it equivalent to TRIG mode in waveform mode.
+        t1_sequence.append(trigger_ensemble.name)
+        t1_sequence[-1].repetitions = 0
+
+        # Steps 2..2N+1: alternating tau and readout
         for k in k_array:
+            # Tau: free evolution for k * tau_start total
             t1_sequence.append(tau_ensemble.name)
             t1_sequence[-1].repetitions = int(k) - 1
 
-            if self.sync_channel and k == k_array[-1]:
-                t1_sequence.append(sync_readout_ensemble.name)
-            else:
-                t1_sequence.append(readout_ensemble.name)
+            # Readout: laser + gate on PB channels
+            t1_sequence.append(readout_ensemble.name)
+            t1_sequence[-1].repetitions = 0
 
-        # Loop infinitely (same as original)
+        # After last readout: return to trigger step and wait for next PB trigger
         t1_sequence[-1].go_to = 1
 
+        # ── Finalise ──────────────────────────────────────────────────────────────
         t1_sequence.refresh_parameters()
 
-        # ── Measurement metadata (same as original) ───────────────────────────────
-        t1_sequence.measurement_information['alternating']        = False
-        t1_sequence.measurement_information['laser_ignore_list']  = list()
+        t1_sequence.measurement_information['alternating']         = False
+        t1_sequence.measurement_information['laser_ignore_list']   = list()
         t1_sequence.measurement_information['controlled_variable'] = tau_array
-        t1_sequence.measurement_information['units']              = ('s', '')
-        t1_sequence.measurement_information['labels']             = (
+        t1_sequence.measurement_information['units']               = ('s', '')
+        t1_sequence.measurement_information['labels']              = (
             'Tau<sub>pulse spacing</sub>', 'Signal'
         )
-        t1_sequence.measurement_information['number_of_lasers']   = len(tau_array)
-        t1_sequence.measurement_information['counting_length']    = \
+        t1_sequence.measurement_information['number_of_lasers']    = len(tau_array)
+        t1_sequence.measurement_information['counting_length']     = (
             self._get_sequence_count_length(
                 t1_sequence, created_ensembles, created_blocks
             )
+        )
 
         created_sequences.append(t1_sequence)
         return created_blocks, created_ensembles, created_sequences
-
-
-def generate_test_sequencing(self, name='t1_seq2', tau_start=1.0e-6,
-                            tau_max=1.0e-3, num_of_points=10):
-    """
-    T1 sequence for combined AWG + PulseBlaster setup.
-
-    Sequence structure
-    ------------------
-    Step 1 (TWAIT=ON, forced by interfuse):
-        trigger_ensemble — sync_channel HIGH for one pulse duration.
-        The PB fires this at the start of every loop, triggering the AWG
-        to begin a complete T1 sweep. The AWG waits here between sweeps.
-
-    Steps 2..2N+1 (alternating, no TWAIT):
-        tau_ensemble × k  — free evolution (all channels idle)
-        readout_ensemble  — laser ON, detector gate ON (on PB channels)
-
-    Last step: go_to = 1 → AWG returns to trigger step and waits again.
-
-    Requirements
-    ------------
-    - Activation config:  A1_M1_M2_pb3   (single AWG analog ch + PB channels)
-    - sync_channel:       d_ch7           (PB channel wired to AWG TRIGGER IN)
-    - laser_channel:      d_ch5           (PB channel wired to laser AOM)
-    - gate_channel:       d_ch6           (PB channel wired to photon counter gate)
-
-    Parameters
-    ----------
-    name : str
-        Name of the PulseSequence.
-    tau_start : float
-        Start tau in seconds (minimum free evolution time).
-    tau_max : float
-        Maximum tau in seconds.
-    num_of_points : int
-        Number of logarithmically spaced tau points.
-
-    Returns
-    -------
-    created_blocks, created_ensembles, created_sequences : list, list, list
-    """
-    created_blocks    = list()
-    created_ensembles = list()
-    created_sequences = list()
-
-    # ── Sanity check ──────────────────────────────────────────────────────────
-    if not self.sync_channel:
-        self.log.error(
-            'sync_channel must be configured for combined AWG+PB T1 sequence.\n'
-            'Set sync_channel to the PB channel connected to the AWG TRIGGER IN BNC\n'
-            '(e.g. d_ch7 if using pb_channels=[0,1,2,3,4] with pb_channel_d_offset=5).'
-        )
-        return created_blocks, created_ensembles, created_sequences
-
-    # ── Tau array ─────────────────────────────────────────────────────────────
-    # Logarithmically spaced steps in multiples of tau_start
-    k_array = np.unique(
-        np.rint(
-            np.logspace(0., np.log10(tau_max / tau_start), num_of_points)
-        ).astype(int)
-    )
-    tau_array = k_array * tau_start
-
-    # =========================================================================
-    # BLOCK / ENSEMBLE CONSTRUCTION
-    # =========================================================================
-
-    # ── 1. Trigger ensemble ───────────────────────────────────────────────────
-    # Played ONCE as step 1 of the sequence (repetitions=0).
-    # TWAIT=ON is forced on step 1 by the interfuse's write_sequence().
-    # The PB combined waveform starts with this content, so the trigger
-    # pulse is at t=0 of every PB loop — releasing the AWG's TWAIT and
-    # starting a complete T1 sweep.
-    #
-    # _get_sync_element() creates a pulse on self.sync_channel (= d_ch7).
-    # On the PB side this HIGH pulse fires the AWG trigger input.
-    # On the AWG side d_ch7 is a PB channel so it has no effect on the
-    # AWG waveform itself — the AWG waveform for this step is simply idle.
-    sync_element = self._get_sync_element()
-
-    trigger_block = PulseBlock(name='{0}_trigger'.format(name))
-    trigger_block.append(sync_element)
-    created_blocks.append(trigger_block)
-
-    trigger_ensemble = PulseBlockEnsemble(
-        name='{0}_trigger'.format(name), rotating_frame=False
-    )
-    trigger_ensemble.append((trigger_block.name, 0))
-    created_ensembles.append(trigger_ensemble)
-
-    # ── 2. Readout ensemble ───────────────────────────────────────────────────
-    # laser_channel and gate_channel are PB channels (d_ch5, d_ch6).
-    # The AWG analog output (a_ch1) is idle during readout — the readout
-    # window only uses the PB laser and gate pulses.
-    laser_element   = self._get_laser_gate_element(length=self.laser_length, increment=0)
-    delay_element   = self._get_delay_gate_element()
-    waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-
-    readout_block = PulseBlock(name='{0}_readout'.format(name))
-    readout_block.append(laser_element)
-    readout_block.append(delay_element)
-    readout_block.append(waiting_element)
-    created_blocks.append(readout_block)
-
-    readout_ensemble = PulseBlockEnsemble(
-        name='{0}_readout'.format(name), rotating_frame=False
-    )
-    readout_ensemble.append((readout_block.name, 0))
-    created_ensembles.append(readout_ensemble)
-
-    # ── 3. Tau ensemble ───────────────────────────────────────────────────────
-    # Pure idle: all channels LOW/zero. The free evolution period.
-    # On the AWG: a_ch1 = 0V (no MW pulse during tau).
-    # On the PB:  all channels LOW (no laser, no gate, no trigger during tau).
-    #
-    # This ensemble is repeated k times per sequence step, giving total
-    # free evolution time = k * tau_start.
-    tau_element = self._get_idle_element(length=tau_start, increment=0)
-
-    tau_block = PulseBlock(name='{0}_tau'.format(name))
-    tau_block.append(tau_element)
-    created_blocks.append(tau_block)
-
-    tau_ensemble = PulseBlockEnsemble(
-        name='{0}_tau'.format(name), rotating_frame=False
-    )
-    tau_ensemble.append((tau_block.name, 0))
-    created_ensembles.append(tau_ensemble)
-
-    # =========================================================================
-    # SEQUENCE CONSTRUCTION
-    # =========================================================================
-    #
-    # Final sequence (N = len(k_array) tau points):
-    #
-    #   Step  1         : trigger_ensemble  (repetitions=0 → plays once)
-    #   Step  2         : tau_ensemble      (repetitions=k1-1 → plays k1 times)
-    #   Step  3         : readout_ensemble  (repetitions=0 → plays once)
-    #   Step  4         : tau_ensemble      (repetitions=k2-1 → plays k2 times)
-    #   Step  5         : readout_ensemble  (repetitions=0 → plays once)
-    #     ...
-    #   Step  2N        : tau_ensemble      (repetitions=kN-1)
-    #   Step  2N+1      : readout_ensemble  (go_to=1)
-    #
-    # Total steps = 1 + 2*N
-    # AWG go_to=1 on last step → returns to trigger step, waits for PB
-    # PB loops naturally → fires trigger → next T1 average begins
-
-    t1_sequence = PulseSequence(name=name, rotating_frame=False)
-
-    # Step 1: trigger (TWAIT=ON forced by interfuse.write_sequence)
-    t1_sequence.append(trigger_ensemble.name)
-    t1_sequence[-1].repetitions = 0    # plays exactly once per sweep
-
-    # Steps 2..2N+1: tau × k, then readout
-    for k in k_array:
-        # Tau step: free evolution for k * tau_start
-        t1_sequence.append(tau_ensemble.name)
-        t1_sequence[-1].repetitions = int(k) - 1   # AWG loops k times total
-
-        # Readout step: laser + gate on PB
-        t1_sequence.append(readout_ensemble.name)
-        t1_sequence[-1].repetitions = 0             # plays once
-
-    # After last readout: return to trigger step → wait for next PB trigger
-    t1_sequence[-1].go_to = 1
-
-    # ── Finalise sequence ─────────────────────────────────────────────────────
-    t1_sequence.refresh_parameters()
-
-    t1_sequence.measurement_information['alternating']         = False
-    t1_sequence.measurement_information['laser_ignore_list']   = list()
-    t1_sequence.measurement_information['controlled_variable'] = tau_array
-    t1_sequence.measurement_information['units']               = ('s', '')
-    t1_sequence.measurement_information['labels']              = (
-        'Tau<sub>pulse spacing</sub>', 'Signal'
-    )
-    # One laser readout per tau point
-    t1_sequence.measurement_information['number_of_lasers']    = len(tau_array)
-    t1_sequence.measurement_information['counting_length']     = \
-        self._get_sequence_count_length(
-            t1_sequence, created_ensembles, created_blocks
-        )
-
-    created_sequences.append(t1_sequence)
-    return created_blocks, created_ensembles, created_sequences

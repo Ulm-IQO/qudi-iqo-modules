@@ -443,20 +443,18 @@ class AWG7k(PulserInterface):
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device.
-
-        @param sequence_name: str
-
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
-        """
+        """ Loads a sequence to the channels of the device. """
         if sequence_name not in self.get_sequence_names():
             self.log.error('Unable to load sequence.\n'
                            'Sequence to load is missing on device memory.')
             return self.get_loaded_assets()[0]
 
-        self.write('AWGC:EVENT:JMODE EJUMP')
-        self.set_mode('S')
+        # REMOVED: self.write('AWGC:EVENT:JMODE EJUMP')
+        # This command does not exist on the AWG7000 series (AWG7122C).
+        # Per-step event jump targets are configured during write_sequence()
+        # via sequence_set_event_jump() → SEQ:ELEM{n}:JTAR:TYPE / INDEX.
 
+        self.set_mode('S')
         self._loaded_sequences = [sequence_name]
         return self.get_loaded_assets()[0]
 
@@ -792,11 +790,17 @@ class AWG7k(PulserInterface):
                 marker_num = 0
             dac_res = 10 - marker_num
             self.write('SOUR{0:d}:DAC:RES {1:d}'.format(ach_num, dac_res))
-            if new_channels_state[a_ch]:
-                self.write('OUTPUT{0:d}:STATE ON'.format(ach_num))
-            else:
-                self.write('OUTPUT{0:d}:STATE OFF'.format(ach_num))
+
+            # FIX: Never turn OUTPUT ON here.
+            # Turning ON before a waveform is loaded generates E11506.
+            # pulser_on() handles OUTPUT:STATE ON after waveforms are loaded.
+            # Always turn OFF here so the state is clean and predictable.
+            self.write('OUTPUT{0:d}:STATE OFF'.format(ach_num))
+
+            # _internal_ch_state records the DESIRED state (True/False).
+            # This is the source of truth used by write_waveform and write_sequence.
             self._internal_ch_state[a_ch] = new_channels_state[a_ch]
+
         return self.get_active_channels()
 
     def write_waveform(self, name, analog_samples, digital_samples, is_first_chunk, is_last_chunk,
@@ -826,16 +830,21 @@ class AWG7k(PulserInterface):
                            ''.format(total_number_of_samples, constraints.waveform_length.max))
             return -1, waveforms
 
-        activation_dict = self.get_active_channels()
-        active_channels = {chnl for chnl in activation_dict if activation_dict[chnl]}
-        active_analog = natural_sort(chnl for chnl in active_channels if chnl.startswith('a'))
-
-        if active_channels != set(analog_samples.keys()).union(set(digital_samples.keys())):
-            self.log.error('Mismatch of channel activation and sample array dimensions for '
-                           'waveform creation.\nChannel activation is: {0}\nSample arrays have: '
-                           ''.format(active_channels,
-                                     set(analog_samples.keys()).union(set(digital_samples.keys()))))
-            return -1, waveforms
+        active_analog = natural_sort(
+            chnl for chnl in analog_samples if chnl.startswith('a')
+        )
+        # Verify consistency with _internal_ch_state (diagnostic only, does not abort)
+        expected_analog = natural_sort(
+            chnl for chnl, active in self._internal_ch_state.items() if active
+        )
+        if set(active_analog) != set(expected_analog):
+            self.log.warning(
+                'write_waveform channel mismatch: '
+                'samples have {0} but _internal_ch_state has {1}. '
+                'Using sample channels. '
+                'This may indicate set_active_channels was not called correctly.'
+                ''.format(active_analog, expected_analog)
+            )
 
         for a_ch in active_analog:
             a_ch_num = int(a_ch.rsplit('ch', 1)[1])
@@ -897,8 +906,27 @@ class AWG7k(PulserInterface):
                                'present in device memory.'.format(name, waveform_tuple))
                 return -1
 
-        active_analog = natural_sort(chnl for chnl in self.get_active_channels() if chnl.startswith('a'))
+        # Use _internal_ch_state directly — this is always consistent with
+        # what write_waveform used, regardless of hardware armed/running state.
+        active_analog = natural_sort(
+            chnl for chnl, active in self._internal_ch_state.items() if active
+        )
         num_tracks = len(active_analog)
+
+        if num_tracks == 0:
+            self.log.error(
+                'write_sequence: no active analog channels in _internal_ch_state = {0}.\n'
+                'Call set_active_channels() before sampling.'
+                ''.format(self._internal_ch_state)
+            )
+            return -1
+
+        self.log.debug(
+            'write_sequence: _internal_ch_state={0}, '
+            'active_analog={1}, num_tracks={2}'
+            ''.format(self._internal_ch_state, active_analog, num_tracks)
+        )
+
         num_steps = len(sequence_parameter_list)
 
         self.write('SEQ:LENG 0')
