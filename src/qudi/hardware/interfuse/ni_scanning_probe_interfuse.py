@@ -26,8 +26,8 @@ import time
 from typing import Optional, Dict, List
 from dataclasses import asdict
 
-from PySide2 import QtCore
-from PySide2.QtGui import QGuiApplication
+from PySide6 import QtCore
+from PySide6.QtGui import QGuiApplication
 
 from qudi.interface.finite_sampling_io_interface import FiniteSamplingIOInterface
 from qudi.interface.process_control_interface import ProcessSetpointInterface
@@ -186,7 +186,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.__init_ao_timer()
         self.__t_last_follow = None
 
-        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
+        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
@@ -408,7 +408,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         try:
             if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self, '_start_scan', QtCore.Qt.BlockingQueuedConnection)
+                QtCore.QMetaObject.invokeMethod(self, '_start_scan', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             else:
                 self._start_scan()
 
@@ -456,7 +456,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self._stop_scan()
 
@@ -906,7 +906,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
 
         self.__ni_ao_write_timer.setSingleShot(True)
-        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
+        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.ConnectionType.QueuedConnection)
         self.__ni_ao_write_timer.setInterval(1e3*self._min_step_interval)  # (ms), dynamically calculated during write loop
 
     def __start_ao_write_timer(self):
@@ -921,7 +921,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                 if self.thread() is not QtCore.QThread.currentThread():
                     QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                                     'start',
-                                                    QtCore.Qt.BlockingQueuedConnection)
+                                                    QtCore.Qt.ConnectionType.BlockingQueuedConnection)
                 else:
                     self.__ni_ao_write_timer.start()
             else:

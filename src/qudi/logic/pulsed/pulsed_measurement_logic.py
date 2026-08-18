@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import os.path
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 import time
 import datetime
@@ -33,12 +33,12 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
-from qudi.util.math import compute_ft
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
 from qudi.util.units import ScaledFloat
 from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.pulsed.pulse_alt_plot import AltPlotAnalyzer
 
 from qudi.interface.pulser_interface import PulserInterface
 from qudi.interface.fast_counter_interface import FastCounterInterface
@@ -82,6 +82,8 @@ class PulsedMeasurementLogic(LogicBase):
     # Optional additional paths to import from
     extraction_import_path = ConfigOption(name='additional_extraction_path', default=None)
     analysis_import_path = ConfigOption(name='additional_analysis_path', default=None)
+    # Optional additional path to import alternative (second) plot methods from
+    alt_plot_import_path = ConfigOption(name='additional_alt_plot_path', default=None)
     # Optional file type descriptor for saving raw data to file.
     # todo: doesn't warn if checker not satisfied
     _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
@@ -127,12 +129,11 @@ class PulsedMeasurementLogic(LogicBase):
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
 
-    # alternative signal computation settings:
-    _alternative_data_type = StatusVar(default=None)
-    zeropad = StatusVar(default=0)
-    psd = StatusVar(default=False)
-    window = StatusVar(default='none')
-    base_corr = StatusVar(default=True)
+    # alternative (second) plot settings:
+    # Holds the full parameter set of all alternative plot methods plus the currently selected
+    # method (key "method"), persisted analogously to analysis_parameters. Managed by
+    # AltPlotAnalyzer.
+    alt_plot_parameters = StatusVar(default=None)
 
     # notification signals for master module (i.e. GUI)
     sigMeasurementDataUpdated = QtCore.Signal()
@@ -244,6 +245,11 @@ class PulsedMeasurementLogic(LogicBase):
         self._time_of_pause = None
         self._elapsed_pause = 0
 
+        # method manager instances (created in on_activate)
+        self._pulseextractor = None
+        self._pulseanalyzer = None
+        self._altplotanalyzer = None
+
         # for fit:
         self.fit_config_model = None  # Model for custom fit configurations
         self.fc = None  # Fit container
@@ -257,6 +263,8 @@ class PulsedMeasurementLogic(LogicBase):
         # Create an instance of PulseExtractor
         self._pulseextractor = PulseExtractor(pulsedmeasurementlogic=self)
         self._pulseanalyzer = PulseAnalyzer(pulsedmeasurementlogic=self)
+        # Create an instance of the alternative (second) plot manager
+        self._altplotanalyzer = AltPlotAnalyzer(pulsedmeasurementlogic=self)
 
         # QTimer must be created here instead of __init__ because otherwise the timer will not run
         # in this logic's thread but in the manager instead.
@@ -264,7 +272,7 @@ class PulsedMeasurementLogic(LogicBase):
         self.__analysis_timer.setSingleShot(False)
         self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
         self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -301,8 +309,8 @@ class PulsedMeasurementLogic(LogicBase):
         self._recalled_raw_data_tag = None
 
         # Connect internal signals
-        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
-        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -322,6 +330,10 @@ class PulsedMeasurementLogic(LogicBase):
     @analysis_parameters.representer
     def __repr_analysis_parameters(self, value):
         return self._pulseanalyzer.full_settings_dict
+
+    @alt_plot_parameters.representer
+    def __repr_alt_plot_parameters(self, value):
+        return self._altplotanalyzer.full_settings_dict
 
     @_fit_configs.representer
     def __repr_fit_configs(self, value):
@@ -719,13 +731,24 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def alternative_data_type(self):
-        return str(self._alternative_data_type)
+        method = self._altplotanalyzer.current_method
+        return str(method) if method is not None else 'None'
 
     @alternative_data_type.setter
     def alternative_data_type(self, alt_data_type):
         if isinstance(alt_data_type, str) or alt_data_type is None:
             self.set_alternative_data_type(alt_data_type)
         return
+
+    @property
+    def alt_plot_methods(self):
+        """ Naturally sorted list of available alternative (second) plot method names. """
+        return self._altplotanalyzer.alt_plot_methods
+
+    @property
+    def alt_plot_labels(self):
+        """ Axis labels for every alternative plot method (dict of primitive strings). """
+        return self._altplotanalyzer.alt_plot_labels
 
     @property
     def analysis_methods(self):
@@ -1070,24 +1093,23 @@ class PulsedMeasurementLogic(LogicBase):
 
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
-        """
-
-        @param alt_data_type:
-        @return:
-        """
+        """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
         with self._threadlock:
             if alt_data_type != self.alternative_data_type:
                 self.do_fit('No Fit', True)
-            if alt_data_type == 'Delta' and not self._alternating:
-                if self._alternative_data_type == 'Delta':
-                    self._alternative_data_type = None
-                self.log.error('Can not set "Delta" as alternative data calculation if measurement is '
-                               'not alternating.\n'
-                               'Setting to previous type "{0}".'.format(self.alternative_data_type))
-            elif alt_data_type == 'None':
-                self._alternative_data_type = None
+
+            if alt_data_type in (None, 'None', ''):
+                self._altplotanalyzer.current_method = None
+            elif alt_data_type not in self._altplotanalyzer.alt_plot_methods:
+                self.log.error('Unknown alternative plot method "{0}". Keeping previous type "{1}".'
+                               ''.format(alt_data_type, self.alternative_data_type))
+            elif not self._altplotanalyzer.is_available(alt_data_type):
+                self.log.error('Alternative plot method "{0}" is not available for the current '
+                               'measurement settings. Disabling alternative plot.'
+                               ''.format(alt_data_type))
+                self._altplotanalyzer.current_method = None
             else:
-                self._alternative_data_type = alt_data_type
+                self._altplotanalyzer.current_method = alt_data_type
 
             self._compute_alt_data()
             self.sigMeasurementDataUpdated.emit()
@@ -1639,7 +1661,9 @@ class PulsedMeasurementLogic(LogicBase):
         x_axis_scaled = self.signal_data[0] / scaled_float.scale_val
 
         # Create the figure object
-        if self._alternative_data_type and self._alternative_data_type != 'None':
+        alt_type = self.alternative_data_type
+        alt_active = bool(alt_type) and alt_type != 'None'
+        if alt_active:
             fig, (ax1, ax2) = plt.subplots(2, 1)
         else:
             fig, ax1 = plt.subplots()
@@ -1670,7 +1694,7 @@ class PulsedMeasurementLogic(LogicBase):
             _plot_fit(axis=ax1)
 
         # handle the save of the alternative data plot
-        if self._alternative_data_type and self._alternative_data_type != 'None':
+        if alt_active:
 
             # scale the x_axis for plotting
             max_val = np.max(self.signal_alt_data[0])
@@ -1678,30 +1702,24 @@ class PulsedMeasurementLogic(LogicBase):
             x_axis_prefix = scaled_float.scale
             x_axis_ft_scaled = self.signal_alt_data[0] / scaled_float.scale_val
 
-            # since no ft units are provided, make a small work around:
-            if self._alternative_data_type == 'FFT':
-                if self._data_units[0] == 's':
-                    inverse_cont_var = 'Hz'
-                elif self._data_units[0] == 'Hz':
-                    inverse_cont_var = 's'
-                else:
-                    inverse_cont_var = '(1/{0})'.format(self._data_units[0])
-                x_axis_ft_label = 'FT {0} ({1}{2})'.format(
-                    self._data_labels[0], x_axis_prefix, inverse_cont_var)
-                y_axis_ft_label = 'FT({0}) (arb. u.)'.format(self._data_labels[1])
-                ft_label = 'FT of data trace 1'
-            else:
-                if self._data_units[0]:
-                    x_axis_ft_label = '{0} ({1}{2})'.format(self._data_labels[0], x_axis_prefix,
-                                                            self._data_units[0])
-                else:
-                    x_axis_ft_label = '{0}'.format(self._data_labels[0])
-                if self._data_units[1]:
-                    y_axis_ft_label = '{0} ({1})'.format(self._data_labels[1], self._data_units[1])
-                else:
-                    y_axis_ft_label = '{0}'.format(self._data_labels[1])
+            # Axis labels are provided by the selected alternative plot method. The x-axis unit is
+            # prefixed with the SI scale of the (scaled) x-axis; the y-axis is not scaled.
+            alt_labels = self._altplotanalyzer.current_labels
+            x_alt_label = alt_labels.get('x_label', '')
+            x_alt_unit = alt_labels.get('x_unit', '')
+            y_alt_label = alt_labels.get('y_label', '')
+            y_alt_unit = alt_labels.get('y_unit', '')
 
-                ft_label = '{0} of data traces'.format(self._alternative_data_type)
+            if x_alt_unit:
+                x_axis_ft_label = '{0} ({1}{2})'.format(x_alt_label, x_axis_prefix, x_alt_unit)
+            else:
+                x_axis_ft_label = '{0}'.format(x_alt_label)
+            if y_alt_unit:
+                y_axis_ft_label = '{0} ({1})'.format(y_alt_label, y_alt_unit)
+            else:
+                y_axis_ft_label = '{0}'.format(y_alt_label)
+
+            ft_label = '{0} of data trace 1'.format(alt_type)
 
             ax2.plot(x_axis_ft_scaled, self.signal_alt_data[1],
                      linestyle=':', linewidth=0.5, color=colors[0],
@@ -1742,30 +1760,20 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _compute_alt_data(self):
         """
-        Performing transformations on the measurement data (e.g. fourier transform).
+        Compute the alternative (second) plot data via the selected alternative plot method. Falls
+        back to a flat default plot if no method is selected, it is unavailable, or it fails.
         """
-        if self._alternative_data_type == 'Delta' and len(self.signal_data) == 3:
-            self.signal_alt_data = np.empty((2, self.signal_data.shape[1]), dtype=float)
-            self.signal_alt_data[0] = self.signal_data[0]
-            self.signal_alt_data[1] = self.signal_data[1] - self.signal_data[2]
-        elif self._alternative_data_type == 'FFT' and self.signal_data.shape[1] >= 2:
-            fft_x, fft_y = compute_ft(x_val=self.signal_data[0],
-                                      y_val=self.signal_data[1],
-                                      zeropad_num=self.zeropad,
-                                      window=self.window,
-                                      base_corr=self.base_corr,
-                                      psd=self.psd)
-            self.signal_alt_data = np.empty((len(self.signal_data), len(fft_x)), dtype=float)
-            self.signal_alt_data[0] = fft_x
-            self.signal_alt_data[1] = fft_y
-            for dim in range(2, len(self.signal_data)):
-                dummy, self.signal_alt_data[dim] = compute_ft(x_val=self.signal_data[0],
-                                                              y_val=self.signal_data[dim],
-                                                              zeropad_num=self.zeropad,
-                                                              window=self.window,
-                                                              base_corr=self.base_corr,
-                                                              psd=self.psd)
-        else:
+        alt_data = None
+        try:
+            alt_data = self._altplotanalyzer.compute_alt_data(self.signal_data)
+        except:
+            self.log.exception('Error while computing alternative plot data:')
+            alt_data = None
+
+        if alt_data is None:
             self.signal_alt_data = np.zeros(self.signal_data.shape, dtype=float)
-            self.signal_alt_data[0] = self.signal_data[0]
+            if self.signal_data.shape[1] > 0:
+                self.signal_alt_data[0] = self.signal_data[0]
+        else:
+            self.signal_alt_data = alt_data
         return

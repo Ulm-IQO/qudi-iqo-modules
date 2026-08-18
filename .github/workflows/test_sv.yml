@@ -24,7 +24,7 @@ jobs:
     outputs:
       artifact_run_id: ${{ steps.find-id.outputs.artifact_run_id }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
@@ -53,13 +53,13 @@ jobs:
 
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
-    - name: Set up Python 
-      uses: actions/setup-python@v5
+    - name: Set up Python
+      uses: actions/setup-python@v6
       with:
         python-version-file: 'pyproject.toml'
         cache: "pip"
@@ -68,7 +68,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e .
@@ -86,28 +86,28 @@ jobs:
 
     - name: Download svs artifact
       if:  needs.find_artifact_id.outputs.artifact_run_id  != ''
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: svs
         path: .github/workflow_utils
         run-id: ${{ needs.find_artifact_id.outputs.artifact_run_id }}
         github-token:  ${{ secrets.GITHUB_TOKEN }}
-      
+
     - name: Extract artifacts
       if:  needs.find_artifact_id.outputs.artifact_run_id != ''
       working-directory: .github/workflow_utils
       run: |
-       tar -x -f svs.zip 
+       tar -x -f svs.zip
 
     - name: Compare status variables
       if: always()
       working-directory: .github/workflow_utils
-      run: | 
+      run: |
        python compare_status_vars.py
 
     - name: Upload status vars diff
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: status_vars_diff
         path: .github/workflow_utils/status_var_changes.txt
@@ -121,7 +121,7 @@ jobs:
 
     - name: Upload svs artifact
       if: success()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: svs
         path: .github/workflow_utils/svs.zip

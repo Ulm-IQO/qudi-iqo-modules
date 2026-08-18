@@ -21,8 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import Enum
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
+
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 
 
 class MultipleCheckboxWidget(QtWidgets.QWidget):
@@ -44,7 +46,7 @@ class MultipleCheckboxWidget(QtWidgets.QWidget):
             # Create QLabel and QCheckBox for each checkbox label given in init
             label = QtWidgets.QLabel(box_label)
             label.setFixedWidth(self._checkbox_width)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             widget = QtWidgets.QCheckBox()
             widget.setFixedWidth(19)
             widget.setChecked(False)
@@ -57,8 +59,8 @@ class MultipleCheckboxWidget(QtWidgets.QWidget):
             v_layout = QtWidgets.QVBoxLayout()
             v_layout.addWidget(label)
             v_layout.addWidget(widget)
-            v_layout.setAlignment(label, QtCore.Qt.AlignHCenter)
-            v_layout.setAlignment(widget, QtCore.Qt.AlignHCenter)
+            v_layout.setAlignment(label, QtCore.Qt.AlignmentFlag.AlignHCenter)
+            v_layout.setAlignment(widget, QtCore.Qt.AlignmentFlag.AlignHCenter)
             main_layout.addLayout(v_layout)
         main_layout.addStretch(1)
         main_layout.setSpacing(0)
@@ -99,7 +101,7 @@ class AnalogParametersWidget(QtWidgets.QWidget):
         main_layout = QtWidgets.QHBoxLayout()
         for param in self._parameters:
             label = QtWidgets.QLabel(param)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if self._parameters[param]['type'] == float:
                 widget = ScienDSpinBox()
                 widget.setMinimum(self._parameters[param]['min'])
@@ -144,6 +146,15 @@ class AnalogParametersWidget(QtWidgets.QWidget):
                 widget.setFixedWidth(90)
                 # Forward editingFinished signal of child widget
                 widget.currentIndexChanged.connect(self.editingFinished)
+            elif self._parameters[param]['type'] == PulseEnvelope:
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(self._parameters[param]['init'].type.name)
+                # Set size constraints
+                widget.setFixedWidth(90)
+                # Forward editingFinished signal of child widget
+                widget.currentIndexChanged.connect(self.editingFinished)
             else:
                 widget = None
 
@@ -152,8 +163,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
             v_layout = QtWidgets.QVBoxLayout()
             v_layout.addWidget(label)
             v_layout.addWidget(widget)
-            v_layout.setAlignment(label, QtCore.Qt.AlignHCenter)
-            v_layout.setAlignment(widget, QtCore.Qt.AlignHCenter)
+            v_layout.setAlignment(label, QtCore.Qt.AlignmentFlag.AlignHCenter)
+            v_layout.setAlignment(widget, QtCore.Qt.AlignmentFlag.AlignHCenter)
             main_layout.addLayout(v_layout)
 
         main_layout.addStretch(1)
@@ -173,6 +184,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
                 widget.setChecked(data[param])
             elif issubclass(self._parameters[param]['type'], Enum):
                 widget.setCurrentText(data[param].name)
+            elif self._parameters[param]['type'] == PulseEnvelope:
+                widget.setCurrentText(data[param].type.name)
 
         self.editingFinished.emit()
         return
@@ -189,6 +202,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
             elif self._parameters[param]['type'] == bool:
                 analog_params[param] = widget.isChecked()
             elif issubclass(self._parameters[param]['type'], Enum):
+                analog_params[param] = widget.itemData(widget.currentIndex())
+            elif self._parameters[param]['type'] == PulseEnvelope:
                 analog_params[param] = widget.itemData(widget.currentIndex())
         return analog_params
 

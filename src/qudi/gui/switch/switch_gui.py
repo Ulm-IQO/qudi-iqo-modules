@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import IntEnum
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -59,29 +59,29 @@ class SwitchMainWindow(QtWidgets.QMainWindow):
         self.setMenuBar(menu_bar)
 
         menu = menu_bar.addMenu('Menu')
-        self.action_close = QtWidgets.QAction('Close Window')
+        self.action_close = QtGui.QAction('Close Window')
         self.action_close.setCheckable(False)
         self.action_close.setIcon(QtGui.QIcon('artwork/icons/application-exit.svg'))
         self.addAction(self.action_close)
         menu.addAction(self.action_close)
 
         menu = menu_bar.addMenu('View')
-        self.action_periodic_state_check = QtWidgets.QAction('Periodic State Checking')
+        self.action_periodic_state_check = QtGui.QAction('Periodic State Checking')
         self.action_periodic_state_check.setCheckable(True)
         menu.addAction(self.action_periodic_state_check)
         separator = menu.addSeparator()
         separator.setText('Switch Appearance')
-        self.switch_view_actions = [QtWidgets.QAction('use toggle switches'),
-                                    QtWidgets.QAction('use radio buttons')]
-        self.switch_view_action_group = QtWidgets.QActionGroup(self)
+        self.switch_view_actions = [QtGui.QAction('use toggle switches'),
+                                    QtGui.QAction('use radio buttons')]
+        self.switch_view_action_group = QtGui.QActionGroup(self)
         for action in self.switch_view_actions:
             action.setCheckable(True)
             self.switch_view_action_group.addAction(action)
             menu.addAction(action)
-        self.action_view_highlight_state = QtWidgets.QAction('highlight state labels')
+        self.action_view_highlight_state = QtGui.QAction('highlight state labels')
         self.action_view_highlight_state.setCheckable(True)
         menu.addAction(self.action_view_highlight_state)
-        self.action_view_alt_toggle_style = QtWidgets.QAction('alternative toggle switch')
+        self.action_view_alt_toggle_style = QtGui.QAction('alternative toggle switch')
         self.action_view_alt_toggle_style.setCheckable(True)
         menu.addAction(self.action_view_alt_toggle_style)
 
@@ -145,18 +145,18 @@ class SwitchGui(GuiBase):
 
         self._populate_switches()
 
-        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.QueuedConnection)
+        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.action_periodic_state_check.toggled.connect(
-            self.switchlogic().toggle_watchdog, QtCore.Qt.QueuedConnection
+            self.switchlogic().toggle_watchdog, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._mw.switch_view_action_group.triggered.connect(self._update_switch_appearance)
         self._mw.action_view_highlight_state.triggered.connect(self._update_state_colorscheme)
         self._mw.action_view_alt_toggle_style.triggered.connect(self._update_toggle_switch_style)
         self.switchlogic().sigWatchdogToggled.connect(
-            self._watchdog_updated, QtCore.Qt.QueuedConnection
+            self._watchdog_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self.switchlogic().sigSwitchesChanged.connect(
-            self._switches_updated, QtCore.Qt.QueuedConnection
+            self._switches_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
 
         self._restore_window_geometry(self._mw)
@@ -216,8 +216,8 @@ class SwitchGui(GuiBase):
                                                        scale_text_in_switch=True,
                                                        text_inside_switch=True)
                 self._widgets[switch] = (label, switch_widget)
-                switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                            QtWidgets.QSizePolicy.Preferred)
+                switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                            QtWidgets.QSizePolicy.Policy.Preferred)
                 self._mw.main_layout.addWidget(self._widgets[switch][0], grid_pos[0], grid_pos[1])
                 self._mw.main_layout.addWidget(switch_widget, grid_pos[0], grid_pos[1] + 1)
                 self._mw.main_layout.setColumnStretch(grid_pos[1], 0)
@@ -236,8 +236,8 @@ class SwitchGui(GuiBase):
         font.setBold(True)
         font.setPointSize(11)
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        label.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        label.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
         return label
 
     def _delete_switches(self):
