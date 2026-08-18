@@ -27,6 +27,17 @@ from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
+from qudi.logic.pulsed.pulsed_data.pulsed_master_logic_data import PulsedMasterStatus, FitContainers
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
+    FastCounterSettings,
+    MicrowaveSettings,
+    ReadoutSettings,
+)
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
+    GenerationParameters,
+    PulseGeneratorSettings,
+)
+from qudi.logic.pulsed.pulsed_data.settings_coercion import SettingsTypeError, as_settings_dict
 
 
 class PulsedMasterLogic(LogicBase):
@@ -124,24 +135,15 @@ class PulsedMasterLogic(LogicBase):
         """
         super().__init__(*args, **kwargs)
 
-        # Dictionary servings as status register
-        self.status_dict = dict()
+        # Container serving as status register
+        self.status_dict = PulsedMasterStatus()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
 
         # Initialize status register
-        self.status_dict = {'sampling_ensemble_busy': False,
-                            'sampling_sequence_busy': False,
-                            'sampload_busy': False,
-                            'loading_busy': False,
-                            'pulser_running': False,
-                            'measurement_running': False,
-                            'microwave_running': False,
-                            'predefined_generation_busy': False,
-                            'fitting_busy': False,
-                            'benchmark_busy': False}
+        self.status_dict = PulsedMasterStatus()
 
         # Connect signals controlling PulsedMeasurementLogic
         self.sigDoFit.connect(
@@ -240,6 +242,13 @@ class PulsedMasterLogic(LogicBase):
             self.sigGeneratorSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
             self.sigSamplingSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
+        # Step 3 of the PulsedMeasurement consolidation: keep PulsedMeasurementLogic's held
+        # generator_settings fresh without giving SequenceGeneratorLogic a Connector to it -
+        # PulsedMasterLogic already has connectors to both, so it relays the push instead.
+        self.sequencegeneratorlogic().sigGeneratorSettingsUpdated.connect(
+            self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
+            self._refresh_measurement_logic_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.connect(
             self.predefined_sequence_generated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.connect(
@@ -255,8 +264,6 @@ class PulsedMasterLogic(LogicBase):
 
     def on_deactivate(self):
         """
-
-        @return:
         """
         # Disconnect all signals
         # Disconnect signals controlling PulsedMeasurementLogic
@@ -401,7 +408,8 @@ class PulsedMasterLogic(LogicBase):
 
     @property
     def fit_containers(self):
-        return self.pulsedmeasurementlogic().fc, self.pulsedmeasurementlogic().alt_fc
+        return FitContainers(primary=self.pulsedmeasurementlogic().fc,
+                             alternative=self.pulsedmeasurementlogic().alt_fc)
 
     @property
     def fit_config_model(self):
@@ -414,91 +422,119 @@ class PulsedMasterLogic(LogicBase):
     #######################################################################
     ###             Pulsed measurement methods                          ###
     #######################################################################
-    @QtCore.Slot(dict)
-    def set_measurement_settings(self, settings_dict=None, **kwargs):
-        """
+    def _relay_settings(self, signal, settings, kwargs, name, dataclass_type=None):
+        """Normalize a settings argument to a plain dict and emit it on `signal`.
 
-        @param settings_dict:
-        @param kwargs:
+        A QtCore.Signal(dict) cannot carry a dataclass across the queued cross-thread connection
+        to the target logic module, so a dataclass argument has to be flattened here rather than
+        passed through. A caller mistake is logged rather than raised: these are queued slots,
+        where an escaping exception cannot reach the emitter and may take the whole application
+        down mid-measurement.
+
+        Returns
+        -------
+        dict or None
+            The dict that was emitted, or None if the argument could not be interpreted.
         """
-        if isinstance(settings_dict, dict):
-            self.sigMeasurementSettingsChanged.emit(settings_dict)
-        else:
-            self.sigMeasurementSettingsChanged.emit(kwargs)
+        try:
+            settings_dict = as_settings_dict(settings, kwargs, dataclass_type)
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to change {name}. {err}')
+            return None
+        signal.emit(settings_dict)
+        return settings_dict
+
+    @QtCore.Slot(dict)
+    def set_measurement_settings(self, settings=None, **kwargs):
+        """
+        Parameters
+        ----------
+        settings : ReadoutSettings or dict or None
+        kwargs
+        """
+        self._relay_settings(self.sigMeasurementSettingsChanged, settings, kwargs,
+                             'measurement settings', ReadoutSettings)
         return
 
     @QtCore.Slot(dict)
-    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
+    def set_fast_counter_settings(self, settings=None, **kwargs):
         """
-
-        @param settings_dict:
-        @param kwargs:
+        Parameters
+        ----------
+        settings : FastCounterSettings or dict or None
+        kwargs
         """
-        if isinstance(settings_dict, dict):
-            self.sigFastCounterSettingsChanged.emit(settings_dict)
-        else:
-            self.sigFastCounterSettingsChanged.emit(kwargs)
+        self._relay_settings(self.sigFastCounterSettingsChanged, settings, kwargs,
+                             'fast counter settings', FastCounterSettings)
         return
 
     @QtCore.Slot(dict)
-    def set_ext_microwave_settings(self, settings_dict=None, **kwargs):
+    def set_ext_microwave_settings(self, settings=None, **kwargs):
         """
-
-        @param settings_dict:
-        @param kwargs:
+        Parameters
+        ----------
+        settings : MicrowaveSettings or dict or None
+        kwargs
         """
-        if isinstance(settings_dict, dict):
-            self.sigExtMicrowaveSettingsChanged.emit(settings_dict)
-        else:
-            self.sigExtMicrowaveSettingsChanged.emit(kwargs)
+        self._relay_settings(self.sigExtMicrowaveSettingsChanged, settings, kwargs,
+                             'external microwave settings', MicrowaveSettings)
         return
 
     @QtCore.Slot(dict)
-    def set_analysis_settings(self, settings_dict=None, **kwargs):
+    def set_analysis_settings(self, settings=None, **kwargs):
         """
-
-        @param settings_dict:
-        @param kwargs:
+        Parameters
+        ----------
+        settings : dict or None
+        kwargs
         """
-        if isinstance(settings_dict, dict):
-            self.sigAnalysisSettingsChanged.emit(settings_dict)
-        else:
-            self.sigAnalysisSettingsChanged.emit(kwargs)
+        # No dataclass counterpart: AnalysisParameters is a dict subclass because the parameter
+        # names are discovered at runtime from whichever analysis method is selected.
+        self._relay_settings(self.sigAnalysisSettingsChanged, settings, kwargs,
+                             'analysis settings')
         return
 
     @QtCore.Slot(dict)
-    def set_extraction_settings(self, settings_dict=None, **kwargs):
+    def set_extraction_settings(self, settings=None, **kwargs):
         """
-
-        @param settings_dict:
-        @param kwargs:
+        Parameters
+        ----------
+        settings : dict or None
+        kwargs
         """
-        if isinstance(settings_dict, dict):
-            self.sigExtractionSettingsChanged.emit(settings_dict)
-        else:
-            self.sigExtractionSettingsChanged.emit(kwargs)
+        # No dataclass counterpart - see set_analysis_settings above.
+        self._relay_settings(self.sigExtractionSettingsChanged, settings, kwargs,
+                             'extraction settings')
         return
 
     @QtCore.Slot(int)
     @QtCore.Slot(float)
     def set_timer_interval(self, interval):
         """
-
-        @param int|float interval: The timer interval to set in seconds.
+        Parameters
+        ----------
+        interval : int or float
+            The timer interval to set in seconds.
         """
-        if isinstance(interval, (int, float)):
-            self.sigTimerIntervalChanged.emit(interval)
+        if not isinstance(interval, (int, float)) or isinstance(interval, bool):
+            self.log.error(f'Unable to change timer interval. Expected int or float, got '
+                           f'{type(interval).__name__}.')
+            return
+        self.sigTimerIntervalChanged.emit(interval)
         return
 
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
         """
-
-        @param alt_data_type:
-        @return:
+        Parameters
+        ----------
+        alt_data_type
         """
-        if isinstance(alt_data_type, str):
-            self.sigAlternativeDataTypeChanged.emit(alt_data_type)
+        if not isinstance(alt_data_type, str):
+            self.log.error(f'Unable to change alternative data type. Expected str, got '
+                           f'{type(alt_data_type).__name__}.')
+            return
+        self.sigAlternativeDataTypeChanged.emit(alt_data_type)
         return
 
     @QtCore.Slot()
@@ -511,8 +547,9 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_ext_microwave(self, switch_on):
         """
-
-        @param switch_on:
+        Parameters
+        ----------
+        switch_on
         """
         if isinstance(switch_on, bool):
             self.sigToggleExtMicrowave.emit(switch_on)
@@ -521,19 +558,21 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool)
     def ext_microwave_running_updated(self, is_running):
         """
-
-        @param is_running:
+        Parameters
+        ----------
+        is_running
         """
         if isinstance(is_running, bool):
-            self.status_dict['microwave_running'] = is_running
+            self.status_dict.microwave_running = is_running
             self.sigExtMicrowaveRunningUpdated.emit(is_running)
         return
 
     @QtCore.Slot(bool)
     def toggle_pulse_generator(self, switch_on):
         """
-
-        @param switch_on:
+        Parameters
+        ----------
+        switch_on
         """
         if isinstance(switch_on, bool):
             self.sigTogglePulser.emit(switch_on)
@@ -542,11 +581,12 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool)
     def pulser_running_updated(self, is_running):
         """
-
-        @param is_running:
+        Parameters
+        ----------
+        is_running
         """
         if isinstance(is_running, bool):
-            self.status_dict['pulser_running'] = is_running
+            self.status_dict.pulser_running = is_running
             self.sigPulserRunningUpdated.emit(is_running)
         return
 
@@ -554,9 +594,10 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool, str)
     def toggle_pulsed_measurement(self, start, stash_raw_data_tag=''):
         """
-
-        @param bool start:
-        @param str stash_raw_data_tag:
+        Parameters
+        ----------
+        start : bool
+        stash_raw_data_tag : str
         """
         if isinstance(start, bool) and isinstance(stash_raw_data_tag, str):
             self.sigToggleMeasurement.emit(start, stash_raw_data_tag)
@@ -565,8 +606,9 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_pulsed_measurement_pause(self, pause):
         """
-
-        @param pause:
+        Parameters
+        ----------
+        pause
         """
         if isinstance(pause, bool):
             self.sigToggleMeasurementPause.emit(pause)
@@ -575,12 +617,13 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(bool, bool)
     def measurement_status_updated(self, is_running, is_paused):
         """
-
-        @param is_running:
-        @param is_paused:
+        Parameters
+        ----------
+        is_running
+        is_paused
         """
         if isinstance(is_running, bool) and isinstance(is_paused, bool):
-            self.status_dict['measurement_running'] = is_running
+            self.status_dict.measurement_running = is_running
             self.sigMeasurementStatusUpdated.emit(is_running, is_paused)
         return
 
@@ -588,45 +631,100 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str, bool)
     def do_fit(self, fit_function, use_alternative_data=False):
         """
-
-        @param str fit_function:
-        @param bool use_alternative_data:
+        Parameters
+        ----------
+        fit_function : str
+        use_alternative_data : bool
         """
         if isinstance(fit_function, str) and isinstance(use_alternative_data, bool):
-            self.status_dict['fitting_busy'] = True
+            self.status_dict.fitting_busy = True
             self.sigDoFit.emit(fit_function, use_alternative_data)
         return
 
     @QtCore.Slot(str, object, bool)
     def fit_updated(self, fit_name, fit_result, use_alternative_data):
         """
-
-        @return:
         """
-        self.status_dict['fitting_busy'] = False
+        self.status_dict.fitting_busy = False
         self.sigFitUpdated.emit(fit_name, fit_result, use_alternative_data)
         return
 
     @QtCore.Slot()
     def benchmark_completed(self):
-        self.status_dict['benchmark_busy'] = False
+        self.status_dict.benchmark_busy = False
+
+    def get_pulsed_measurement(self):
+        """Full settings+data+objects snapshot of the current measurement, combining both
+        sub-modules' state - for scripting/notebook use (see this module's own docstring, which
+        already names that as a design goal). PulsedMasterLogic is the only module with
+        Connectors to both PulsedMeasurementLogic and SequenceGeneratorLogic, so it is the only
+        place that can build the combined object - including resolving the loaded asset's
+        ensemble/block closure, which requires SequenceGeneratorLogic's saved-asset registries.
+
+        Returns
+        -------
+        PulsedMeasurement
+            Snapshot built from independent copies (see
+            PulsedMeasurementLogic.get_pulsed_measurement()) - safe to hold onto, will not change
+            as the measurement continues running or assets get reloaded/edited later.
+        """
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(
+            self.pulsedmeasurementlogic().loaded_asset
+        )
+        return self.pulsedmeasurementlogic().get_pulsed_measurement(
+            generator_settings=self.sequencegeneratorlogic().generator_settings,
+            ensembles=ensembles,
+            blocks=blocks,
+        )
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
-                              save_figure=None):
+                              save_figure=None, save_measurement_snapshot=False):
         """ Prepare data to be saved and create a proper plot of the data.
-        This is just handed over to the measurement logic.
+        Combines the current SequenceGeneratorLogic settings with the measurement logic's own
+        settings/data before handing off, since only this module has Connectors to both.
 
-        @param str tag: a name tag which will be included in the filename if file_path is None
-        @param str file_path: optional, custom full file path including file extension to use.
-                              If given, tag is ignored.
-        @param type storage_cls: optional, the explicit data storage class to use
-        @param bool with_error: select whether errors should be saved/plotted
-        @param bool save_laser_pulses: select whether extracted lasers should be saved
-        @param bool save_pulsed_measurement: select whether final measurement should be saved
-        @param bool save_figure: select whether a thumbnail plot should be saved
-        @param str notes: optional, string that is included in the metadata "as-is" without a field
+        Parameters
+        ----------
+        tag : str
+            A name tag which will be included in the filename if file_path is None.
+        file_path : str
+            Optional, custom full file path including file extension to use.
+            If given, tag is ignored.
+        storage_cls : type
+            Optional, the explicit data storage class to use.
+        with_error : bool
+            Select whether errors should be plotted.
+        save_laser_pulses : bool
+            Select whether extracted lasers should be saved.
+        save_pulsed_measurement : bool
+            Select whether final measurement should be saved.
+        save_figure : bool
+            Select whether a thumbnail plot should be saved.
+        notes : str
+            Optional, string that is included in the metadata "as-is" without a field.
+        save_measurement_snapshot : bool
+            Optional, additionally pickle the complete
+            PulsedMeasurement snapshot (settings + data + the loaded sequence/ensemble) to a
+            single '.pulsedmeasurement' file - see PulsedMeasurementLogic.save_measurement_data().
         """
+        still_busy = (self.status_dict.loading_busy
+                      or self.status_dict.sampload_busy
+                      or self.status_dict.sampling_ensemble_busy
+                      or self.status_dict.sampling_sequence_busy)
+        if still_busy:
+            self.log.error('Can not save measurement data while a load/sample operation is still '
+                           'in progress. The currently loaded asset\'s settings have not fully '
+                           'propagated yet - saving now would save stale data from the previously '
+                           'loaded asset. Wait for loading/sampling to finish and try again.')
+            return
+        # Resolve the ensemble/block closure unconditionally - it's embedded in every
+        # raw/laser/signal .dat file's metadata now (see
+        # PulsedMeasurementLogic._get_loaded_asset_metadata()), not just the optional full
+        # snapshot, so it's needed on every save, not only when save_measurement_snapshot=True.
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(
+            self.pulsedmeasurementlogic().loaded_asset
+        )
         return self.pulsedmeasurementlogic().save_measurement_data(
             tag=tag,
             file_path=file_path,
@@ -635,7 +733,15 @@ class PulsedMasterLogic(LogicBase):
             save_laser_pulses=save_laser_pulses,
             save_pulsed_measurement=save_pulsed_measurement,
             save_figure=save_figure,
-            notes=notes
+            notes=notes,
+            save_measurement_snapshot=save_measurement_snapshot,
+            ensembles=ensembles,
+            blocks=blocks,
+            # PulsedMasterLogic is the only module with Connectors to both PulsedMeasurementLogic
+            # and SequenceGeneratorLogic, so it is the one place that can hand the sequence
+            # generator's settings down to be included in the saved measurement metadata (see
+            # PulsedMeasurementLogic.get_pulsed_measurement()/_get_signal_metadata()).
+            generator_settings=self.sequencegeneratorlogic().generator_settings,
         )
 
     #######################################################################
@@ -698,15 +804,16 @@ class PulsedMasterLogic(LogicBase):
     #######################################################################
     @QtCore.Slot()
     def clear_pulse_generator(self):
-        still_busy = self.status_dict['sampling_ensemble_busy'] or self.status_dict[
-            'sampling_sequence_busy'] or self.status_dict['loading_busy'] or self.status_dict[
-                                   'sampload_busy']
+        still_busy = (self.status_dict.sampling_ensemble_busy
+                      or self.status_dict.sampling_sequence_busy
+                      or self.status_dict.loading_busy
+                      or self.status_dict.sampload_busy)
         if still_busy:
             self.log.error('Can not clear pulse generator. Sampling/Loading still in progress.')
-        elif self.status_dict['measurement_running']:
+        elif self.status_dict.measurement_running:
             self.log.error('Can not clear pulse generator. Measurement is still running.')
         else:
-            if self.status_dict['pulser_running']:
+            if self.status_dict.pulser_running:
                 self.log.warning('Can not clear pulse generator while it is still running. '
                                  'Turned off.')
                 self.pulsedmeasurementlogic().pulse_generator_off()
@@ -716,25 +823,26 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def sample_ensemble(self, ensemble_name, with_load=False):
-        already_busy = self.status_dict['sampling_ensemble_busy'] or self.status_dict[
-            'sampling_sequence_busy'] or self.sequencegeneratorlogic().module_state() == 'locked'
+        already_busy = (self.status_dict.sampling_ensemble_busy
+                        or self.status_dict.sampling_sequence_busy
+                        or self.sequencegeneratorlogic().module_state() == 'locked')
         if already_busy:
             self.log.error('Sampling of a different asset already in progress.\n'
                            'PulseBlockEnsemble "{0}" not sampled!'.format(ensemble_name))
         else:
             if with_load:
-                self.status_dict['sampload_busy'] = True
-            self.status_dict['sampling_ensemble_busy'] = True
+                self.status_dict.sampload_busy = True
+            self.status_dict.sampling_ensemble_busy = True
             self.sigSampleBlockEnsemble.emit(ensemble_name)
         return
 
     @QtCore.Slot(object)
     def sample_ensemble_finished(self, ensemble):
-        self.status_dict['sampling_ensemble_busy'] = False
+        self.status_dict.sampling_ensemble_busy = False
         self.sigSampleEnsembleComplete.emit(ensemble)
-        if self.status_dict['sampload_busy'] and not self.status_dict['sampling_sequence_busy']:
+        if self.status_dict.sampload_busy and not self.status_dict.sampling_sequence_busy:
             if ensemble is None:
-                self.status_dict['sampload_busy'] = False
+                self.status_dict.sampload_busy = False
                 self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
             else:
                 self.load_ensemble(ensemble.name)
@@ -743,25 +851,26 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def sample_sequence(self, sequence_name, with_load=False):
-        already_busy = self.status_dict['sampling_ensemble_busy'] or self.status_dict[
-            'sampling_sequence_busy'] or self.sequencegeneratorlogic().module_state() == 'locked'
+        already_busy = (self.status_dict.sampling_ensemble_busy
+                        or self.status_dict.sampling_sequence_busy
+                        or self.sequencegeneratorlogic().module_state() == 'locked')
         if already_busy:
             self.log.error('Sampling of a different asset already in progress.\n'
                            'PulseSequence "{0}" not sampled!'.format(sequence_name))
         else:
             if with_load:
-                self.status_dict['sampload_busy'] = True
-            self.status_dict['sampling_sequence_busy'] = True
+                self.status_dict.sampload_busy = True
+            self.status_dict.sampling_sequence_busy = True
             self.sigSampleSequence.emit(sequence_name)
         return
 
     @QtCore.Slot(object)
     def sample_sequence_finished(self, sequence):
-        self.status_dict['sampling_sequence_busy'] = False
+        self.status_dict.sampling_sequence_busy = False
         self.sigSampleSequenceComplete.emit(sequence)
-        if self.status_dict['sampload_busy']:
+        if self.status_dict.sampload_busy:
             if sequence is None:
-                self.status_dict['sampload_busy'] = False
+                self.status_dict.sampload_busy = False
                 self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
             else:
                 self.load_sequence(sequence.name)
@@ -769,17 +878,17 @@ class PulsedMasterLogic(LogicBase):
 
     @QtCore.Slot(str)
     def load_ensemble(self, ensemble_name):
-        if self.status_dict['loading_busy']:
+        if self.status_dict.loading_busy:
             self.log.error('Loading of a different asset already in progress.\n'
                            'PulseBlockEnsemble "{0}" not loaded!'.format(ensemble_name))
             self.loaded_asset_updated(*self.loaded_asset)
-        elif self.status_dict['measurement_running']:
+        elif self.status_dict.measurement_running:
             self.log.error('Loading of ensemble not possible while measurement is running.\n'
                            'PulseBlockEnsemble "{0}" not loaded!'.format(ensemble_name))
             self.loaded_asset_updated(*self.loaded_asset)
         else:
-            self.status_dict['loading_busy'] = True
-            if self.status_dict['pulser_running']:
+            self.status_dict.loading_busy = True
+            if self.status_dict.pulser_running:
                 self.log.warning('Can not load new asset into pulse generator while it is still '
                                  'running. Turned off.')
                 self.pulsedmeasurementlogic().pulse_generator_off()
@@ -788,17 +897,17 @@ class PulsedMasterLogic(LogicBase):
 
     @QtCore.Slot(str)
     def load_sequence(self, sequence_name):
-        if self.status_dict['loading_busy']:
+        if self.status_dict.loading_busy:
             self.log.error('Loading of a different asset already in progress.\n'
                            'PulseSequence "{0}" not loaded!'.format(sequence_name))
             self.loaded_asset_updated(*self.loaded_asset)
-        elif self.status_dict['measurement_running']:
+        elif self.status_dict.measurement_running:
             self.log.error('Loading of sequence not possible while measurement is running.\n'
                            'PulseSequence "{0}" not loaded!'.format(sequence_name))
             self.loaded_asset_updated(*self.loaded_asset)
         else:
-            self.status_dict['loading_busy'] = True
-            if self.status_dict['pulser_running']:
+            self.status_dict.loading_busy = True
+            if self.status_dict.pulser_running:
                 self.log.warning('Can not load new asset into pulse generator while it is still '
                                  'running. Turned off.')
                 self.pulsedmeasurementlogic().pulse_generator_off()
@@ -806,21 +915,30 @@ class PulsedMasterLogic(LogicBase):
         return
 
     @QtCore.Slot(str, str)
+    def _refresh_measurement_logic_generator_settings(self, _changed_dict=None):
+        """Slot for SequenceGeneratorLogic.sigGeneratorSettingsUpdated/sigSamplingSettingsUpdated -
+        pushes the current generator_settings into PulsedMeasurementLogic's held PulsedMeasurement
+        (see PulsedMeasurementLogic.refresh_generator_settings()). The emitted dict itself isn't
+        used - both signals just indicate "something changed", so this always re-fetches the
+        current, complete generator_settings rather than trying to patch in only what changed.
+        """
+        self.pulsedmeasurementlogic().refresh_generator_settings(self.sequencegeneratorlogic().generator_settings)
+
     def loaded_asset_updated(self, asset_name, asset_type):
         """
-
-        @param asset_name:
-        @param asset_type:
-        @return:
+        Parameters
+        ----------
+        asset_name
+        asset_type
         """
-        self.status_dict['sampload_busy'] = False
-        self.status_dict['loading_busy'] = False
+        self.status_dict.sampload_busy = False
+        self.status_dict.loading_busy = False
         self.sigLoadedAssetUpdated.emit(asset_name, asset_type)
         # Transfer sequence information from PulseBlockEnsemble or PulseSequence to
         # PulsedMeasurementLogic to be able to invoke measurement settings from them
         if not asset_type:
-            # If no asset loaded or asset type unknown, clear sequence_information dict
-
+            # If no asset loaded or asset type unknown, clear the sampling/measurement/generation
+            # information containers below
             object_instance = None
         elif asset_type == 'PulseBlockEnsemble':
             object_instance = self.saved_pulse_block_ensembles.get(asset_name)
@@ -829,22 +947,20 @@ class PulsedMasterLogic(LogicBase):
         else:
             object_instance = None
 
-        if object_instance is None:
-            self.pulsedmeasurementlogic().sampling_information = dict()
-            self.pulsedmeasurementlogic().measurement_information = dict()
-            self.pulsedmeasurementlogic().generation_method_parameters =  dict()
-        else:
-            self.pulsedmeasurementlogic().sampling_information = object_instance.sampling_information
-            self.pulsedmeasurementlogic().measurement_information = object_instance.measurement_information
-            self.pulsedmeasurementlogic().generation_method_parameters = object_instance.generation_method_parameters
+        self.pulsedmeasurementlogic().loaded_asset = object_instance
+        # Step 3 of the PulsedMeasurement consolidation: keep the held PulsedMeasurement's
+        # resolved ensembles/blocks fresh too, reusing the same closure-resolution helper the
+        # on-demand get_pulsed_measurement()/save_measurement_data() snapshot paths already use.
+        ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(object_instance)
+        self.pulsedmeasurementlogic().refresh_loaded_asset_closure(ensembles, blocks)
         return
 
     @QtCore.Slot(object)
     def save_pulse_block(self, block_instance):
         """
-
-        @param block_instance:
-        @return:
+        Parameters
+        ----------
+        block_instance
         """
         self.sigSavePulseBlock.emit(block_instance)
         return
@@ -852,10 +968,9 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(object)
     def save_block_ensemble(self, ensemble_instance):
         """
-
-
-        @param ensemble_instance:
-        @return:
+        Parameters
+        ----------
+        ensemble_instance
         """
         self.sigSaveBlockEnsemble.emit(ensemble_instance)
         return
@@ -863,9 +978,9 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(object)
     def save_sequence(self, sequence_instance):
         """
-
-        @param sequence_instance:
-        @return:
+        Parameters
+        ----------
+        sequence_instance
         """
         self.sigSaveSequence.emit(sequence_instance)
         return
@@ -873,9 +988,9 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     def delete_pulse_block(self, block_name):
         """
-
-        @param block_name:
-        @return:
+        Parameters
+        ----------
+        block_name
         """
         self.sigDeletePulseBlock.emit(block_name)
         return
@@ -893,11 +1008,12 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     def delete_block_ensemble(self, ensemble_name):
         """
-
-        @param ensemble_name:
-        @return:
+        Parameters
+        ----------
+        ensemble_name
         """
-        if self.status_dict['pulser_running'] and self.loaded_asset[0] == ensemble_name and self.loaded_asset[1] == 'PulseBlockEnsemble':
+        if (self.status_dict.pulser_running and self.loaded_asset.name == ensemble_name
+                and self.loaded_asset.asset_type == 'PulseBlockEnsemble'):
             self.log.error('Can not delete PulseBlockEnsemble "{0}" since the corresponding '
                            'waveform(s) is(are) currently loaded and running.'
                            ''.format(ensemble_name))
@@ -910,7 +1026,7 @@ class PulsedMasterLogic(LogicBase):
         """
         Helper method to delete all pulse block ensembles at once.
         """
-        if self.status_dict['pulser_running'] or self.status_dict['measurement_running']:
+        if self.status_dict.pulser_running or self.status_dict.measurement_running:
             self.log.error('Can not delete all PulseBlockEnsembles. Pulse generator is currently '
                            'running or measurement is in progress.')
         else:
@@ -922,11 +1038,12 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str)
     def delete_sequence(self, sequence_name):
         """
-
-        @param sequence_name:
-        @return:
+        Parameters
+        ----------
+        sequence_name
         """
-        if self.status_dict['pulser_running'] and self.loaded_asset[0] == sequence_name and self.loaded_asset[1] == 'PulseSequence':
+        if (self.status_dict.pulser_running and self.loaded_asset.name == sequence_name
+                and self.loaded_asset.asset_type == 'PulseSequence'):
             self.log.error('Can not delete PulseSequence "{0}" since the corresponding sequence is '
                            'currently loaded and running.'.format(sequence_name))
         else:
@@ -938,7 +1055,7 @@ class PulsedMasterLogic(LogicBase):
         """
         Helper method to delete all pulse sequences at once.
         """
-        if self.status_dict['pulser_running'] or self.status_dict['measurement_running']:
+        if self.status_dict.pulser_running or self.status_dict.measurement_running:
             self.log.error('Can not delete all PulseSequences. Pulse generator is currently '
                            'running or measurement is in progress.')
         else:
@@ -958,40 +1075,40 @@ class PulsedMasterLogic(LogicBase):
         self.sigGeneratorSettingsChanged.emit({})
 
     @QtCore.Slot(dict)
-    def set_pulse_generator_settings(self, settings_dict=None, **kwargs):
+    def set_pulse_generator_settings(self, settings=None, **kwargs):
         """
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accept a PulseGeneratorSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. If both are present both are being used by updating the
+        settings_dict with kwargs. The keyword arguments take precedence over the items in
+        settings_dict if there are conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : PulseGeneratorSettings or dict or None
+        kwargs
         """
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
-        self.sigGeneratorSettingsChanged.emit(settings_dict)
+        self._relay_settings(self.sigGeneratorSettingsChanged, settings, kwargs,
+                             'pulse generator settings', PulseGeneratorSettings)
         return
 
     @QtCore.Slot(dict)
-    def set_generation_parameters(self, settings_dict=None, **kwargs):
+    def set_generation_parameters(self, settings=None, **kwargs):
         """
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accept a GenerationParameters instance or a settings dictionary as positional
+        argument, or keyword arguments. If both are present both are being used by updating the
+        settings_dict with kwargs. The keyword arguments take precedence over the items in
+        settings_dict if there are conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : GenerationParameters or dict or None
+        kwargs
         """
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            settings_dict = as_settings_dict(settings, kwargs, GenerationParameters)
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to change generation parameters. {err}')
+            return
 
         # Force empty gate channel if fast counter is not gated
         if 'gate_channel' in settings_dict and not self.fast_counter_settings.get('is_gated'):
@@ -1004,28 +1121,37 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str, dict, bool)
     def generate_predefined_sequence(self, generator_method_name, kwarg_dict=None, sample_and_load=False):
         """
-
-        @param generator_method_name:
-        @param kwarg_dict:
-        @param sample_and_load:
-        @return:
+        Parameters
+        ----------
+        generator_method_name
+        kwarg_dict
+        sample_and_load
         """
         if not isinstance(kwarg_dict, dict):
             kwarg_dict = dict()
-        self.status_dict['predefined_generation_busy'] = True
+        self.status_dict.predefined_generation_busy = True
         if sample_and_load:
-            self.status_dict['sampload_busy'] = True
+            self.status_dict.sampload_busy = True
         self.sigGeneratePredefinedSequence.emit(generator_method_name, kwarg_dict)
         return
 
     @QtCore.Slot(object, bool)
-    def predefined_sequence_generated(self, asset_name, is_sequence):
-        self.status_dict['predefined_generation_busy'] = False
+    def predefined_sequence_generated(self, asset_name, produced_sequence):
+        """
+        Parameters
+        ----------
+        asset_name : str or None
+            Name of the generated asset, or None if generation failed.
+        produced_sequence : bool
+            Whether the generate method returned any PulseSequence. Not to be confused with
+            PulseSequence.is_sequence, which asks whether a given *object* is a sequence.
+        """
+        self.status_dict.predefined_generation_busy = False
         if asset_name is None:
-            self.status_dict['sampload_busy'] = False
-        self.sigPredefinedSequenceGenerated.emit(asset_name, is_sequence)
-        if self.status_dict['sampload_busy']:
-            if is_sequence:
+            self.status_dict.sampload_busy = False
+        self.sigPredefinedSequenceGenerated.emit(asset_name, produced_sequence)
+        if self.status_dict.sampload_busy:
+            if produced_sequence:
                 self.sample_sequence(asset_name, True)
             else:
                 self.sample_ensemble(asset_name, True)
@@ -1039,8 +1165,15 @@ class PulsedMasterLogic(LogicBase):
         Will return information like length in seconds and bins (with currently set sampling rate)
         as well as number of laser pulses (with currently selected laser/gate channel)
 
-        @param PulseBlockEnsemble ensemble: The PulseBlockEnsemble instance to analyze
-        @return (float, int, int): length in seconds, length in bins, number of laser/gate pulses
+        Parameters
+        ----------
+        ensemble : PulseBlockEnsemble
+            The PulseBlockEnsemble instance to analyze.
+
+        Returns
+        -------
+        (float, int, int)
+            Length in seconds, length in bins, number of laser/gate pulses.
         """
         return self.sequencegeneratorlogic().get_ensemble_info(ensemble=ensemble)
 
@@ -1050,8 +1183,15 @@ class PulsedMasterLogic(LogicBase):
         seconds and bins (with currently set sampling rate), number of laser pulses (with currently
         selected laser/gate channel)
 
-        @param PulseSequence sequence: The PulseSequence instance to analyze
-        @return (float, int, int): length in seconds, length in bins, number of laser/gate pulses
+        Parameters
+        ----------
+        sequence : PulseSequence
+            The PulseSequence instance to analyze.
+
+        Returns
+        -------
+        (float, int, int)
+            Length in seconds, length in bins, number of laser/gate pulses.
         """
         return self.sequencegeneratorlogic().get_sequence_info(sequence=sequence)
 
@@ -1070,19 +1210,26 @@ class PulsedMasterLogic(LogicBase):
         PulseBlocks are actually present in saved blocks and the channel activation matches the
         current pulse settings.
 
-        @param ensemble: A PulseBlockEnsemble object (see logic.pulse_objects.py)
-        @return: number_of_samples (int): The total number of samples in a Waveform provided the
-                                              current sample_rate and PulseBlockEnsemble object.
-                 total_elements (int): The total number of PulseBlockElements (incl. repetitions) in
-                                       the provided PulseBlockEnsemble.
-                 elements_length_bins (1D numpy.ndarray[int]): Array of number of timebins for each
-                                                               PulseBlockElement in chronological
-                                                               order (incl. repetitions).
-                 digital_rising_bins (dict): Dictionary with keys being the digital channel
-                                             descriptor string and items being arrays of
-                                             chronological low-to-high transition positions
-                                             (in timebins; incl. repetitions) for each digital
-                                             channel.
+        Parameters
+        ----------
+        ensemble
+            A PulseBlockEnsemble object (see logic.pulse_objects.py).
+
+        Returns
+        -------
+        number_of_samples : int
+            The total number of samples in a Waveform provided the current sample_rate and
+            PulseBlockEnsemble object.
+        total_elements : int
+            The total number of PulseBlockElements (incl. repetitions) in the provided
+            PulseBlockEnsemble.
+        elements_length_bins : 1D numpy.ndarray[int]
+            Array of number of timebins for each PulseBlockElement in chronological order
+            (incl. repetitions).
+        digital_rising_bins : dict
+            Dictionary with keys being the digital channel descriptor string and items being
+            arrays of chronological low-to-high transition positions (in timebins; incl.
+            repetitions) for each digital channel.
         """
         return self.sequencegeneratorlogic().analyze_block_ensemble(ensemble=ensemble)
 
@@ -1101,19 +1248,26 @@ class PulsedMasterLogic(LogicBase):
         PulseBlocks are actually present in saved blocks and the channel activation matches the
         current pulse settings.
 
-        @param sequence: A PulseSequence object (see logic.pulse_objects.py)
-        @return: number_of_samples (int): The total number of samples in a Waveform provided the
-                                              current sample_rate and PulseBlockEnsemble object.
-                 total_elements (int): The total number of PulseBlockElements (incl. repetitions) in
-                                       the provided PulseBlockEnsemble.
-                 elements_length_bins (1D numpy.ndarray[int]): Array of number of timebins for each
-                                                               PulseBlockElement in chronological
-                                                               order (incl. repetitions).
-                 digital_rising_bins (dict): Dictionary with keys being the digital channel
-                                             descriptor string and items being arrays of
-                                             chronological low-to-high transition positions
-                                             (in timebins; incl. repetitions) for each digital
-                                             channel.
+        Parameters
+        ----------
+        sequence
+            A PulseSequence object (see logic.pulse_objects.py).
+
+        Returns
+        -------
+        number_of_samples : int
+            The total number of samples in a Waveform provided the current sample_rate and
+            PulseBlockEnsemble object.
+        total_elements : int
+            The total number of PulseBlockElements (incl. repetitions) in the provided
+            PulseBlockEnsemble.
+        elements_length_bins : 1D numpy.ndarray[int]
+            Array of number of timebins for each PulseBlockElement in chronological order
+            (incl. repetitions).
+        digital_rising_bins : dict
+            Dictionary with keys being the digital channel descriptor string and items being
+            arrays of chronological low-to-high transition positions (in timebins; incl.
+            repetitions) for each digital channel.
         """
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
 
@@ -1123,8 +1277,9 @@ class PulsedMasterLogic(LogicBase):
     # def _get_asset_parameters(self, asset_obj):
     #     """
     #
-    #     @param asset_obj:
-    #     @return:
+    #     Parameters
+    #     ----------
+    #     asset_obj
     #     """
     #     if type(asset_obj).__name__ == 'PulseSequence':
     #         self.log.warning('Calculation of measurement sequence parameters not implemented yet '

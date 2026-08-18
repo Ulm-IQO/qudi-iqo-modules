@@ -30,6 +30,8 @@ import warnings
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import MeasurementInformation, GenerationMethodParameters
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 
 
 class PulseBlockElement(object):
@@ -45,22 +47,26 @@ class PulseBlockElement(object):
         """
         The constructor for a Pulse_Block_Element needs to have:
 
-        @param float init_length_s: an initial length of the element, this parameters should not be
-                                    zero but must have a finite value.
-        @param float increment_s: the number which will be incremented during each repetition of
-                                  this element.
-        @param dict pulse_function: dictionary with keys being the qudi analog channel string
-                                    descriptors ('a_ch1', 'a_ch2' etc.) and the corresponding
-                                    objects being instances of the mathematical function objects
-                                    provided by SamplingFunctions class.
-        @param dict digital_high: dictionary with keys being the qudi digital channel string
-                                  descriptors ('d_ch1', 'd_ch2' etc.) and the corresponding objects
-                                  being boolean values describing if the channel should be logical
-                                  low (False) or high (True).
-                                  For 3 digital channel it may look like:
-                                  {'d_ch1': True, 'd_ch2': False, 'd_ch5': False}
-        @param bool laser_on: boolean indicating if the laser is on during this block.
-                              This is required for laser channels, that are not digital channels.
+        Parameters
+        ----------
+        init_length_s : float
+            An initial length of the element, this parameters should not be zero but must have a
+            finite value.
+        increment_s : float
+            The number which will be incremented during each repetition of this element.
+        pulse_function : dict
+            Dictionary with keys being the qudi analog channel string descriptors ('a_ch1', 'a_ch2'
+            etc.) and the corresponding objects being instances of the mathematical function objects
+            provided by SamplingFunctions class.
+        digital_high : dict
+            Dictionary with keys being the qudi digital channel string descriptors ('d_ch1', 'd_ch2'
+            etc.) and the corresponding objects being boolean values describing if the channel should
+            be logical low (False) or high (True).
+            For 3 digital channel it may look like:
+            {'d_ch1': True, 'd_ch2': False, 'd_ch5': False}
+        laser_on : bool
+            Boolean indicating if the laser is on during this block.
+            This is required for laser channels, that are not digital channels.
         """
         # FIXME: Sanity checks need to be implemented here
         self.init_length_s = init_length_s
@@ -118,7 +124,7 @@ class PulseBlockElement(object):
             return False
         if set(self.digital_high.items()) != set(other.digital_high.items()):
             return False
-        for chnl, func in self.pulse_function:
+        for chnl, func in self.pulse_function.items():
             if func != other.pulse_function[chnl]:
                 return False
         return True
@@ -151,9 +157,13 @@ class PulseBlock(object):
         """
         The constructor for a Pulse_Block needs to have:
 
-        @param str name: chosen name for the Pulse_Block
-        @param list element_list: which contains the Pulse_Block_Element Objects forming a
-                                  Pulse_Block, e.g. [Pulse_Block_Element, Pulse_Block_Element, ...]
+        Parameters
+        ----------
+        name : str
+            Chosen name for the Pulse_Block.
+        element_list : list
+            Which contains the Pulse_Block_Element Objects forming a Pulse_Block, e.g.
+            [Pulse_Block_Element, Pulse_Block_Element, ...].
         """
         self.name = name
         self.element_list = list() if element_list is None else element_list
@@ -327,8 +337,12 @@ class PulseBlock(object):
         """Insert a PulseBlockElement at the given position. The old element at this position and
         all consecutive elements after that will be shifted to higher indices.
 
-        @param int position: position in the element list
-        @param PulseBlockElement element: PulseBlockElement instance
+        Parameters
+        ----------
+        position : int
+            Position in the element list.
+        element : PulseBlockElement
+            PulseBlockElement instance.
         """
         if not isinstance(element, PulseBlockElement):
             raise ValueError('PulseBlock elements must be of type PulseBlockElement, not {0}'.format(type(element)))
@@ -379,6 +393,11 @@ class PulseBlock(object):
         self.element_list.reverse()
         return
 
+    def copy(self):
+        """Independent copy: mutating the copy's element_list never affects the original (each
+        element is deep-copied, matching PulseBlock.insert()'s existing behavior)."""
+        return PulseBlock(name=self.name, element_list=[copy.deepcopy(e) for e in self.element_list])
+
     def get_dict_representation(self):
         dict_repr = dict()
         dict_repr['name'] = self.name
@@ -401,15 +420,26 @@ class PulseBlockEnsemble(object):
     This object is used as a construction plan to create one sampled file.
     """
 
+    #: Distinguishes the two loadable asset types without an isinstance check, for callers holding
+    #: an asset whose kind they do not know (see PulseSequence.is_sequence). Declared on the class
+    #: rather than assigned in __init__ deliberately: a class attribute is not part of pickled
+    #: instance state, so every .ensemble/.sequence already saved to disk gains it with no
+    #: migration, and it can never drift out of sync with the object's actual type.
+    is_sequence = False
+
     def __init__(self, name, block_list=None, rotating_frame=True):
         """
         The constructor for a Pulse_Block_Ensemble needs to have:
 
-        @param str name: chosen name for the PulseBlockEnsemble
-        @param list block_list: contains the PulseBlock names with their number of repetitions,
-                                e.g. [(name, repetitions), (name, repetitions), ...])
-        @param bool rotating_frame: indicates whether the phase should be preserved for all the
-                                    functions.
+        Parameters
+        ----------
+        name : str
+            Chosen name for the PulseBlockEnsemble.
+        block_list : list
+            Contains the PulseBlock names with their number of repetitions, e.g. [(name,
+            repetitions), (name, repetitions), ...]).
+        rotating_frame : bool
+            Indicates whether the phase should be preserved for all the functions.
         """
         # FIXME: Sanity checking needed here
         self.name = name
@@ -419,21 +449,21 @@ class PulseBlockEnsemble(object):
         else:
             self.block_list = list()
 
-        # Dictionary container to store information related to the actually sampled
-        # Waveform like pulser settings used during sampling (sample_rate, activation_config etc.)
-        # and additional information about the discretization of the waveform (timebin positions of
-        # the PulseBlockElement transitions etc.) as well as the names of the created waveforms.
+        # Container to store information related to the actually sampled Waveform like pulser
+        # settings used during sampling (sample_rate, activation_config etc.) and additional
+        # information about the discretization of the waveform (timebin positions of the
+        # PulseBlockElement transitions etc.) as well as the names of the created waveforms.
         # This container will be populated during sampling and will be emptied upon deletion of the
         # corresponding waveforms from the pulse generator
-        self.sampling_information = dict()
-        # Dictionary container to store additional information about for measurement settings
+        self.sampling_information = SamplingInformation()
+        # Container to store additional information about for measurement settings
         # (ignore_lasers, controlled_variable, alternating etc.).
         # This container needs to be populated by the script creating the PulseBlockEnsemble
         # before saving it. (e.g. in generate methods in PulsedObjectGenerator class)
-        self.measurement_information = dict()
-        # Dictionary container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
+        self.measurement_information = MeasurementInformation()
+        # Container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
         # generated the pulse block ensemble.
-        self.generation_method_parameters = dict()
+        self.generation_method_parameters = GenerationMethodParameters()
 
     def __repr__(self):
         repr_str = 'PulseBlockEnsemble(name=\'{0}\', block_list={1}, rotating_frame={2})'.format(
@@ -495,9 +525,9 @@ class PulseBlockEnsemble(object):
         else:
             raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
         self.block_list[key] = tuple(value)
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def __delitem__(self, key):
@@ -505,9 +535,9 @@ class PulseBlockEnsemble(object):
             raise TypeError('PulseBlockEnsemble indices must be int or slice, not {0}'.format(type(key)))
 
         del self.block_list[key]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def pop(self, position=None):
@@ -515,8 +545,8 @@ class PulseBlockEnsemble(object):
             raise IndexError('pop from empty PulseBlockEnsemble')
 
         if position is None:
-            self.sampling_information = dict()
-            self.measurement_information = dict()
+            self.sampling_information = SamplingInformation()
+            self.measurement_information = MeasurementInformation()
             return self.block_list.pop()
 
         if not isinstance(position, int):
@@ -528,17 +558,21 @@ class PulseBlockEnsemble(object):
         if len(self.block_list) <= position or position < 0:
             raise IndexError('PulseBlockEnsemble block list index out of range')
 
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return self.block_list.pop(position)
 
     def insert(self, position, element):
         """Insert a (PulseBlock.name, repetitions) tuple at the given position. The old element
         at this position and all consecutive elements after that will be shifted to higher indices.
 
-        @param int position: position in the element list
-        @param tuple element: (PulseBlock name (str), repetitions (int))
+        Parameters
+        ----------
+        position : int
+            Position in the element list.
+        element : tuple
+            (PulseBlock name (str), repetitions (int)).
         """
         if not isinstance(element, (tuple, list)) or len(element) != 2:
             raise TypeError('PulseBlockEnsemble block list entries must be a tuple or list of length 2')
@@ -555,9 +589,9 @@ class PulseBlockEnsemble(object):
             raise IndexError('PulseBlockEnsemble block list index out of range')
 
         self.block_list.insert(position, tuple(element))
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def append(self, element):
@@ -572,26 +606,37 @@ class PulseBlockEnsemble(object):
 
     def clear(self):
         del self.block_list[:]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def reverse(self):
         self.block_list.reverse()
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
+
+    def copy(self):
+        """Independent copy: mutating the copy's block_list or its sampling/measurement/
+        generation_method_parameters containers never affects the original."""
+        new_ensemble = PulseBlockEnsemble(
+            name=self.name, block_list=list(self.block_list), rotating_frame=self.rotating_frame
+        )
+        new_ensemble.sampling_information = self.sampling_information.copy()
+        new_ensemble.measurement_information = self.measurement_information.copy()
+        new_ensemble.generation_method_parameters = copy.deepcopy(self.generation_method_parameters)
+        return new_ensemble
 
     def get_dict_representation(self):
         dict_repr = dict()
         dict_repr['name'] = self.name
         dict_repr['rotating_frame'] = self.rotating_frame
         dict_repr['block_list'] = self.block_list
-        dict_repr['sampling_information'] = self.sampling_information
-        dict_repr['measurement_information'] = self.measurement_information
-        dict_repr['generation_method_parameters'] = self.generation_method_parameters
+        dict_repr['sampling_information'] = self.sampling_information.to_dict()
+        dict_repr['measurement_information'] = self.measurement_information.to_dict()
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters.to_dict()
         return dict_repr
 
     @staticmethod
@@ -601,9 +646,11 @@ class PulseBlockEnsemble(object):
             block_list=ensemble_dict['block_list'],
             rotating_frame=ensemble_dict['rotating_frame'],
         )
-        new_ens.sampling_information = ensemble_dict['sampling_information']
-        new_ens.measurement_information = ensemble_dict['measurement_information']
-        new_ens.generation_method_parameters = ensemble_dict['generation_method_parameters']
+        new_ens.sampling_information = SamplingInformation.from_dict(ensemble_dict['sampling_information'])
+        new_ens.measurement_information = MeasurementInformation.from_dict(ensemble_dict['measurement_information'])
+        new_ens.generation_method_parameters = GenerationMethodParameters.from_dict(
+            ensemble_dict['generation_method_parameters']
+        )
         return new_ens
 
 
@@ -696,7 +743,7 @@ class SequenceStep(dict):
         return
 
     def copy(self):
-        return SequenceStep(super().copy())
+        return SequenceStep(copy.deepcopy(dict(self)))
 
 
 class PulseSequence(object):
@@ -707,52 +754,53 @@ class PulseSequence(object):
     generator hardware without sequencing functionality.
     """
 
+    #: True here, False on PulseBlockEnsemble - see the note there for why this is a class
+    #: attribute. Note this asks whether the *object* is a sequence, which is a different question
+    #: from sigPredefinedSequenceGenerated's `produced_sequence` payload (whether a generate method
+    #: returned any sequences).
+    is_sequence = True
+
     def __init__(self, name, ensemble_list=None, rotating_frame=False):
         """
         The constructor for a PulseSequence objects needs to have:
 
-        @param str name: the actual name of the sequence
-        @param list ensemble_list: list containing a tuple of two entries:
-                                          [(PulseBlockEnsemble name, seq_param),
-                                           (PulseBlockEnsemble name, seq_param), ...]
-                                          The seq_param is a dictionary, where the various sequence
-                                          parameters are saved with their keywords and the
-                                          according parameter (as item).
-                                          Available parameters are:
-                                          'repetitions': The number of repetitions for that sequence
-                                                         step. (Default 0)
-                                                         0 meaning the step is played once.
-                                                         Set to -1 for infinite looping.
-                                          'go_to':   The sequence step index to jump to after
-                                                     having played all repetitions. (Default -1)
-                                                     Indices starting at 1 for first step.
-                                                     Set to 0 or -1 to follow up with the next step.
-                                          'event_jump_to': The sequence step to jump to
-                                                           (starting from 1) in case of a trigger
-                                                           event (see event_trigger).
-                                                           Setting it to 0 or -1 means jump to next
-                                                           step. Ignored if event_trigger is 'OFF'.
-                                          'event_trigger': The trigger input to listen to in order
-                                                           to perform sequence jumps. Set to 'OFF'
-                                                           (default) in order to ignore triggering.
-                                          'wait_for': The trigger input to wait for before playing
-                                                      this sequence step. Set to 'OFF' (default)
-                                                      in order to play the current step immediately.
-                                          'flag_trigger': List containing the flags (str) to
-                                                          trigger when this sequence step starts
-                                                          playing. Empty list (default) for no flag
-                                                          trigger.
-                                          'flag_high': List containing the flags (str) to set to
-                                                       high when this sequence step is playing. All
-                                                       others will be low (or triggered; see above).
-                                                       Empty list (default) for all flags low.
+        Parameters
+        ----------
+        name : str
+            The actual name of the sequence.
+        ensemble_list : list
+            List containing a tuple of two entries:
+            [(PulseBlockEnsemble name, seq_param), (PulseBlockEnsemble name, seq_param), ...]
+            The seq_param is a dictionary, where the various sequence parameters are saved with
+            their keywords and the according parameter (as item).
+            Available parameters are:
 
-                                          If only 'repetitions' are in the dictionary, then the dict
-                                          will look like:
-                                            seq_param = {'repetitions': 41}
-                                          and so the respective sequence step will play 42 times.
-        @param bool rotating_frame: indicates, whether the phase has to be preserved in all
-                                    analog signals ACROSS different waveforms
+            'repetitions': The number of repetitions for that sequence step. (Default 0)
+                0 meaning the step is played once.
+                Set to -1 for infinite looping.
+            'go_to': The sequence step index to jump to after having played all repetitions.
+                (Default -1)
+                Indices starting at 1 for first step.
+                Set to 0 or -1 to follow up with the next step.
+            'event_jump_to': The sequence step to jump to (starting from 1) in case of a trigger
+                event (see event_trigger).
+                Setting it to 0 or -1 means jump to next step. Ignored if event_trigger is 'OFF'.
+            'event_trigger': The trigger input to listen to in order to perform sequence jumps.
+                Set to 'OFF' (default) in order to ignore triggering.
+            'wait_for': The trigger input to wait for before playing this sequence step. Set to
+                'OFF' (default) in order to play the current step immediately.
+            'flag_trigger': List containing the flags (str) to trigger when this sequence step
+                starts playing. Empty list (default) for no flag trigger.
+            'flag_high': List containing the flags (str) to set to high when this sequence step
+                is playing. All others will be low (or triggered; see above). Empty list (default)
+                for all flags low.
+
+            If only 'repetitions' are in the dictionary, then the dict will look like:
+            seq_param = {'repetitions': 41}
+            and so the respective sequence step will play 42 times.
+        rotating_frame : bool
+            Indicates, whether the phase has to be preserved in all analog signals ACROSS
+            different waveforms.
         """
         self.name = name
         self.rotating_frame = rotating_frame
@@ -763,19 +811,19 @@ class PulseSequence(object):
         self.refresh_parameters()
 
         # self.sampled_ensembles = OrderedDict()
-        # Dictionary container to store information related to the actually sampled
-        # Waveforms like pulser settings used during sampling (sample_rate, activation_config etc.)
-        # and additional information about the discretization of the waveform (timebin positions of
-        # the PulseBlockElement transitions etc.)
+        # Container to store information related to the actually sampled Waveforms like pulser
+        # settings used during sampling (sample_rate, activation_config etc.) and additional
+        # information about the discretization of the waveform (timebin positions of the
+        # PulseBlockElement transitions etc.)
         # This container is not necessary for the sampling process but serves only the purpose of
         # holding optional information for different modules.
-        self.sampling_information = dict()
-        # Dictionary container to store additional information about for measurement settings
+        self.sampling_information = SamplingInformation()
+        # Container to store additional information about for measurement settings
         # (ignore_lasers, controlled_values, alternating etc.).
         # This container needs to be populated by the script creating the PulseSequence
         # before saving it.
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def refresh_parameters(self):
@@ -879,9 +927,9 @@ class PulseSequence(object):
         else:
             raise TypeError('PulseSequence indices must be int or slice, not {0}'.format(type(key)))
         self.ensemble_list[key] = value
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -898,8 +946,8 @@ class PulseSequence(object):
         else:
             raise TypeError('PulseSequence indices must be int or slice, not {0}'.format(type(key)))
         del self.ensemble_list[key]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -921,9 +969,9 @@ class PulseSequence(object):
         if len(self.ensemble_list) <= position or position < 0:
             raise IndexError('PulseSequence ensemble list index out of range')
 
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         if self.ensemble_list[position].repetitions < 0:
             stage_refresh = True
         popped_element = self.ensemble_list.pop(position)
@@ -936,10 +984,13 @@ class PulseSequence(object):
         Insert a SequenceStep instance at the given position. The old element
         at this position and all consecutive elements after that will be shifted to higher indices.
 
-        @param int position: position in the ensemble list
-        @param tuple|list|str|dict|SequenceStep element:
+        Parameters
+        ----------
+        position : int
+            Position in the ensemble list.
+        element : tuple or list or str or dict or SequenceStep
             PulseBlockEnsemble name (str) |
-            (PulseBlockEnsemble name, sequence parameters dict) (tuple|list) |
+            (PulseBlockEnsemble name, sequence parameters dict) (tuple or list) |
             sequence parameters dict including PulseBlockEnsemble name (dict) |
             SequenceStep instance (SequenceStep)
         """
@@ -967,9 +1018,9 @@ class PulseSequence(object):
         self.ensemble_list.insert(position, element)
         if element.repetitions < 0:
             self.is_finite = False
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
 
     def append(self, element):
@@ -984,27 +1035,43 @@ class PulseSequence(object):
 
     def clear(self):
         del self.ensemble_list[:]
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         self.is_finite = True
         return
 
     def reverse(self):
         self.ensemble_list.reverse()
-        self.sampling_information = dict()
-        self.measurement_information = dict()
-        self.generation_method_parameters = dict()
+        self.sampling_information = SamplingInformation()
+        self.measurement_information = MeasurementInformation()
+        self.generation_method_parameters = GenerationMethodParameters()
         return
+
+    def copy(self):
+        """Independent copy: mutating the copy's ensemble_list or its sampling/measurement/
+        generation_method_parameters containers never affects the original. Unlike
+        PulseBlockEnsemble.block_list (immutable tuples), ensemble_list entries are mutable
+        SequenceStep dicts stored by reference, so a shallow list() copy would still share them -
+        each step is copied individually via its own .copy() instead."""
+        new_sequence = PulseSequence(
+            name=self.name,
+            ensemble_list=[step.copy() for step in self.ensemble_list],
+            rotating_frame=self.rotating_frame,
+        )
+        new_sequence.sampling_information = self.sampling_information.copy()
+        new_sequence.measurement_information = self.measurement_information.copy()
+        new_sequence.generation_method_parameters = copy.deepcopy(self.generation_method_parameters)
+        return new_sequence
 
     def get_dict_representation(self):
         dict_repr = dict()
         dict_repr['name'] = self.name
         dict_repr['rotating_frame'] = self.rotating_frame
         dict_repr['ensemble_list'] = self.ensemble_list
-        dict_repr['sampling_information'] = self.sampling_information
-        dict_repr['measurement_information'] = self.measurement_information
-        dict_repr['generation_method_parameters'] = self.generation_method_parameters
+        dict_repr['sampling_information'] = self.sampling_information.to_dict()
+        dict_repr['measurement_information'] = self.measurement_information.to_dict()
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters.to_dict()
         return dict_repr
 
     @staticmethod
@@ -1014,9 +1081,11 @@ class PulseSequence(object):
             ensemble_list=sequence_dict['ensemble_list'],
             rotating_frame=sequence_dict['rotating_frame'],
         )
-        new_seq.sampling_information = sequence_dict['sampling_information']
-        new_seq.measurement_information = sequence_dict['measurement_information']
-        new_seq.generation_method_parameters = sequence_dict['generation_method_parameters']
+        new_seq.sampling_information = SamplingInformation.from_dict(sequence_dict['sampling_information'])
+        new_seq.measurement_information = MeasurementInformation.from_dict(sequence_dict['measurement_information'])
+        new_seq.generation_method_parameters = GenerationMethodParameters.from_dict(
+            sequence_dict['generation_method_parameters']
+        )
         return new_seq
 
 
@@ -1032,7 +1101,7 @@ class PredefinedGeneratorBase:
     Also provides helper methods to simplify sequence/ensemble generation.
     """
 
-    def __init__(self, sequencegeneratorlogic):
+    def __init__(self, sequencegeneratorlogic): 
         # Keep protected reference to the SequenceGeneratorLogic
         self.__sequencegeneratorlogic = sequencegeneratorlogic
 
@@ -1049,8 +1118,10 @@ class PredefinedGeneratorBase:
         return self.__sequencegeneratorlogic.analyze_sequence
 
     @property
-    def pulse_generator_settings(self):
-        return self.__sequencegeneratorlogic.pulse_generator_settings
+    def generator_settings(self):
+        """The full SequenceGeneratorSettings object (generation_parameters,
+        pulse_generator_settings, pulser_benchmarks bundled together)."""
+        return self.__sequencegeneratorlogic.generator_settings
 
     @property
     def save_block(self):
@@ -1066,7 +1137,7 @@ class PredefinedGeneratorBase:
 
     @property
     def generation_parameters(self):
-        return self.__sequencegeneratorlogic.generation_parameters
+        return self.generator_settings.generation_parameters.to_dict()
 
     @generation_parameters.setter
     def generation_parameters(self, param_dict):
@@ -1083,77 +1154,76 @@ class PredefinedGeneratorBase:
 
     @property
     def channel_set(self):
-        channels = self.pulse_generator_settings.get('activation_config')
-        if channels is None:
-            channels = ('', set())
-        return channels[1]
+        return self.generator_settings.pulse_generator_settings.activation_config.channels
 
     @property
     def analog_channels(self):
-        return {chnl for chnl in self.channel_set if chnl.startswith('a')}
+        return self.generator_settings.pulse_generator_settings.analog_channels
 
     @property
     def digital_channels(self):
-        return {chnl for chnl in self.channel_set if chnl.startswith('d')}
+        return self.generator_settings.pulse_generator_settings.digital_channels
 
     @property
     def laser_channel(self):
-        return self.generation_parameters.get('laser_channel')
+        return self.generator_settings.generation_parameters.laser_channel
 
     @property
     def sync_channel(self):
-        channel = self.generation_parameters.get('sync_channel')
+        channel = self.generator_settings.generation_parameters.sync_channel
         return None if channel == '' else channel
 
     @property
     def gate_channel(self):
-        channel = self.generation_parameters.get('gate_channel')
+        channel = self.generator_settings.generation_parameters.gate_channel
         return None if channel == '' else channel
 
     @property
     def analog_trigger_voltage(self):
-        return self.generation_parameters.get('analog_trigger_voltage')
+        return self.generator_settings.generation_parameters.analog_trigger_voltage
 
     @property
     def laser_delay(self):
-        return self.generation_parameters.get('laser_delay')
+        return self.generator_settings.generation_parameters.laser_delay
 
     @property
     def microwave_channel(self):
-        channel = self.generation_parameters.get('microwave_channel')
+        channel = self.generator_settings.generation_parameters.microwave_channel
         return None if channel == '' else channel
 
+ 
     @property
     def microwave_frequency(self):
-        return self.generation_parameters.get('microwave_frequency')
+        return self.generator_settings.generation_parameters.microwave_frequency
 
     @property
     def microwave_amplitude(self):
-        return self.generation_parameters.get('microwave_amplitude')
+        return self.generator_settings.generation_parameters.microwave_amplitude
 
     @property
     def laser_length(self):
-        return self.generation_parameters.get('laser_length')
+        return self.generator_settings.generation_parameters.laser_length
 
     @property
     def wait_time(self):
-        return self.generation_parameters.get('wait_time')
+        return self.generator_settings.generation_parameters.wait_time
+    
 
     @property
     def rabi_period(self):
-        return self.generation_parameters.get('rabi_period')
+        return self.generator_settings.generation_parameters.rabi_period
 
     @property
     def sample_rate(self):
-        return self.pulse_generator_settings.get('sample_rate')
+        return self.generator_settings.pulse_generator_settings.sample_rate
 
     @property
     def optimal_control_assets_path(self) -> str:
-        return self.generation_parameters.get('optimal_control_assets_path')
+        return self.generator_settings.generation_parameters.optimal_control_assets_path
 
     @property
     def pulse_envelope(self) -> PulseEnvelope:
-        return self.generation_parameters.get("pulse_envelope")
+        return self.generator_settings.generation_parameters.pulse_envelope
 
     ################################################################################################
     #                                   Helper methods                                          ####
@@ -1208,10 +1278,17 @@ class PredefinedGeneratorBase:
         """
         Creates an idle pulse PulseBlockElement
 
-        @param float length: idle duration in seconds
-        @param float increment: idle duration increment in seconds
+        Parameters
+        ----------
+        length : float
+            Idle duration in seconds.
+        increment : float
+            Idle duration increment in seconds.
 
-        @return: PulseBlockElement, the generated idle element
+        Returns
+        -------
+        PulseBlockElement
+            The generated idle element.
         """
         # Create idle element
         return PulseBlockElement(
@@ -1225,11 +1302,19 @@ class PredefinedGeneratorBase:
         """
         Creates a trigger PulseBlockElement
 
-        @param float length: trigger duration in seconds
-        @param float increment: trigger duration increment in seconds
-        @param str|list channels: The pulser channel(s) to be triggered.
+        Parameters
+        ----------
+        length : float
+            Trigger duration in seconds.
+        increment : float
+            Trigger duration increment in seconds.
+        channels : str or list
+            The pulser channel(s) to be triggered.
 
-        @return: PulseBlockElement, the generated trigger element
+        Returns
+        -------
+        PulseBlockElement
+            The generated trigger element.
         """
         if isinstance(channels, str):
             channels = [channels]
@@ -1254,10 +1339,17 @@ class PredefinedGeneratorBase:
         """
         Creates laser trigger PulseBlockElement
 
-        @param float length: laser pulse duration in seconds
-        @param float increment: laser pulse duration increment in seconds
+        Parameters
+        ----------
+        length : float
+            Laser pulse duration in seconds.
+        increment : float
+            Laser pulse duration increment in seconds.
 
-        @return: PulseBlockElement, two elements for laser and gate trigger (delay element)
+        Returns
+        -------
+        PulseBlockElement
+            Two elements for laser and gate trigger (delay element).
         """
         laser_element = self._get_trigger_element(length=length, increment=increment, channels=self.laser_channel)
         laser_element.laser_on = True
@@ -1279,7 +1371,10 @@ class PredefinedGeneratorBase:
         """
         Creates an idle element of length of the laser delay
 
-        @return PulseBlockElement: The delay element
+        Returns
+        -------
+        PulseBlockElement
+            The delay element.
         """
         return self._get_idle_element(length=self.laser_delay, increment=0)
 
@@ -1288,7 +1383,10 @@ class PredefinedGeneratorBase:
         Creates a gate trigger of length of the laser delay.
         If no gate channel is specified will return a simple idle element.
 
-        @return PulseBlockElement: The delay element
+        Returns
+        -------
+        PulseBlockElement
+            The delay element.
         """
         if self.gate_channel:
             return self._get_trigger_element(length=self.laser_delay, increment=0, channels=self.gate_channel)
@@ -1326,13 +1424,23 @@ class PredefinedGeneratorBase:
         """
         Creates a MW pulse PulseBlockElement
 
-        @param float length: MW pulse duration in seconds
-        @param float increment: MW pulse duration increment in seconds
-        @param float freq: MW frequency in case of analogue MW channel in Hz
-        @param float amp: MW amplitude in case of analogue MW channel in V
-        @param float phase: MW phase in case of analogue MW channel in deg
+        Parameters
+        ----------
+        length : float
+            MW pulse duration in seconds.
+        increment : float
+            MW pulse duration increment in seconds.
+        freq : float
+            MW frequency in case of analogue MW channel in Hz.
+        amp : float
+            MW amplitude in case of analogue MW channel in V.
+        phase : float
+            MW phase in case of analogue MW channel in deg.
 
-        @return: PulseBlockElement, the generated MW element
+        Returns
+        -------
+        PulseBlockElement
+            The generated MW element.
         """
         envelope = self._get_envelope(envelope)
         self.log.debug(f"_get_mw_element called with envelope {envelope}")
@@ -1369,12 +1477,23 @@ class PredefinedGeneratorBase:
         """
         Creates single, double or triple sine mw element.
 
-        @param float length: MW pulse duration in seconds
-        @param float increment: MW pulse duration increment in seconds
-        @param amps: list containing the amplitudes
-        @param freqs: list containing the frequencies
-        @param phases: list containing the phases
-        @return: PulseBlockElement, the generated MW element
+        Parameters
+        ----------
+        length : float
+            MW pulse duration in seconds.
+        increment : float
+            MW pulse duration increment in seconds.
+        amps
+            List containing the amplitudes.
+        freqs
+            List containing the frequencies.
+        phases
+            List containing the phases.
+
+        Returns
+        -------
+        PulseBlockElement
+            The generated MW element.
         """
         if isinstance(amps, (int, float)):
             amps = [amps]
@@ -1568,13 +1687,13 @@ class PredefinedGeneratorBase:
 
     def _get_mw_laser_element(self, length, increment, amp=None, freq=None, phase=None):
         """
-
-        @param length:
-        @param increment:
-        @param amp:
-        @param freq:
-        @param phase:
-        @return:
+        Parameters
+        ----------
+        length
+        increment
+        amp
+        freq
+        phase
         """
         mw_laser_element = self._get_mw_element(length=length, increment=increment, amp=amp, freq=freq, phase=phase)
         if self.laser_channel.startswith('d'):
@@ -1593,14 +1712,25 @@ class PredefinedGeneratorBase:
         """
         Creates a MW pulse PulseBlockElement
 
-        @param float length: MW pulse duration in seconds
-        @param float increment: MW pulse duration increment in seconds
-        @param float start_freq: start MW frequency in case of analogue MW channel in Hz
-        @param float stop_freq: stop MW frequency in case of analogue MW channel in Hz
-        @param float amp: MW amplitude in case of analogue MW channel in V
-        @param float phase: MW phase in case of analogue MW channel in deg
+        Parameters
+        ----------
+        length : float
+            MW pulse duration in seconds.
+        increment : float
+            MW pulse duration increment in seconds.
+        start_freq : float
+            Start MW frequency in case of analogue MW channel in Hz.
+        stop_freq : float
+            Stop MW frequency in case of analogue MW channel in Hz.
+        amp : float
+            MW amplitude in case of analogue MW channel in V.
+        phase : float
+            MW phase in case of analogue MW channel in deg.
 
-        @return: PulseBlockElement, the generated MW element
+        Returns
+        -------
+        PulseBlockElement
+            The generated MW element.
         """
         if self.microwave_channel.startswith('d'):
             mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
@@ -1622,14 +1752,25 @@ class PredefinedGeneratorBase:
         """
         Creates a MW pulse PulseBlockElement
 
-        @param float length: MW pulse duration in seconds
-        @param float increment: MW pulse duration increment in seconds
-        @param float start_freq: start MW frequency in case of analogue MW channel in Hz
-        @param float stop_freq: stop MW frequency in case of analogue MW channel in Hz
-        @param float amp: MW amplitude in case of analogue MW channel in V
-        @param float phase: MW phase in case of analogue MW channel in deg
+        Parameters
+        ----------
+        length : float
+            MW pulse duration in seconds.
+        increment : float
+            MW pulse duration increment in seconds.
+        start_freq : float
+            Start MW frequency in case of analogue MW channel in Hz.
+        stop_freq : float
+            Stop MW frequency in case of analogue MW channel in Hz.
+        amp : float
+            MW amplitude in case of analogue MW channel in V.
+        phase : float
+            MW phase in case of analogue MW channel in deg.
 
-        @return: PulseBlockElement, the generated MW element
+        Returns
+        -------
+        PulseBlockElement
+            The generated MW element.
         """
         if self.microwave_channel.startswith('d'):
             mw_element = self._get_trigger_element(length=length, increment=increment, channels=self.microwave_channel)
@@ -1711,10 +1852,17 @@ class PredefinedGeneratorBase:
         should check if the timing value is generateable with the current sampling rate and if nout round
         it to the next possible value...
 
-        @param value: the desired timing value
-        @param divisibility: Takes into account that only parts of variables might be used
-                             (for example for a pi/2 pulse...)
-        @return: value matching to the current sampling rate of pulser
+        Parameters
+        ----------
+        value
+            The desired timing value.
+        divisibility
+            Takes into account that only parts of variables might be used (for example for a
+            pi/2 pulse...).
+
+        Returns
+        -------
+        Value matching to the current sampling rate of pulser.
         """
         resolution = 1 / self.sample_rate * divisibility
         mod = value % resolution
@@ -1729,10 +1877,10 @@ class PredefinedGeneratorBase:
 
     def _get_ensemble_count_length(self, ensemble, created_blocks):
         """
-
-        @param ensemble:
-        @param created_blocks:
-        @return:
+        Parameters
+        ----------
+        ensemble
+        created_blocks
         """
         if self.gate_channel:
             length = self.laser_length + self.laser_delay
@@ -1829,8 +1977,15 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         Find all classes in those modules that inherit exclusively from PredefinedGeneratorBase
         class and return a list of them.
 
-        @param str path: Path to import modules from
-        @return list: A list of imported valid generator classes
+        Parameters
+        ----------
+        path : str
+            Path to import modules from.
+
+        Returns
+        -------
+        list
+            A list of imported valid generator classes.
         """
         class_list = list()
         # Get all python modules to import from.
@@ -1860,7 +2015,10 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         Helper method to populate the dictionaries containing all references to callable generate
         methods contained in generator instances passed to this method.
 
-        @param list instance_list: List containing instances of generator classes
+        Parameters
+        ----------
+        instance_list : list
+            List containing instances of generator classes.
         """
         self._generate_methods = dict()
         for instance in instance_list:
@@ -1889,8 +2047,15 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         """
         Helper method to check if an object is a valid generator class.
 
-        @param object obj: object to check
-        @return bool: True if obj is a valid generator class, False otherwise
+        Parameters
+        ----------
+        obj : object
+            Object to check.
+
+        Returns
+        -------
+        bool
+            True if obj is a valid generator class, False otherwise.
         """
         if inspect.isclass(obj):
             return PredefinedGeneratorBase in obj.mro()
