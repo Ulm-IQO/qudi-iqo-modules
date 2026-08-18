@@ -27,6 +27,7 @@
 - Configured Github Action bot as author for the testing branch commits
 - Workflows automatically fetch all possible python versions from the `pyproject.toml` for testing, tests that only use a singular Python version now use the latest possible Python version
 - Tests now use `QudiKernel` instead of a custom remote server
+- No more automatic multi-switch channel deactivation on the wavemeter by the `high_finesse_proxy` upon starting/stopping of instreamers. Only reactivate channels (e.g. after deactivation through GUI) if they are associated to a running instreamer.
 
 ## Version 0.6.0
 
