@@ -12,6 +12,11 @@ Nothing else needs to change. sequence_generator_logic_data.py imports this modu
 subclass declared here with the built-in `CoreGenerationParameters` into the single
 `GenerationParameters` class the rest of the pulsed toolchain uses.
 
+For a parameter only one predefined generator needs, declare it on that generator class instead - see
+`PredefinedGeneratorBase.generation_parameter_contributors` in pulse_objects.py. That route also
+reaches generators loaded through the additional_predefined_methods_path config option, which cannot
+edit this file.
+
 `BaseGenerationParameters` lives here rather than in sequence_generator_logic_data.py purely so
 this file has no import back into it - a cycle would make the merge silently skip extensions
 depending on which module got imported first.
@@ -83,7 +88,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum
 from logging import getLogger
 from typing import get_origin, get_type_hints
@@ -249,24 +254,19 @@ class BaseGenerationParameters:
     def _own_field_names(cls):
         """Names of the fields this contributor itself declares, excluding inherited ones.
 
-        Built from two sources. The raw annotations dict gives ownership and declaration order: it
-        holds only what this class body declared, unlike `dataclasses.fields()` or plain
-        `cls.__annotations__`, which both walk up the MRO and would report inherited fields too.
-        `fields()` then gives membership - the dataclass machinery's own verdict on which of those
-        annotations actually became fields. Intersecting the two is what drops `ClassVar`/`InitVar`
-        declarations, which are annotations but not fields; without it a lab constant such as
-        `CHANNEL_MAP: ClassVar[dict] = {...}` would be exported by `to_dict()` as though it were a
-        measurement parameter, compared by the duplicate-name check, and passed to the merged
-        class's constructor as an unexpected keyword argument.
+        `fields()` reports base-first then own, each in declaration order, so subtracting the bases
+        preserves this class's own order - which `to_dict()` relies on for the Predefined Methods
+        grid layout. `ClassVar`/`InitVar` never appear, since `fields()` does not report them.
 
         Returns
         -------
         tuple of str
             Field names, in declaration order.
         """
-        own_annotations = cls.__dict__.get('__annotations__', {})
-        field_names = {f.name for f in fields(cls)}
-        return tuple(name for name in own_annotations if name in field_names)
+        inherited = {
+            f.name for base in cls.__mro__[1:] if is_dataclass(base) for f in fields(base)
+        }
+        return tuple(f.name for f in fields(cls) if f.name not in inherited)
 
     @staticmethod
     def _pick(data, current, name, default):

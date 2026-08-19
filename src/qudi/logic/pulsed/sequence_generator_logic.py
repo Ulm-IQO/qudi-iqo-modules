@@ -53,7 +53,8 @@ from qudi.util.yaml_helpers import (
     sampling_information_constructor,
 )
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
-    GenerationParameters,
+    generation_parameters_class,
+    rebuild_generation_parameters,
     ActivationConfig,
     AnalogLevels,
     DigitalLevels,
@@ -66,7 +67,6 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
     LoadedAsset,
     SequenceSamplingState,
     PulserBenchmarks,
-    _DEFAULT_GENERATION_PARAMETERS,
     _DEFAULT_PULSE_GENERATOR_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import GenerationMethodParameters, MeasurementInformation
@@ -91,14 +91,16 @@ def _default_generator_settings():
     """Factory for the default SequenceGeneratorSettings, used both as the StatusVar default
     and as the fallback when restoring a malformed/legacy status value.
 
-    generation_parameters/pulse_generator_settings reuse the single shared default instances
-    defined in sequence_generator_logic_data.py (that file can't import back from this one, so
-    it owns these literals rather than duplicating them here) - SequenceGeneratorSettings.
-    from_dict() falls back to the exact same instances when a saved settings file is missing one
-    of these keys.
+    pulse_generator_settings reuses the shared default instance defined in
+    sequence_generator_logic_data.py (that file can't import back from this one, so it owns these
+    literals rather than duplicating them here) - SequenceGeneratorSettings.from_dict() falls back
+    to the same instance when a saved settings file is missing that key.
+
+    The generation parameters are built fresh from whichever class is currently in effect, since
+    rebuild_generation_parameters() may have replaced it since import.
     """
     return SequenceGeneratorSettings(
-        generation_parameters=_DEFAULT_GENERATION_PARAMETERS,
+        generation_parameters=generation_parameters_class()(),
         pulse_generator_settings=_DEFAULT_PULSE_GENERATOR_SETTINGS,
     )
 
@@ -346,6 +348,66 @@ class SequenceGeneratorLogic(LogicBase):
         if isinstance(nested, dict) and nested.get('pulser_benchmarks'):
             self.pulser_benchmarks = PulserBenchmarks.from_dict(nested['pulser_benchmarks'])
 
+    def _merge_generator_declared_parameters(self):
+        """Fold the predefined generators' declared generation parameters into the schema.
+
+        Runs during activation because that is the first moment the generator classes exist: the
+        import-time merge in sequence_generator_logic_data.py only sees what
+        generation_parameter_extensions.py declares, not what comes in via
+        additional_predefined_methods_path.
+
+        Anything the new fields had saved is read back from the status file here. The StatusVar
+        restore already ran against the previous schema and dropped those keys, so without this a
+        generator-declared parameter would reset to its default on every launch.
+        """
+        declared = self._pog.collect_generation_parameter_contributors()
+        if not declared:
+            return
+
+        previous_cls = generation_parameters_class()
+        merged_cls = rebuild_generation_parameters(declared)
+        if merged_cls is previous_cls:
+            # Either nothing new to add, or the merge was rejected and has already logged why.
+            return
+
+        values = self._generator_settings.generation_parameters.to_dict()
+        for key, value in self._saved_generation_parameters().items():
+            # Only the newly added fields: the live values above already went through the restore
+            # and any legacy migration, so they win over what is on disk.
+            if key not in values:
+                values[key] = value
+
+        self._generator_settings = replace(
+            self._generator_settings, generation_parameters=merged_cls.from_dict(values)
+        )
+        self.log.debug(
+            'Generation parameters declared by predefined generators: {0}.'.format(
+                ', '.join(name for cls in declared for name in cls._own_field_names())
+            )
+        )
+        self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
+
+    def _saved_generation_parameters(self):
+        """The generation parameters as they sit in the status file, in either storage format.
+
+        Returns
+        -------
+        dict
+            Empty if the file is absent, unreadable or holds no generation parameters.
+        """
+        file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
+        try:
+            raw_status = yaml_load(file_path, ignore_missing=True)
+        except Exception:
+            self.log.exception('Failed to read status file while restoring generation parameters:')
+            return dict()
+
+        settings = raw_status.get('_generator_settings')
+        if isinstance(settings, dict) and isinstance(settings.get('generation_parameters'), dict):
+            return settings['generation_parameters']
+        legacy = raw_status.get('_generation_parameters')
+        return legacy if isinstance(legacy, dict) else dict()
+
     def on_activate(self):
         """Initialisation performed during activation of the module."""
         # Must run first - self._generator_settings has already been restored (or defaulted) by
@@ -411,6 +473,8 @@ class SequenceGeneratorLogic(LogicBase):
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+        # Before activate_plugins(), so a plugin already sees the full parameter set.
+        self._merge_generator_declared_parameters()
         self._pog.activate_plugins()
 
         self.__sequence_generation_in_progress = False
@@ -910,7 +974,7 @@ class SequenceGeneratorLogic(LogicBase):
 
     @generation_parameters.setter
     def generation_parameters(self, settings):
-        if not isinstance(settings, (GenerationParameters, dict)):
+        if not isinstance(settings, (generation_parameters_class(), dict)):
             raise SettingsTypeError(f'generation_parameters expects GenerationParameters or dict, '
                                     f'got {type(settings).__name__}')
         self.set_generation_parameters(settings)
@@ -947,7 +1011,8 @@ class SequenceGeneratorLogic(LogicBase):
             # Warn about unknown keys before coercion. GenerationParameters has a fixed schema, so
             # (unlike the old plain dict) it cannot store arbitrary additional settings, and
             # update_from_dict() would drop them without a word.
-            known_keys = {f.name for f in fields(GenerationParameters)}
+            gen_params_cls = generation_parameters_class()
+            known_keys = {f.name for f in fields(gen_params_cls)}
             if isinstance(settings, dict):
                 settings = {k: v for k, v in settings.items()
                             if k in known_keys or self._warn_unknown_generation_parameter(k)}
@@ -955,7 +1020,7 @@ class SequenceGeneratorLogic(LogicBase):
                       if k in known_keys or self._warn_unknown_generation_parameter(k)}
 
             try:
-                requested = coerce_settings(settings, kwargs, current, GenerationParameters)
+                requested = coerce_settings(settings, kwargs, current, gen_params_cls)
             except SettingsTypeError as err:
                 # Logged rather than raised: this is a queued cross-thread slot, where an escaping
                 # exception cannot reach the emitter and may take the whole application down.
@@ -972,7 +1037,7 @@ class SequenceGeneratorLogic(LogicBase):
             # extension declaring its own channel parameter gets the same validation - matching
             # the suffix-based healing loop in set_pulse_generator_settings().
             active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
-            for field_name in (f.name for f in fields(GenerationParameters) if f.name.endswith('_channel')):
+            for field_name in (f.name for f in fields(gen_params_cls) if f.name.endswith('_channel')):
                 channel = getattr(requested, field_name)
                 if (isinstance(channel, str) and channel
                         and channel != getattr(current, field_name)
@@ -999,8 +1064,12 @@ class SequenceGeneratorLogic(LogicBase):
     def _warn_unknown_generation_parameter(self, key):
         """Log an ignored generation parameter name. Always returns False so it can be used as the
         filtering half of a comprehension guard."""
-        self.log.warning('Setting by name "{0}" not present in generation_parameters.\n'
-                         'Ignoring it.'.format(key))
+        self.log.warning(
+            'Setting by name "{0}" not present in generation_parameters. Ignoring it.\n'
+            'Generation parameters are a fixed schema, so a new one has to be declared: on the '
+            'generator class that needs it via generation_parameter_contributors, or in '
+            'generation_parameter_extensions.py if the whole setup shares it.'.format(key)
+        )
         return False
 
     def save_block(self, block):

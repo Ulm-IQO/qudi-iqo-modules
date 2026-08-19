@@ -218,11 +218,16 @@ These are containers, not a class hierarchy. Two exceptions:
 BaseGenerationParameters                    generation_parameter_extensions.py
 ├── CoreGenerationParameters                sequence_generator_logic_data.py  (built-in, 14 fields)
 ├── TestParameters                          generation_parameter_extensions.py (example, 1 field)
-└── <your lab's class here>                 generation_parameter_extensions.py
+├── <your setup's class here>               generation_parameter_extensions.py
+└── <one generator's own parameters>        declared via generation_parameter_contributors
         │
-        └──► merged at import time by _build_generation_parameters()
-             into ONE class:  GenerationParameters
-             (a real subclass of all of the above, with all of their fields)
+        ├──► merged at import time by _build_generation_parameters()
+        │    into ONE class:  GenerationParameters
+        │    (a real subclass of all of the above, with all of their fields)
+        │
+        └──► re-merged during activation by rebuild_generation_parameters(), once the
+             predefined generator modules have been imported and can be asked what
+             they declare
 
 dict
 ├── AnalysisParameters             ┐
@@ -283,13 +288,19 @@ def _coerce_fields(cls, data, current=None):
     return coerced
 ```
 
-`_own_field_names` intersects two sources. `cls.__dict__['__annotations__']` gives ownership and
-declaration order — plain `cls.__annotations__` and `dataclasses.fields()` both walk up to parent
-classes and would return inherited fields too. `dataclasses.fields()` then gives membership, which is
-what drops `ClassVar`/`InitVar` declarations: those are annotations but **not** fields, so without the
-intersection a lab constant like `CHANNEL_MAP: ClassVar[dict] = {...}` would be exported by
-`to_dict()` as though it were a measurement parameter, compared by the duplicate-name check, and
-passed to the merged constructor as an unexpected keyword argument.
+`_own_field_names` takes `dataclasses.fields(cls)` and subtracts whatever the bases already
+contribute. `fields()` reports base-first then own, each group in declaration order, so the
+subtraction leaves this class's own fields in the order it declared them — which `to_dict()` needs for
+the widget grid layout. A lab constant like `CHANNEL_MAP: ClassVar[dict] = {...}` stays out for free,
+since `fields()` never reports `ClassVar`/`InitVar`.
+
+> **Do not reintroduce `cls.__dict__['__annotations__']` here.** An earlier version read it for
+> ownership. Under [PEP 649](https://peps.python.org/pep-0649/) (Python 3.14+) class annotations are
+> computed lazily from `__annotate__` and that key is simply absent until something forces it, which
+> `dataclasses` does not. `_own_field_names` then returned `()` and every caller — `to_dict()`, the
+> duplicate-name check, `_coerce_fields` — quietly agreed the class had no fields, while `fields()`
+> still listed all of them. Nothing raised: the module activated normally, the Predefined Methods tab
+> drew an empty parameter grid, and the status file was written with `generation_parameters: {}`.
 
 **Why this class lives here and not next to `CoreGenerationParameters`:** so this file never has to
 import from `sequence_generator_logic_data.py`. A circular import between the two would make the merge
@@ -309,8 +320,9 @@ class TestParameters(BaseGenerationParameters):
 ```
 
 > **Note:** this is currently active, so `time_delay` really is a field of `GenerationParameters` and
-> really does get a spin box on the Predefined Methods tab. It is scaffolding from the refactor — if
-> your setup does not want it, delete the class.
+> really does get a spin box on the Predefined Methods tab — `GenerationParameters` has 15 fields
+> here, not 14. It is scaffolding from the refactor and marked for removal; if your setup does not
+> want it, delete the class.
 >
 > Its `_coerce_fields` predates the automatic version and does exactly what the base class would now
 > do for a `float` field. **Do not copy it into a new class** — the two lines of `time_delay: float =
@@ -975,12 +987,38 @@ self.generator_settings.generation_parameters.green_aom_delay        # attribute
 | Decorate the class `@dataclass(frozen=True)` | `TypeError` at import naming the class. Without the decorator its annotations never become fields, so it would contribute nothing and its parameters would simply not exist |
 | Every field needs a default | `TypeError` at import — a merged dataclass cannot have a no-default field after a defaulted one |
 | Field names must be unique across all contributors | `TypeError` at import naming both classes. This is a *feature* — silent last-wins would change a measurement parameter with no warning |
+| The class must declare at least one field | `TypeError` at import naming the class. A contributor that declares nothing is always a fault, and the symptom otherwise shows up far away as an empty parameter grid |
 | Types must be `str`/`int`/`float`/`bool`/`Enum`/`PulseEnvelope` | a warning is logged at import and no widget is built for it (see `_create_pm_global_params` in [`../../../gui/pulsed/pulsed_maingui.py`](../../../gui/pulsed/pulsed_maingui.py)); the parameter still works from scripts |
-| Declare the class at import time, not from a config path | the merge runs at module import, long before qudi-core restores status variables |
 | Never pass a bare contributor to `set_generation_parameters()` | rejected by `coerce_settings` — see the note in the `settings_coercion.py` section |
 
 Suffix conventions the GUI picks up automatically: a float whose name contains `amp` or `volt` gets a
 `V` suffix, `freq` gets `Hz`, and `tau`/`period`/`time`/`delay`/`laser_length` get `s`.
+
+### Adding a parameter only one generator needs
+
+A parameter that belongs to one predefined generator rather than the whole setup is declared on that
+generator class instead, which also works for generators loaded through the
+`additional_predefined_methods_path` config option — nothing in this package has to be edited:
+
+```python
+class MyLabGenerator(PredefinedGeneratorBase):
+
+    generation_parameter_contributors = ({'rf_amplitude': 1e-3, 'rf_channel': 'a_ch2'},)
+
+    def generate_my_sequence(self, name='my_seq'):
+        amplitude = self.generation_parameters['rf_amplitude']
+        ...
+```
+
+Each dict entry's type is taken from its default, which covers `str`/`int`/`float`/`bool`. For an
+`Enum`, a `PulseEnvelope` or custom coercion, list a `BaseGenerationParameters` subclass instead —
+`generation_parameter_contributors = (MyLabParameters,)`. The same uniqueness and type rules apply,
+except that a rejected declaration is logged and skipped rather than raised: activation must survive a
+faulty lab module.
+
+These are collected during `SequenceGeneratorLogic.on_activate()`, after the generator modules are
+imported, and merged by `rebuild_generation_parameters()`. Values already in the status file are read
+back at that point, so a generator-declared parameter persists across restarts like any other.
 
 Also note: any generation parameter whose name **ends in `_channel`** is treated as a channel
 specifier by `set_pulse_generator_settings()` and will be auto-corrected if it names a channel that is
