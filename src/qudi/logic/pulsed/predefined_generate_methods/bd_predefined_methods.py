@@ -1563,3 +1563,158 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         created_sequences.append(t1_sequence)
         return created_blocks, created_ensembles, created_sequences
+
+
+    def generate_laser_mw_gate_on(self, name='laser_mw_gate_on', length=3.0e-6):
+            """Generates a laser and microwave pulse block ensemble.
+    
+            Parameters
+            ----------
+            name : str
+                Name of the PulseBlockEnsemble to be generated.
+            length : float
+                Laser and microwave pulse duration in seconds.
+    
+            Returns
+            -------
+            created_blocks : list
+                List of PulseBlock objects created.
+            created_ensembles : list
+                List of PulseBlockEnsemble objects created.
+            created_sequences : list
+                List of PulseSequence objects created.
+            """
+            created_blocks = list()
+            created_ensembles = list()
+            created_sequences = list()
+    
+            # create the laser_mw element
+            laser_mw_element = self._get_mw_laser_gate_element(length=length,
+                                                          increment=0,
+                                                          amp=self.microwave_amplitude,
+                                                          freq=self.microwave_frequency,
+                                                          phase=0)
+            # Create block and append to created_blocks list
+            laser_mw_block = PulseBlock(name=name)
+            laser_mw_block.append(laser_mw_element)
+            created_blocks.append(laser_mw_block)
+            # Create block ensemble and append to created_ensembles list
+            block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+            block_ensemble.append((laser_mw_block.name, 0))
+            created_ensembles.append(block_ensemble)
+            return created_blocks, created_ensembles, created_sequences
+
+    def generate_bd_cw_odmr(self, name='cw_odmr', freq_start=2.8e9, freq_stop=3e9, num_of_points=10, mw_amp=0.2, mw_length=1e-6):
+            """
+            CW ODMR sequence for combined AWG + PulseBlaster setup.
+    
+            Parameters
+            ----------
+            name : str
+                Name of the PulseSequence to be generated.
+            freq_start : float
+                Minimum frequency in Hz.
+            freq_stop : float
+                Maximum frequency in Hz.
+            num_of_points : int
+                Number of logarithmically spaced tau points.
+            mw_amp : float
+                Amplitude of the microwave pulse.
+            mw_length : float
+                Length of the microwave pulse in seconds.
+    
+            Returns
+            -------
+            created_blocks : list
+            created_ensembles : list
+            created_sequences : list
+            """
+            created_blocks    = list()
+            created_ensembles = list()
+            created_sequences = list()
+    
+            # ── Frequency array (linearly spaced) ───────────────────────────────────
+            freq_array = np.linspace(freq_start, freq_stop, num_of_points)
+
+            # =========================================================================
+            # BLOCK AND ENSEMBLE CREATION
+            # =========================================================================
+    
+            # ── 1. Trigger ensemble (sequence step 1, TWAIT=ON set by interfuse) ─────
+            sync_element = self._get_sync_element()
+    
+            trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+            trigger_block.append(sync_element)
+            created_blocks.append(trigger_block)
+    
+            trigger_ensemble = PulseBlockEnsemble(
+                name='{0}_trigger'.format(name),
+                rotating_frame=False
+            )
+            trigger_ensemble.append((trigger_block.name, 0))
+            created_ensembles.append(trigger_ensemble)
+
+            # ── 2. MW and Readout ensembles ───────────────────────────────────────────────────
+            cw_odmr_blocks = dict()
+            cw_odmr_ensembles = dict()
+            for kk, freq in enumerate(freq_array):             
+                laser_mw_gate_element = self._get_mw_laser_gate_element(length=mw_length,
+                                                                        increment=0,
+                                                                        amp=mw_amp,
+                                                                        freq=freq,
+                                                                        phase=0)
+                delay_element   = self._get_delay_gate_element()
+                waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        
+                cw_odmr_blocks[kk] = PulseBlock(name='freq_{0}'.format(kk))
+                cw_odmr_blocks[kk].append(laser_mw_gate_element)
+                cw_odmr_blocks[kk].append(delay_element)
+                cw_odmr_blocks[kk].append(waiting_element)
+                created_blocks.append(cw_odmr_blocks[kk])
+    
+                cw_odmr_ensembles[kk] = PulseBlockEnsemble(
+                    name='freq_{0}'.format(kk),
+                    rotating_frame=False
+                )
+                cw_odmr_ensembles[kk].append((cw_odmr_blocks[kk].name, 0))
+                created_ensembles.append(cw_odmr_ensembles[kk])
+
+            # =========================================================================
+            # SEQUENCE CONSTRUCTION
+            # =========================================================================
+    
+            cw_odmr_sequence = PulseSequence(name=name, rotating_frame=False)
+                
+            # Step 1: trigger — TWAIT=ON is forced on this step by the interfuse's
+            # write_sequence() method, making it equivalent to TRIG mode in waveform mode.
+            cw_odmr_sequence.append(trigger_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+    
+            # Steps 2..2N+1: alternating tau and readout
+            for kk, freq in enumerate(freq_array):
+                # Tau: free evolution for k * tau_start total
+                cw_odmr_sequence.append(cw_odmr_ensembles[kk].name)
+                cw_odmr_sequence[-1].repetitions = 0
+
+            # After last readout: return to trigger step and wait for next PB trigger
+            cw_odmr_sequence[-1].go_to = 1
+    
+            # ── Finalise ──────────────────────────────────────────────────────────────
+            cw_odmr_sequence.refresh_parameters()
+    
+            cw_odmr_sequence.measurement_information['alternating']         = False
+            cw_odmr_sequence.measurement_information['laser_ignore_list']   = list()
+            cw_odmr_sequence.measurement_information['controlled_variable'] = freq_array
+            cw_odmr_sequence.measurement_information['units']               = ('Hz', '')
+            cw_odmr_sequence.measurement_information['labels']              = (
+                'Frequency', 'Signal'
+            )
+            cw_odmr_sequence.measurement_information['number_of_lasers']    = len(freq_array)
+            cw_odmr_sequence.measurement_information['counting_length']     = (
+                self._get_sequence_count_length(
+                    cw_odmr_sequence, created_ensembles, created_blocks
+                )
+            )
+    
+            created_sequences.append(cw_odmr_sequence)
+            return created_blocks, created_ensembles, created_sequences

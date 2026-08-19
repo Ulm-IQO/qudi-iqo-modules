@@ -1297,7 +1297,7 @@ class PredefinedGeneratorBase:
 
     def _get_sync_element(self):
         """ """
-        return self._get_trigger_element(length=50e-9, increment=0, channels=self.sync_channel)
+        return self._get_trigger_element(length=100e-9, increment=0, channels=self.sync_channel)
 
     def _get_envelope(self, envelope: PulseEnvelope):
         if envelope.type == PulseEnvelopeType.from_gen_settings:
@@ -1586,6 +1586,34 @@ class PredefinedGeneratorBase:
 
         mw_laser_element.laser_on = True
         return mw_laser_element
+
+    def _get_mw_laser_gate_element(self, length, increment, amp=None, freq=None, phase=None):
+            """
+    
+            @param length:
+            @param increment:
+            @param amp:
+            @param freq:
+            @param phase:
+            @return:
+            """
+            mw_laser_gate_element = self._get_mw_element(length=length, increment=increment, amp=amp, freq=freq, phase=phase)
+            if self.laser_channel.startswith('d'):
+                mw_laser_gate_element.digital_high[self.laser_channel] = True
+            elif self.laser_channel.startswith('a'):
+                mw_laser_gate_element.pulse_function[self.laser_channel] = SamplingFunctions.DC(
+                    voltage=self.analog_trigger_voltage
+                )
+            if self.gate_channel:
+                if self.gate_channel.startswith('d'):
+                    mw_laser_gate_element.digital_high[self.gate_channel] = True
+                elif self.gate_channel.startswith('a'):
+                    mw_laser_gate_element.pulse_function[self.gate_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )
+    
+            mw_laser_gate_element.laser_on = True
+            return mw_laser_gate_element
 
     def _get_mw_element_linearchirp(
         self, length, increment, amplitude=None, start_freq=None, stop_freq=None, phase=None
