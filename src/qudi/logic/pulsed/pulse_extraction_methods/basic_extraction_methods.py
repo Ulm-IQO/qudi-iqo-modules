@@ -63,17 +63,13 @@ class BasicPulseExtractor(PulseExtractorBase):
         # sum up all gated timetraces to ease flank detection
         timetrace_sum = np.sum(count_data, 0)
 
-        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum
-        try:
-            conv = ndimage.filters.gaussian_filter1d(timetrace_sum.astype(float), conv_std_dev)
-        except Exception:
-            self.log.exception('Gaussian smoothing failed during gated_conv_deriv extraction:')
-            conv = np.zeros(timetrace_sum.size)
-        try:
-            conv_deriv = np.gradient(conv)
-        except Exception:
-            self.log.exception('Gradient computation failed during gated_conv_deriv extraction:')
-            conv_deriv = np.zeros(conv.size)
+        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum.
+        # Deliberately unguarded: PulsedMeasurementLogic._pulsed_analysis_loop() catches a failing
+        # tick, reports it through sigAnalysisProblem and keeps the previous data. Substituting a
+        # zero array here instead would hand flank detection a flat trace, which yields
+        # plausible-looking but wrong laser pulses with nothing to show the reader they are wrong.
+        conv = ndimage.gaussian_filter1d(timetrace_sum.astype(float), conv_std_dev)
+        conv_deriv = np.gradient(conv)
 
         # get indices of rising and falling flank
         rising_ind, falling_ind = sorted([int(np.clip(conv_deriv.argmax() - flank_width, 0, len(timetrace_sum))),
@@ -150,20 +146,13 @@ class BasicPulseExtractor(PulseExtractorBase):
         if not isinstance(number_of_lasers, int):
             return return_dict
 
-        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum
-        try:
-            conv = ndimage.filters.gaussian_filter1d(count_data.astype(float), conv_std_dev)
-        except Exception:
-            self.log.exception('Gaussian smoothing failed during ungated_conv_deriv extraction:')
-            conv = np.zeros(count_data.size)
-        try:
-            conv_deriv = np.gradient(conv)
-        except Exception:
-            self.log.exception('Gradient computation failed during ungated_conv_deriv extraction:')
-            conv_deriv = np.zeros(conv.size)
+        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum.
+        # Unguarded on purpose - see the note in gated_conv_deriv().
+        conv = ndimage.gaussian_filter1d(count_data.astype(float), conv_std_dev)
+        conv_deriv = np.gradient(conv)
 
-        # if gaussian smoothing or derivative failed, the returned array only contains zeros.
-        # Check for that and return also only zeros to indicate a failed pulse extraction.
+        # A completely flat derivative carries no flanks to find, so there is nothing to extract.
+        # Return zeros to signal that rather than letting argmax/argmin pick arbitrary indices.
         if len(conv_deriv.nonzero()[0]) == 0:
             return_dict['laser_counts_arr'] = np.zeros((number_of_lasers, 10), dtype='int64')
             return return_dict
@@ -171,20 +160,8 @@ class BasicPulseExtractor(PulseExtractorBase):
         # use a reference for array, because the exact position of the peaks or dips
         # (i.e. maxima or minima, which are the inflection points in the pulse) are distorted by
         # a large conv_std_dev value.
-        try:
-            conv = ndimage.filters.gaussian_filter1d(count_data.astype(float), 10)
-        except Exception:
-            self.log.exception(
-                'Reference gaussian smoothing failed during ungated_conv_deriv extraction:'
-            )
-            conv = np.zeros(count_data.size)
-        try:
-            conv_deriv_ref = np.gradient(conv)
-        except Exception:
-            self.log.exception(
-                'Reference gradient computation failed during ungated_conv_deriv extraction:'
-            )
-            conv_deriv_ref = np.zeros(conv.size)
+        conv = ndimage.gaussian_filter1d(count_data.astype(float), 10)
+        conv_deriv_ref = np.gradient(conv)
 
         # initialize arrays to contain indices for all rising and falling
         # flanks, respectively
