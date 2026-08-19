@@ -28,10 +28,13 @@ import importlib
 import numpy as np
 import warnings
 
+from dataclasses import dataclass, field
+
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
 from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import MeasurementInformation, GenerationMethodParameters
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
+from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import BaseGenerationParameters
 
 
 class PulseBlockElement(object):
@@ -1089,6 +1092,60 @@ class PulseSequence(object):
         return new_seq
 
 
+def _as_generation_parameter_contributor(entry, owner):
+    """Normalise one `generation_parameter_contributors` entry to a BaseGenerationParameters subclass.
+
+    A subclass passes through; a `{name: default}` dict is turned into one, taking each field's type
+    from its default so the inherited type-driven coercion applies unchanged.
+
+    Parameters
+    ----------
+    entry : type or dict
+    owner : type
+        The generator class that declared it, used to name the synthesised class and in errors.
+
+    Returns
+    -------
+    type
+        A BaseGenerationParameters subclass.
+
+    Raises
+    ------
+    TypeError
+        If `entry` is neither, or a dict value's type has no sensible field default.
+    """
+    if isinstance(entry, type):
+        if not issubclass(entry, BaseGenerationParameters):
+            raise TypeError(
+                f'{owner.__name__}.generation_parameter_contributors lists {entry.__name__}, which '
+                f'does not inherit BaseGenerationParameters.'
+            )
+        return entry
+    if not isinstance(entry, dict):
+        raise TypeError(
+            f'{owner.__name__}.generation_parameter_contributors entries must be a '
+            f'BaseGenerationParameters subclass or a dict of defaults, got {type(entry).__name__}.'
+        )
+
+    namespace = {'__annotations__': {}}
+    for name, default in entry.items():
+        if not isinstance(name, str) or not name.isidentifier():
+            raise TypeError(
+                f'{owner.__name__}.generation_parameter_contributors: "{name}" is not a valid '
+                f'parameter name.'
+            )
+        namespace['__annotations__'][name] = type(default)
+        # Mutable defaults need a factory; dataclass rejects them outright.
+        namespace[name] = (
+            field(default_factory=lambda value=default: copy.deepcopy(value))
+            if isinstance(default, (dict, list, set, bytearray))
+            else default
+        )
+    return dataclass(frozen=True)(
+        type(f'{owner.__name__}Parameters', (BaseGenerationParameters,), namespace)
+    )
+
+
 class PredefinedGeneratorBase:
     """
     Base class for PulseObjectGenerator and predefined generator classes containing the actual
@@ -1099,9 +1156,26 @@ class PredefinedGeneratorBase:
     SequenceGeneratorLogic logger is also accessible via this base class and can be used as in any
     qudi module (e.g. self.log.error(...)).
     Also provides helper methods to simplify sequence/ensemble generation.
+
+    A subclass needing global generation parameters of its own declares them in
+    `generation_parameter_contributors`; they become ordinary GenerationParameters fields when the
+    SequenceGeneratorLogic activates, with a widget on the Predefined Methods tab and a slot in the
+    status file. Either form works::
+
+        generation_parameter_contributors = ({'rf_amplitude': 1e-3, 'rf_channel': 'a_ch2'},)
+
+        generation_parameter_contributors = (MyLabParameters,)  # a BaseGenerationParameters subclass
+
+    The dict form infers each type from its default and is enough for str/int/float/bool values;
+    declare a subclass when a parameter needs an Enum, a PulseEnvelope or custom coercion. Parameters
+    the whole setup shares, rather than one generator, belong in generation_parameter_extensions.py
+    instead.
     """
 
-    def __init__(self, sequencegeneratorlogic): 
+    #: Generation parameters this generator needs - see the class docstring.
+    generation_parameter_contributors = ()
+
+    def __init__(self, sequencegeneratorlogic):
         # Keep protected reference to the SequenceGeneratorLogic
         self.__sequencegeneratorlogic = sequencegeneratorlogic
 
@@ -1952,6 +2026,8 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
                 except:
                     self.log.exception(f'Unable to import predefined generator from "{path}":')
 
+        self._generator_classes = generator_classes
+
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
         self._generator_instances = generator_instances
@@ -1961,6 +2037,47 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # populate parameters dictionary from generate method signatures
         self.__populate_parameter_dict()
+
+    def collect_generation_parameter_contributors(self):
+        """BaseGenerationParameters subclasses declared by the imported generator classes.
+
+        Read off the classes rather than the instances, so a declaration is picked up even if
+        instantiating that generator failed. A class inherits its bases' declaration, so the same
+        contributor is seen repeatedly - de-duplicated here, since the merge rejects duplicate
+        field names.
+
+        Returns
+        -------
+        list of type
+            Contributor classes, in a stable order.
+        """
+        contributors = []
+        seen_entries = {}
+        for cls in self._generator_classes:
+            declared = getattr(cls, 'generation_parameter_contributors', ())
+            if isinstance(declared, (dict, type)):
+                # A single contributor rather than a tuple of them - a natural enough mistake that
+                # accepting it beats a confusing failure further down.
+                declared = (declared,)
+            for entry in declared:
+                # Keyed on the declaration itself, not on the class converted from it: sibling
+                # generators sharing a base inherit the same dict object, and converting it once per
+                # subclass would produce several classes declaring identical field names, which the
+                # merge then rejects as duplicates.
+                if id(entry) in seen_entries:
+                    continue
+                try:
+                    contributor = _as_generation_parameter_contributor(entry, cls)
+                except TypeError:
+                    self.log.exception(
+                        f'Ignoring an entry in {cls.__name__}.generation_parameter_contributors:'
+                    )
+                    seen_entries[id(entry)] = None
+                    continue
+                seen_entries[id(entry)] = contributor
+                if contributor not in contributors:
+                    contributors.append(contributor)
+        return contributors
 
     @property
     def predefined_generate_methods(self):

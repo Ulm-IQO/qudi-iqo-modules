@@ -124,8 +124,11 @@ def _generation_parameters_to_dict(self):
     """
     result = {}
     for contributor in self._CONTRIBUTORS:
+        defaults = contributor()
         for name in contributor._own_field_names():
-            result[name] = getattr(self, name)
+            # Default fallback: an instance unpickled from a saved .ensemble predates the current
+            # contributor set, so it can be missing a field the schema now has.
+            result[name] = getattr(self, name, getattr(defaults, name))
     return result
 
 
@@ -204,10 +207,15 @@ def _warn_about_unrenderable_types(contributor):
 def _build_generation_parameters(extensions=None):
     """Merge CoreGenerationParameters with every lab extension into one frozen dataclass.
 
-    Runs once at module import - long before qudi-core restores status variables
-    (LogicBase.__activation_callback does _load_status_variables() then on_activate()), which is
-    exactly why the extensions must be declared at import time rather than discovered from a
-    ConfigOption path during activation.
+    Runs at module import to establish the built-in schema, and again from
+    rebuild_generation_parameters() during SequenceGeneratorLogic.on_activate() once the predefined
+    generator modules have been imported and can be asked what they declare.
+
+    The import-time build happens before qudi-core restores status variables
+    (LogicBase.__activation_callback does _load_status_variables() then on_activate()), so a
+    parameter that only joins on the second pass has already been dropped from the restored
+    settings - SequenceGeneratorLogic._merge_generator_declared_parameters() re-reads those values
+    off the status file rather than letting them reset.
 
     The result is bound to the module-level name `GenerationParameters`, matching the class's own
     __name__/__qualname__, so pickle can resolve it. That matters: a GenerationParameters instance
@@ -239,7 +247,17 @@ def _build_generation_parameters(extensions=None):
     for contributor in contributors:
         _check_is_dataclass(contributor)
         _warn_about_unrenderable_types(contributor)
-        for name in contributor._own_field_names():
+        own_names = contributor._own_field_names()
+        if not own_names:
+            # A contributor that declares nothing is always a fault, never an intention. Caught
+            # here because the symptom otherwise surfaces far away: an empty parameter grid and a
+            # status file with no generation parameters in it, with nothing raised in between.
+            raise TypeError(
+                f'{contributor.__name__} contributes no generation parameters. Every contributor '
+                f'must declare at least one field, so either it declares none or _own_field_names() '
+                f'failed to see them.'
+            )
+        for name in own_names:
             if name in seen:
                 raise TypeError(
                     f'Duplicate generation parameter "{name}" declared by both '
@@ -267,6 +285,58 @@ def _build_generation_parameters(extensions=None):
 
 
 GenerationParameters = _build_generation_parameters()
+
+#: What generation_parameter_extensions.py declared, captured before any rebuild can widen the
+#: schema. [0] is CoreGenerationParameters, which _build_generation_parameters() re-adds itself.
+_DECLARED_EXTENSIONS = tuple(GenerationParameters._CONTRIBUTORS[1:])
+
+
+def generation_parameters_class():
+    """The GenerationParameters class currently in effect.
+
+    Always call this instead of holding a `from ... import GenerationParameters` binding:
+    rebuild_generation_parameters() rebinds the module global, and an imported name would keep
+    pointing at the superseded class.
+    """
+    return GenerationParameters
+
+
+def rebuild_generation_parameters(extensions):
+    """Rebuild GenerationParameters as the extensions file plus `extensions`, rebinding the globals.
+
+    Lets contributors declared by predefined generator classes join the schema, which the
+    import-time build cannot see - those modules are imported during module activation, long after
+    this one.
+
+    Always rebuilt from `_DECLARED_EXTENSIONS` rather than from whatever the last call produced, so
+    repeated calls are idempotent. Module re-activation re-imports the generator modules and hands
+    over freshly created contributor classes; accumulating them would collide with the equivalent
+    classes from the previous activation on every field name.
+
+    A contributor the merge rejects is logged and the current class kept, so a faulty lab
+    declaration costs its own parameters rather than the whole toolchain.
+
+    Parameters
+    ----------
+    extensions : iterable of BaseGenerationParameters subclasses
+
+    Returns
+    -------
+    type
+        The class now in effect - the rebuilt one, or the existing one if the merge failed.
+    """
+    global GenerationParameters, _DEFAULT_GENERATION_PARAMETERS
+    merged = list(_DECLARED_EXTENSIONS)
+    merged.extend(cls for cls in extensions if cls not in merged)
+    try:
+        rebuilt = _build_generation_parameters(merged)
+    except TypeError:
+        _logger.exception('Cannot merge the declared generation parameter contributors. Keeping '
+                          'the current generation parameters:')
+        return GenerationParameters
+    GenerationParameters = rebuilt
+    _DEFAULT_GENERATION_PARAMETERS = rebuilt()
+    return rebuilt
 
 
 @dataclass(frozen=True)
@@ -821,7 +891,7 @@ class SequenceGeneratorSettings:
         that field's own default rather than raising KeyError."""
         return cls(
             generation_parameters=(
-                GenerationParameters.from_dict(data['generation_parameters'])
+                generation_parameters_class().from_dict(data['generation_parameters'])
                 if 'generation_parameters' in data
                 else _DEFAULT_GENERATION_PARAMETERS
             ),
@@ -859,7 +929,7 @@ class SequenceGeneratorSettings:
         generation_parameters = raw.get('_generation_parameters')
         return cls(
             generation_parameters=(
-                GenerationParameters.from_dict(generation_parameters)
+                generation_parameters_class().from_dict(generation_parameters)
                 if isinstance(generation_parameters, dict)
                 else _DEFAULT_GENERATION_PARAMETERS
             ),
@@ -871,7 +941,9 @@ class SequenceGeneratorSettings:
         if 'generation_parameters' in data:
             value = data['generation_parameters']
             generation_parameters = (
-                value if isinstance(value, GenerationParameters) else self.generation_parameters.update_from_dict(value)
+                value
+                if isinstance(value, generation_parameters_class())
+                else self.generation_parameters.update_from_dict(value)
             )
 
         pulse_generator_settings = self.pulse_generator_settings

@@ -34,7 +34,7 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     ReadoutSettings,
 )
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import (
-    GenerationParameters,
+    generation_parameters_class,
     PulseGeneratorSettings,
 )
 from qudi.logic.pulsed.pulsed_data.settings_coercion import SettingsTypeError, as_settings_dict
@@ -1421,7 +1421,7 @@ class PulsedMasterLogic(LogicBase):
         kwargs
         """
         try:
-            settings_dict = as_settings_dict(settings, kwargs, GenerationParameters)
+            settings_dict = as_settings_dict(settings, kwargs, generation_parameters_class())
         except SettingsTypeError as err:
             self.log.error(f'Unable to change generation parameters. {err}')
             return
