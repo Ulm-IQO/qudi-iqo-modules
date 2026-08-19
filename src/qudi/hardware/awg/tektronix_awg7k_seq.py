@@ -33,6 +33,7 @@ from ftplib import FTP
 from qudi.util.paths import get_appdata_dir
 from qudi.util.helpers import natural_sort
 from qudi.core.configoption import ConfigOption
+from qudi.core.statusvariable import StatusVar
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
 
@@ -78,6 +79,15 @@ class AWG7k(PulserInterface):
     _trigger_slope = ConfigOption(name='trigger_slope', default='POS', missing='nothing')
     _trigger_impedance = ConfigOption(name='trigger_impedance', default='50OHM', missing='nothing')
 
+    # The AWG7000 series has no SCPI query to list or identify sequences
+    # (unlike waveforms, which support WLIS:NAME?/WLIS:SIZE? -- a genuine
+    # hardware query that survives restarts on its own). Without this
+    # persistence, the module "forgets" that a sequence was written/loaded
+    # every time qudi restarts, even though the actual sequence data still
+    # exists in AWG hardware memory (assuming no power cycle occurred).
+    _written_sequences = StatusVar(name='written_sequences', default=list())
+    _loaded_sequences = StatusVar(name='loaded_sequences', default=list())
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -89,8 +99,8 @@ class AWG7k(PulserInterface):
             'a_ch1': False,
             'a_ch2': False,
         }
-        self._written_sequences = []
-        self._loaded_sequences = []
+        #self._written_sequences = []
+        #self._loaded_sequences = []
         self._marker_byte_dict = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03'}
         self._event_triggers = {'OFF': 'OFF', 'ON': 'ON'}
 
