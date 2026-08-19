@@ -746,6 +746,20 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         awg_seq_name = 'awg_' + name
 
+        # Pre-check AWG sequence step count before doing ANY work ──────
+        # Avoids wasting time on AWG upload if we already know PB or AWG
+        # limits will be exceeded.
+        max_steps = self.awg().get_constraints().sequence_steps.max
+        if len(sequence_parameter_list) > max_steps:
+            self.log.error(
+                'write_sequence ABORTED before upload.\n'
+                'Sequence "{0}" requires {1} steps, exceeding AWG hardware '
+                'maximum of {2} steps.\n'
+                'Reduce the number of tau/measurement points.'
+                ''.format(name, len(sequence_parameter_list), max_steps)
+            )
+            return -1
+
         # Stop AWG before writing.
         # If armed (status 2) from a previous run, OUTPUT:STATE? queries in the
         # AWG reflect the OLD hardware state, not the current activation config.
@@ -870,9 +884,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             True, True, total_pb_len
         )
 
+        # ── NEW: abort clearly if PB rejected due to instruction overflow ──────
+        # pulseblaster().write_waveform() -> write_pulse_form() now returns -1
+        # if RLE-compressed instruction count exceeds 4094 (see Fix 2).
         if pb_written < 0:
             self.log.error(
-                'Failed to upload combined PB waveform "{0}".'.format(pb_seq_name)
+                'Failed to upload combined PB waveform "{0}".\n'
+                'This usually means the RLE-compressed instruction count '
+                'exceeds the PulseBlaster hardware limit of 4094.\n'
+                'The AWG sequence "{1}" was uploaded successfully, but the '
+                'PB companion waveform was NOT — the two devices are now '
+                'INCONSISTENT. Call clear_all() before retrying with a '
+                'shorter or simpler sequence.'
+                ''.format(pb_seq_name, awg_seq_name)
             )
             return -1
 

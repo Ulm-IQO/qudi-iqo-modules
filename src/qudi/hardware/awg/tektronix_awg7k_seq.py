@@ -136,6 +136,71 @@ class AWG7k(PulserInterface):
         return
 
     # =========================================================================
+    # Internal helper methods for OPC waiting and status polling
+    # =========================================================================
+
+    def _wait_opc(self, timeout=10.0, context=''):
+        """
+        Poll *OPC? until it returns 1, or timeout.
+
+        This is the single shared implementation used everywhere in this
+        module that needs to wait for a pending AWG operation to complete.
+        Replaces the previously duplicated and UNBOUNDED
+        'while int(self.query('*OPC?')) != 1: time.sleep(0.1)' pattern that
+        could hang forever with zero log output if the AWG stalled
+        internally (e.g. out of memory, communication glitch).
+
+        @param float timeout: seconds to wait before giving up
+        @param str context: description used in log messages on failure
+
+        @return bool: True if OPC completed within timeout, False otherwise
+        """
+        elapsed = 0.0
+        while elapsed < timeout:
+            try:
+                if int(self.query('*OPC?')) == 1:
+                    return True
+            except Exception as exc:
+                self.log.error(
+                    '_wait_opc: *OPC? query failed{0}: {1}'
+                    ''.format(' ({0})'.format(context) if context else '', exc)
+                )
+                return False
+            time.sleep(0.1)
+            elapsed += 0.1
+
+        self.log.error(
+            '_wait_opc: timed out after {0}s{1}.'
+            ''.format(timeout, ' ({0})'.format(context) if context else '')
+        )
+        return False
+
+    def _wait_for_armed_or_running(self, timeout=5.0, context=''):
+        """
+        Poll get_status() until it reports 1 (running) or 2 (armed/waiting
+        for trigger), or timeout.
+
+        Extracted from pulser_on() where this exact polling loop was
+        duplicated once for SEQ mode and once for TRIG/GAT mode.
+
+        @param float timeout: seconds to wait before giving up
+        @param str context: description used in the timeout error message
+
+        @return bool: True if AWG reached running/armed state, False on timeout
+        """
+        elapsed = 0.0
+        while self.get_status()[0] not in (1, 2):
+            time.sleep(0.2)
+            elapsed += 0.2
+            if elapsed >= timeout:
+                self.log.error(
+                    'AWG failed to reach running/armed state after {0}s{1}.'
+                    ''.format(timeout, ' ({0})'.format(context) if context else '')
+                )
+                return False
+        return True
+
+    # =========================================================================
     # Below all the Pulser Interface routines.
     # =========================================================================
 
@@ -317,27 +382,19 @@ class AWG7k(PulserInterface):
 
             if current_hw_mode == 'SEQ':
                 if config_mode == 'CONT':
-                    self.write('AWGC:RUN')
                     # No trigger wait — sequence loops freely via go_to.
-                # Sequence mode: configure the trigger INPUT hardware so that
-                # TWAIT on step 1 responds to the same external BNC trigger
-                # the user already draws in their pulse block.
-                # _configure_trigger_input_only() sets TRIG:SOUR EXT, TRIG:LEV,
-                # TRIG:SLOP and TRIG:IMP without touching AWGC:RMOD.
+                    self.write('AWGC:RUN')
                 else:
-                    self._configure_trigger_input_only()
+                    # Sequence mode: configure the trigger INPUT hardware so that
+                    # TWAIT on step 1 responds to the same external BNC trigger
+                    # the user already draws in their pulse block.
+                    # _configure_trigger_input_only() sets TRIG:SOUR EXT, TRIG:LEV,
+                    # TRIG:SLOP and TRIG:IMP without touching AWGC:RMOD.
+                    self._configure_trigger_input_only(context='SEQ mode')
                     self.write('AWGC:RUN')
 
-                timeout = 5.0
-                elapsed = 0.0
-                while self.get_status()[0] not in (1, 2):
-                    time.sleep(0.2)
-                    elapsed += 0.2
-                    if elapsed >= timeout:
-                        self.log.error(
-                            'AWG failed to enter SEQ mode after {0}s.'.format(timeout)
-                        )
-                        break
+                # FIX (dup #7): shared helper replaces duplicated polling loop
+                self._wait_for_armed_or_running(timeout=5.0, context='SEQ mode')
 
                 final_status = self.get_status()[0]
                 if final_status == 2:
@@ -366,18 +423,8 @@ class AWG7k(PulserInterface):
                 self._configure_trigger_mode(config_mode)
                 self.write('AWGC:RUN')
 
-                timeout = 5.0
-                elapsed = 0.0
-                while self.get_status()[0] not in (1, 2):
-                    time.sleep(0.2)
-                    elapsed += 0.2
-                    if elapsed >= timeout:
-                        self.log.error(
-                            'AWG failed to arm after {0}s in {1} mode. '
-                            'Check VISA connection and trigger config.'
-                            ''.format(timeout, config_mode)
-                        )
-                        break
+                # FIX (dup #7): shared helper replaces duplicated polling loop
+                self._wait_for_armed_or_running(timeout=5.0, context=config_mode)
 
                 final_status = self.get_status()[0]
                 if final_status == 2:
@@ -409,6 +456,8 @@ class AWG7k(PulserInterface):
 
     def load_waveform(self, load_dict):
         """ Loads a waveform to the specified channel of the pulsing device.
+        For devices that have a workspace (i.e. AWG) this will load the waveform from the device
+        workspace into the channel.
 
         @param load_dict: dict|list
 
@@ -421,9 +470,16 @@ class AWG7k(PulserInterface):
                 new_dict[channel] = waveform
             load_dict = new_dict
 
-        chnl_activation = self.get_active_channels()
+        # FIX (#3): use _internal_ch_state instead of get_active_channels().
+        # get_active_channels() queries live hardware OUTPUT:STATE? when the
+        # AWG is armed/running, which may reflect a stale configuration from
+        # a PREVIOUS operation rather than the current intended activation.
+        # _internal_ch_state is always set correctly by set_active_channels()
+        # and is the single source of truth used consistently throughout
+        # write_waveform(), write_sequence(), and now here too.
         analog_channels = natural_sort(
-            chnl for chnl in chnl_activation if chnl.startswith('a') and chnl_activation[chnl])
+            chnl for chnl, active in self._internal_ch_state.items() if active
+        )
 
         channels_to_set = {'a_ch{0:d}'.format(chnl_num) for chnl_num in load_dict}
         if not channels_to_set.issubset(analog_channels):
@@ -438,12 +494,38 @@ class AWG7k(PulserInterface):
 
         for chnl_num, waveform in load_dict.items():
             self.write('SOUR{0:d}:WAV "{1}"'.format(chnl_num, waveform))
-            while self.query('SOUR{0:d}:WAV?'.format(chnl_num)) != waveform:
-                time.sleep(0.1)
 
+            # Timeout-bounded wait — prevents silent infinite hang if the
+            # AWG fails to load the waveform onto this channel.
+            load_timeout = 15.0
+            load_elapsed = 0.0
+            loaded_ok = False
+            while load_elapsed < load_timeout:
+                if self.query('SOUR{0:d}:WAV?'.format(chnl_num)) == waveform:
+                    loaded_ok = True
+                    break
+                time.sleep(0.1)
+                load_elapsed += 0.1
+
+            if not loaded_ok:
+                self.log.error(
+                    'load_waveform: channel {0} did not load "{1}" within '
+                    '{2}s.'.format(chnl_num, waveform, load_timeout)
+                )
+                self.get_errors()
+                return self.get_loaded_assets()[0]
+
+        # FIX (#6 minor, consistency): warn on invalid run_mode instead of
+        # silently defaulting, matching pulser_on()'s behaviour.
         mode_map = {'CONT': 'C', 'TRIG': 'T', 'GAT': 'G'}
         mode = str(self._run_mode_config).upper()
-        self.set_mode(mode_map.get(mode, 'C'))
+        if mode not in mode_map:
+            self.log.warning(
+                'load_waveform: invalid run_mode "{0}" in config. '
+                'Falling back to CONT.'.format(mode)
+            )
+            mode = 'CONT'
+        self.set_mode(mode_map[mode])
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
@@ -453,10 +535,11 @@ class AWG7k(PulserInterface):
                            'Sequence to load is missing on device memory.')
             return self.get_loaded_assets()[0]
 
-        # REMOVED: self.write('AWGC:EVENT:JMODE EJUMP')
-        # This command does not exist on the AWG7000 series (AWG7122C).
-        # Per-step event jump targets are configured during write_sequence()
-        # via sequence_set_event_jump() → SEQ:ELEM{n}:JTAR:TYPE / INDEX.
+        # NOTE: AWGC:EVENT:JMODE EJUMP intentionally NOT sent here.
+        # This command does not exist on the AWG7000 series (AWG7122C) and
+        # generates error -113 "Undefined header". Per-step event jump
+        # targets are configured during write_sequence() via
+        # sequence_set_event_jump() -> SEQ:ELEM{n}:JTAR:TYPE / INDEX.
 
         self.set_mode('S')
         self._loaded_sequences = [sequence_name]
@@ -470,10 +553,12 @@ class AWG7k(PulserInterface):
                              respective asset loaded into the channel,
                              string describing the asset type ('waveform' or 'sequence')
         """
-        chnl_activation = self.get_active_channels()
-
-        channel_numbers = sorted(int(chnl.split('_ch')[1]) for chnl in chnl_activation if
-                                 chnl.startswith('a') and chnl_activation[chnl])
+        # FIX (#3): use _internal_ch_state instead of get_active_channels()
+        # for the same stale-hardware-query reason as load_waveform() above.
+        channel_numbers = sorted(
+            int(chnl.rsplit('_ch', 1)[1])
+            for chnl, active in self._internal_ch_state.items() if active
+        )
 
         loaded_assets = dict()
         current_type = None
@@ -532,8 +617,13 @@ class AWG7k(PulserInterface):
         @return float: the sample rate returned from the device (in Hz).
         """
         self.write('SOUR1:FREQ {0:.4G}MHz\n'.format(sample_rate / 1e6))
-        while int(self.query('*OPC?')) != 1:
-            time.sleep(0.1)
+
+        # FIX (#2): bounded wait instead of unbounded 'while ... != 1: sleep'
+        if not self._wait_opc(timeout=10.0, context='set_sample_rate'):
+            self.log.warning('set_sample_rate: proceeding despite OPC timeout.')
+
+        # Here we need to wait, because when the sampling rate is changed AWG is busy
+        # and therefore the ask in get_sample_rate will return an empty string.
         time.sleep(1)
         return self.get_sample_rate()
 
@@ -589,13 +679,20 @@ class AWG7k(PulserInterface):
         constraints = self.get_constraints()
         analog_channels = self._get_all_analog_channels()
 
+        # FIX (#1 CRITICAL): The original code called 'del amplitude[chnl]'
+        # while iterating directly over 'amplitude' in the same for-loop.
+        # Python raises 'RuntimeError: dictionary changed size during
+        # iteration' the moment this line executes for an invalid channel.
+        # Fixed by collecting invalid keys during iteration and deleting
+        # them only AFTER the loop has finished.
         if amplitude is not None:
+            invalid_amp_channels = []
             for chnl in amplitude:
-                ch_num = int(chnl.rsplit('_ch', 1)[1])
                 if chnl not in analog_channels:
                     self.log.warning('Channel to set (a_ch{0}) not available in AWG.\nSetting '
                                      'analogue voltage for this channel ignored.'.format(chnl))
-                    del amplitude[chnl]
+                    invalid_amp_channels.append(chnl)
+                    continue
                 if amplitude[chnl] < constraints.a_ch_amplitude.min:
                     self.log.warning('Minimum Vpp for channel "{0}" is {1}. Requested Vpp of {2}V '
                                      'was ignored and instead set to min value.'
@@ -609,13 +706,19 @@ class AWG7k(PulserInterface):
                                                amplitude[chnl]))
                     amplitude[chnl] = constraints.a_ch_amplitude.max
 
+            for chnl in invalid_amp_channels:
+                del amplitude[chnl]
+
+        # FIX (#1 CRITICAL): same fix applied to the offset block, which had
+        # the identical bug ('del offset[chnl]' during iteration over offset).
         if offset is not None:
+            invalid_off_channels = []
             for chnl in offset:
-                ch_num = int(chnl.rsplit('_ch', 1)[1])
                 if chnl not in analog_channels:
                     self.log.warning('Channel to set (a_ch{0}) not available in AWG.\nSetting '
                                      'offset voltage for this channel ignored.'.format(chnl))
-                    del offset[chnl]
+                    invalid_off_channels.append(chnl)
+                    continue
                 if offset[chnl] < constraints.a_ch_offset.min:
                     self.log.warning('Minimum offset for channel "{0}" is {1}. Requested offset of '
                                      '{2}V was ignored and instead set to min value.'
@@ -627,20 +730,24 @@ class AWG7k(PulserInterface):
                                      ''.format(chnl, constraints.a_ch_offset.max, offset[chnl]))
                     offset[chnl] = constraints.a_ch_offset.max
 
+            for chnl in invalid_off_channels:
+                del offset[chnl]
+
         if amplitude is not None:
             for a_ch in amplitude:
                 ch_num = int(a_ch.rsplit('_ch', 1)[1])
                 self.write('SOUR{0:d}:VOLT:AMPL {1}'.format(ch_num, amplitude[a_ch]))
-                while int(self.query('*OPC?')) != 1:
-                    time.sleep(0.1)
+                # FIX (#2): bounded wait instead of unbounded loop
+                self._wait_opc(timeout=5.0, context='set_analog_level:amplitude')
 
         no_offset = '02' in self.installed_options or '06' in self.installed_options
         if offset is not None and not no_offset:
             for a_ch in offset:
                 ch_num = int(a_ch.rsplit('_ch', 1)[1])
                 self.write('SOUR{0:d}:VOLT:OFFSET {1}'.format(ch_num, offset[a_ch]))
-                while int(self.query('*OPC?')) != 1:
-                    time.sleep(0.1)
+                # FIX (#2): bounded wait instead of unbounded loop
+                self._wait_opc(timeout=5.0, context='set_analog_level:offset')
+
         return self.get_analog_level()
 
     def get_digital_level(self, low=None, high=None):
@@ -795,14 +902,15 @@ class AWG7k(PulserInterface):
             dac_res = 10 - marker_num
             self.write('SOUR{0:d}:DAC:RES {1:d}'.format(ach_num, dac_res))
 
-            # FIX: Never turn OUTPUT ON here.
-            # Turning ON before a waveform is loaded generates E11506.
-            # pulser_on() handles OUTPUT:STATE ON after waveforms are loaded.
-            # Always turn OFF here so the state is clean and predictable.
+            # Never turn OUTPUT ON here. Turning ON before a waveform is
+            # loaded generates E11506. pulser_on() handles OUTPUT:STATE ON
+            # after waveforms are loaded. Always turn OFF here so the state
+            # is clean and predictable.
             self.write('OUTPUT{0:d}:STATE OFF'.format(ach_num))
 
             # _internal_ch_state records the DESIRED state (True/False).
-            # This is the source of truth used by write_waveform and write_sequence.
+            # This is the source of truth used by write_waveform,
+            # write_sequence, load_waveform, and get_loaded_assets.
             self._internal_ch_state[a_ch] = new_channels_state[a_ch]
 
         return self.get_active_channels()
@@ -812,7 +920,8 @@ class AWG7k(PulserInterface):
         """
         Write a new waveform or append samples to an already existing waveform on the device memory.
 
-        @return (int, list): Number of samples written and list of created waveform names
+        @return (int, list): Number of samples written (-1 indicates failed process) and list of
+                             created waveform names
         """
         waveforms = list()
         constraints = self.get_constraints()
@@ -837,21 +946,21 @@ class AWG7k(PulserInterface):
         active_analog = natural_sort(
             chnl for chnl in analog_samples if chnl.startswith('a')
         )
-        # Verify consistency with _internal_ch_state (diagnostic only, does not abort)
         expected_analog = natural_sort(
             chnl for chnl, active in self._internal_ch_state.items() if active
         )
         if set(active_analog) != set(expected_analog):
             self.log.warning(
-                'write_waveform channel mismatch: '
-                'samples have {0} but _internal_ch_state has {1}. '
-                'Using sample channels. '
-                'This may indicate set_active_channels was not called correctly.'
+                'write_waveform channel mismatch: samples have {0} but '
+                '_internal_ch_state has {1}. Using sample channels.'
                 ''.format(active_analog, expected_analog)
             )
 
         for a_ch in active_analog:
-            a_ch_num = int(a_ch.rsplit('ch', 1)[1])
+            # FIX (#9 minor): standardized on '_ch' split (was 'ch' here,
+            # inconsistent with every other channel-number extraction in
+            # this module, e.g. write_sequence uses '_ch').
+            a_ch_num = int(a_ch.rsplit('_ch', 1)[1])
             mrk_ch_1 = 'd_ch{0:d}'.format(a_ch_num * 2 - 1)
             mrk_ch_2 = 'd_ch{0:d}'.format(a_ch_num * 2)
 
@@ -883,10 +992,76 @@ class AWG7k(PulserInterface):
 
             start = time.time()
             self.write('MMEM:IMP "{0}","{1}",WFM'.format(wfm_name, wfm_name + '.wfm'))
-            while int(self.query('*OPC?')) != 1:
+
+            # Timeout-bounded OPC wait. Original had NO timeout here — if the
+            # AWG's import silently stalls (e.g. out of memory), this spun
+            # forever with zero log output.
+            opc_timeout = 30.0
+            opc_elapsed = 0.0
+            opc_ok = False
+            while opc_elapsed < opc_timeout:
+                try:
+                    if int(self.query('*OPC?')) == 1:
+                        opc_ok = True
+                        break
+                except Exception as exc:
+                    self.log.error(
+                        'write_waveform: *OPC? query failed while importing '
+                        '"{0}": {1}'.format(wfm_name, exc)
+                    )
+                    return -1, waveforms
                 time.sleep(0.2)
-            while wfm_name not in self.get_waveform_names():
+                opc_elapsed += 0.2
+
+            if not opc_ok:
+                self.log.error(
+                    'write_waveform: MMEM:IMP for "{0}" did not complete within '
+                    '{1}s (*OPC? never returned 1).\n'
+                    'This commonly indicates the AWG has run out of waveform '
+                    'memory and silently rejected the import. Checking error '
+                    'queue...'.format(wfm_name, opc_timeout)
+                )
+                self.get_errors()
+                return -1, waveforms
+
+            # Check AWG error queue immediately after import. Catches
+            # memory-exhaustion and other import errors that would otherwise
+            # sit silently in SYST:ERR while the next loop hangs.
+            if self.get_errors():
+                self.log.error(
+                    'write_waveform: AWG reported error(s) while importing '
+                    '"{0}". See messages above. Likely cause: AWG waveform '
+                    'memory exhausted after uploading multiple large unique '
+                    'waveforms.'.format(wfm_name)
+                )
+                return -1, waveforms
+
+            # Timeout-bounded wait for the waveform to appear in workspace.
+            # Original had NO timeout here either.
+            appear_timeout = 15.0
+            appear_elapsed = 0.0
+            appeared = False
+            while appear_elapsed < appear_timeout:
+                if wfm_name in self.get_waveform_names():
+                    appeared = True
+                    break
                 time.sleep(0.2)
+                appear_elapsed += 0.2
+
+            if not appeared:
+                self.log.error(
+                    'write_waveform: "{0}" did not appear in AWG workspace '
+                    'within {1}s after import.\n'
+                    'Total waveforms currently in workspace: {2}.\n'
+                    'This strongly suggests AWG waveform memory is exhausted. '
+                    'Consider: reducing total waveform count (reuse waveforms '
+                    'via sequence repetitions where possible), reducing '
+                    'per-waveform sample count, or enabling AWG memory '
+                    'expansion option 01 if not already installed.'
+                    ''.format(wfm_name, appear_timeout, len(self.get_waveform_names()))
+                )
+                return -1, waveforms
+
             self.log.debug('Load WFM file into workspace: {0}'.format(time.time() - start))
 
             waveforms.append(wfm_name)
@@ -899,19 +1074,33 @@ class AWG7k(PulserInterface):
         @return int: number of sequence steps written (-1 indicates failed process)
         """
         if not self._has_sequence_mode():
-            self.log.error('Direct sequence generation in AWG not possible. Sequencer option not '
-                           'installed.')
+            self.log.error(
+                'Direct sequence generation in AWG not possible. '
+                'Sequencer option not installed.'
+            )
+            return -1
+
+        num_steps = len(sequence_parameter_list)
+        max_steps = self.get_constraints().sequence_steps.max
+
+        if num_steps > max_steps:
+            self.log.error(
+                'Unable to write sequence "{0}".\n'
+                'Requested {1} sequence steps exceeds the hardware maximum '
+                'of {2} steps for model {3}.'
+                ''.format(name, num_steps, max_steps, self.model)
+            )
             return -1
 
         avail_waveforms = set(self.get_waveform_names())
         for waveform_tuple, param_dict in sequence_parameter_list:
             if not avail_waveforms.issuperset(waveform_tuple):
-                self.log.error('Failed to create sequence "{0}" due to waveforms "{1}" not '
-                               'present in device memory.'.format(name, waveform_tuple))
+                self.log.error(
+                    'Failed to create sequence "{0}" due to waveforms "{1}" '
+                    'not present in device memory.'.format(name, waveform_tuple)
+                )
                 return -1
 
-        # Use _internal_ch_state directly — this is always consistent with
-        # what write_waveform used, regardless of hardware armed/running state.
         active_analog = natural_sort(
             chnl for chnl, active in self._internal_ch_state.items() if active
         )
@@ -919,56 +1108,79 @@ class AWG7k(PulserInterface):
 
         if num_tracks == 0:
             self.log.error(
-                'write_sequence: no active analog channels in _internal_ch_state = {0}.\n'
-                'Call set_active_channels() before sampling.'
-                ''.format(self._internal_ch_state)
+                'write_sequence: no active analog channels found in '
+                '_internal_ch_state = {0}.'.format(self._internal_ch_state)
             )
             return -1
 
         self.log.debug(
             'write_sequence: _internal_ch_state={0}, '
-            'active_analog={1}, num_tracks={2}'
-            ''.format(self._internal_ch_state, active_analog, num_tracks)
+            'active_analog={1}, num_tracks={2}, num_steps={3}/{4}'
+            ''.format(self._internal_ch_state, active_analog, num_tracks,
+                      num_steps, max_steps)
         )
 
-        num_steps = len(sequence_parameter_list)
+        # Drain any pre-existing errors so the queue is clean before we start
+        self.get_errors()
 
         self.write('SEQ:LENG 0')
         self.write('SEQ:LENG {0:d}'.format(num_steps))
 
-        for step, (wfm_tuple, seq_params) in enumerate(sequence_parameter_list, 1):
-            if num_tracks == len(wfm_tuple):
+        # FIX (#5): removed pointless 'while True:' wrapper — any exception
+        # inside the try-block always returns immediately, so the loop could
+        # never execute more than one iteration. A plain try/except achieves
+        # the identical behaviour with less code.
+        # FIX (#6 minor): removed redundant '(ValueError, Exception)' tuple —
+        # ValueError is already a subclass of Exception.
+        try:
+            current_len = int(self.query('SEQ:LENG?'))
+        except Exception as exc:
+            self.log.error(
+                'write_sequence: could not read back SEQ:LENG after '
+                'setting it to {0}. Communication error: {1}'
+                ''.format(num_steps, exc)
+            )
+            return -1
 
+        if current_len != num_steps:
+            self.log.error(
+                'write_sequence: SEQ:LENG readback mismatch. '
+                'Requested {0} steps, AWG reports {1} steps allocated.\n'
+                'This usually means the sequence memory could not be '
+                'allocated (e.g. due to a prior incomplete sequence, '
+                'or insufficient AWG sequence memory).'
+                ''.format(num_steps, current_len)
+            )
+            return -1
+
+        # OPC checkpoint interval. For a 200-step sequence with ~6
+        # commands/step this is 1200+ writes. Checking OPC + error queue
+        # only at the very end means a failure at step 50 goes undetected
+        # until all 1200 writes have already been blindly sent. Checking
+        # every N steps catches failures immediately and reports exactly
+        # which step failed.
+        opc_check_interval = 20
+
+        for step, (wfm_tuple, seq_params) in enumerate(sequence_parameter_list, 1):
+
+            if num_tracks == len(wfm_tuple):
                 for waveform in wfm_tuple:
-                    # Extract the channel number directly from the waveform name.
-                    # 'awg_t1_seq_trigger_ch2' → ch_num=2 → SEQ:ELEM{step}:WAV2
-                    #
-                    # This is the correct mapping:
-                    #   _ch1 → WAV1 → OUTPUT1 (a_ch1)
-                    #   _ch2 → WAV2 → OUTPUT2 (a_ch2)
-                    #
-                    # The old code used enumerate(wfm_tuple, 1) which assigns
-                    # track numbers by tuple position, not channel number.
-                    # When only a_ch2 is active, the single waveform '_ch2'
-                    # was getting assigned to WAV1 (ch1) — wrong.
                     try:
                         ch_num = int(waveform.rsplit('_ch', 1)[1])
                     except (ValueError, IndexError):
                         self.log.error(
                             'write_sequence: cannot extract channel number from '
-                            'waveform name "{0}". Expected format: name_chN.'
-                            ''.format(waveform)
+                            'waveform name "{0}" at step {1}.'
+                            ''.format(waveform, step)
                         )
                         return -1
-
                     self.sequence_set_waveform(waveform, step, ch_num)
-
             else:
                 self.log.error(
-                    'Unable to write sequence.\n'
-                    'Length of waveform tuple "{0}" does not '
-                    'match the number of sequence tracks ({1}).'
-                    ''.format(wfm_tuple, num_tracks)
+                    'Unable to write sequence at step {0}.\n'
+                    'Length of waveform tuple "{1}" does not '
+                    'match the number of sequence tracks ({2}).'
+                    ''.format(step, wfm_tuple, num_tracks)
                 )
                 return -1
 
@@ -977,10 +1189,82 @@ class AWG7k(PulserInterface):
             self.sequence_set_repetitions(step, seq_params['repetitions'])
             self.sequence_set_goto(step, seq_params['go_to'])
 
-        while int(self.query('*OPC?')) != 1:
+            if step % opc_check_interval == 0 or step == num_steps:
+                opc_timeout = 10.0
+                opc_elapsed = 0.0
+                opc_ok = False
+
+                while opc_elapsed < opc_timeout:
+                    try:
+                        if int(self.query('*OPC?')) == 1:
+                            opc_ok = True
+                            break
+                    except Exception as exc:
+                        self.log.error(
+                            'write_sequence: *OPC? query failed at step {0}: {1}\n'
+                            'AWG may have stopped responding. Aborting upload.'
+                            ''.format(step, exc)
+                        )
+                        return -1
+                    time.sleep(0.2)
+                    opc_elapsed += 0.2
+
+                if not opc_ok:
+                    self.log.error(
+                        'write_sequence: AWG did not complete pending operations '
+                        'within {0}s after step {1}/{2}. '
+                        'Upload appears STUCK — aborting.\n'
+                        'This is the exact point where the silent stall occurred.'
+                        ''.format(opc_timeout, step, num_steps)
+                    )
+                    return -1
+
+                if self.get_errors():
+                    self.log.error(
+                        'write_sequence: AWG reported error(s) after step {0}/{1}. '
+                        'See error messages above for details. Aborting upload.'
+                        ''.format(step, num_steps)
+                    )
+                    return -1
+
+                self.log.debug(
+                    'write_sequence: checkpoint OK at step {0}/{1}.'
+                    ''.format(step, num_steps)
+                )
+
+        final_timeout = 10.0
+        final_elapsed = 0.0
+        while final_elapsed < final_timeout:
+            try:
+                if int(self.query('*OPC?')) == 1:
+                    break
+            except Exception as exc:
+                self.log.error(
+                    'write_sequence: final *OPC? query failed: {0}'.format(exc)
+                )
+                return -1
             time.sleep(0.25)
+            final_elapsed += 0.25
+        else:
+            self.log.error(
+                'write_sequence: AWG did not complete final operations '
+                'within {0}s.'.format(final_timeout)
+            )
+            return -1
+
+        if self.get_errors():
+            self.log.error(
+                'write_sequence: AWG reported error(s) after completing all '
+                '{0} steps. Sequence may be incomplete or corrupted.'
+                ''.format(num_steps)
+            )
+            return -1
 
         self._written_sequences = [name]
+        self.log.info(
+            'write_sequence: successfully wrote {0} steps for sequence "{1}".'
+            ''.format(num_steps, name)
+        )
         return num_steps
 
     def get_waveform_names(self):
@@ -1051,8 +1335,8 @@ class AWG7k(PulserInterface):
 
         if self._has_interleave():
             self.write('AWGC:INT:STAT {0:d}'.format(int(state)))
-            while int(self.query('*OPC?')) != 1:
-                time.sleep(0.1)
+            # FIX (#2): bounded wait instead of unbounded loop
+            self._wait_opc(timeout=10.0, context='set_interleave')
         return self.get_interleave()
 
     def write(self, command):
@@ -1062,7 +1346,13 @@ class AWG7k(PulserInterface):
 
         @return int: error code (0:OK, -1:error)
         """
-        bytes_written = self.awg.write(command)
+        try:
+            bytes_written = self.awg.write(command)
+        except Exception as exc:
+            self.log.error(
+                'VISA write failed for command "{0}": {1}'.format(command, exc)
+            )
+            return -1
         return 0
 
     def query(self, question):
@@ -1255,12 +1545,25 @@ class AWG7k(PulserInterface):
                 wfm_file.write(footer.encode())
         return
 
-    def _configure_trigger_mode(self, mode):
+    def _configure_trigger_input_only(self, context='SEQ mode'):
         """
-        Configure AWG hardware for TRIG or GAT operation.
-        Sets AWGC:RMOD to TRIG or GAT AND configures the trigger input hardware.
+        Configure the trigger input hardware WITHOUT changing AWGC:RMOD.
 
-        @param str mode: 'TRIG' or 'GAT'
+        Sets TRIG:SOUR EXT, TRIG:LEV, TRIG:SLOP and TRIG:IMP. Used both:
+          - directly, when AWGC:RMOD is already SEQ (set by load_sequence())
+            so that TWAIT on sequence step 1 responds to the same external
+            BNC trigger as in TRIG/GAT waveform mode
+          - internally by _configure_trigger_mode(), which additionally sets
+            AWGC:RMOD before delegating input configuration here
+
+        FIX (#4): this method and _configure_trigger_mode() previously
+        duplicated ~90% of their code (slope/impedance validation, the
+        TRIG:* writes, OPC wait, error check, and readback+log). They are
+        now merged: _configure_trigger_mode() sets the run mode then calls
+        this method for everything else.
+
+        @param str context: label used in the log message, e.g. 'SEQ mode'
+                            or 'TRIG mode' / 'GAT mode'
         """
         slope = str(self._trigger_slope).upper()
         if slope not in ('POS', 'NEG'):
@@ -1274,20 +1577,13 @@ class AWG7k(PulserInterface):
                 'Invalid trigger_impedance "{0}", falling back to "50OHM".'.format(imp))
             imp = '50OHM'
 
-        # Set run mode (TRIG or GAT)
-        mode_map = {'TRIG': 'T', 'GAT': 'G'}
-        self.set_mode(mode_map[mode])
-        while int(self.query('*OPC?')) != 1:
-            time.sleep(0.1)
-
-        # Configure trigger input
         self.write('TRIG:IMP {0}'.format(imp))
         self.write('TRIG:SOUR EXT')
         self.write('TRIG:LEV {0:.4f}'.format(self._trigger_level))
         self.write('TRIG:SLOP {0}'.format(slope))
 
-        while int(self.query('*OPC?')) != 1:
-            time.sleep(0.1)
+        # FIX (#2): bounded wait instead of unbounded loop
+        self._wait_opc(timeout=5.0, context='_configure_trigger_input_only')
 
         self.get_errors()
 
@@ -1297,60 +1593,28 @@ class AWG7k(PulserInterface):
             slop = self.query('TRIG:SLOP?')
             imq  = self.query('TRIG:IMP?')
             self.log.info(
-                '{0} mode configured -- source: {1}  level: {2} V  '
-                'slope: {3}  impedance: {4}'.format(mode, src, lev, slop, imq)
+                '{0} trigger input configured -- source: {1}  level: {2} V  '
+                'slope: {3}  impedance: {4}'.format(context, src, lev, slop, imq)
             )
         except Exception as exc:
             self.log.debug('Could not read back trigger settings: {0}'.format(exc))
 
-    def _configure_trigger_input_only(self):
+    def _configure_trigger_mode(self, mode):
         """
-        Configure the trigger input hardware WITHOUT changing AWGC:RMOD.
+        Configure AWG hardware for TRIG or GAT operation.
+        Sets AWGC:RMOD to TRIG or GAT, then delegates trigger input
+        configuration to _configure_trigger_input_only() to avoid
+        duplicating that logic (see FIX #4 note there).
 
-        Used when AWGC:RMOD is already SEQ (set by load_sequence()).
-        Sets TRIG:SOUR EXT, TRIG:LEV, TRIG:SLOP and TRIG:IMP so that the
-        TWAIT instruction on sequence step 1 responds to the same external
-        BNC trigger as in TRIG/GAT waveform mode.
-
-        This is the key equivalence between modes:
-          Waveform mode:  AWG in TRIG mode — external trigger starts playback
-          Sequence mode:  AWG in SEQ mode  — external trigger unblocks TWAIT step 1
-          Same physical BNC, same trigger signal, same user-drawn pulse block.
+        @param str mode: 'TRIG' or 'GAT'
         """
-        slope = str(self._trigger_slope).upper()
-        if slope not in ('POS', 'NEG'):
-            self.log.warning(
-                'Invalid trigger_slope "{0}", falling back to "POS".'.format(slope))
-            slope = 'POS'
+        mode_map = {'TRIG': 'T', 'GAT': 'G'}
+        self.set_mode(mode_map[mode])
 
-        imp = str(self._trigger_impedance).upper()
-        if imp not in ('50OHM', '1KOHM'):
-            self.log.warning(
-                'Invalid trigger_impedance "{0}", falling back to "50OHM".'.format(imp))
-            imp = '50OHM'
+        # FIX (#2): bounded wait instead of unbounded loop
+        self._wait_opc(timeout=5.0, context='_configure_trigger_mode:set_mode')
 
-        # Configure trigger input ONLY — do NOT write AWGC:RMOD
-        self.write('TRIG:IMP {0}'.format(imp))
-        self.write('TRIG:SOUR EXT')
-        self.write('TRIG:LEV {0:.4f}'.format(self._trigger_level))
-        self.write('TRIG:SLOP {0}'.format(slope))
-
-        while int(self.query('*OPC?')) != 1:
-            time.sleep(0.1)
-
-        self.get_errors()
-
-        try:
-            src  = self.query('TRIG:SOUR?')
-            lev  = self.query('TRIG:LEV?')
-            slop = self.query('TRIG:SLOP?')
-            imq  = self.query('TRIG:IMP?')
-            self.log.info(
-                'SEQ mode trigger input configured -- source: {0}  level: {1} V  '
-                'slope: {2}  impedance: {3}'.format(src, lev, slop, imq)
-            )
-        except Exception as exc:
-            self.log.debug('Could not read back SEQ trigger settings: {0}'.format(exc))
+        self._configure_trigger_input_only(context='{0} mode'.format(mode))
 
     def sequence_set_waveform(self, waveform_name, step, track):
         """

@@ -675,6 +675,23 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         activate_channels) to avoid any possibility of nested lock acquisition.
         """
 
+        # Pre-check instruction count before writing anything
+        # Writing partial instructions to the board when we know we'll exceed
+        # the limit leaves the board in an inconsistent state. Abort early.
+        MAX_PB_INSTRUCTIONS = 4094
+
+        if len(sequence_list) > MAX_PB_INSTRUCTIONS:
+            self.log.error(
+                'PulseBlaster write_pulse_form ABORTED.\n'
+                'Sequence requires {0} instructions after RLE compression, '
+                'exceeding the hardware maximum of {1}.\n'
+                'Reduce the number of channel transitions, shorten the '
+                'sequence, or enable use_smart_pulse_creation in the '
+                'PulseBlaster config to compress long constant segments '
+                'further.'.format(len(sequence_list), MAX_PB_INSTRUCTIONS)
+            )
+            return -1
+
         # ── Single-instruction sequence ───────────────────────────────────────
         # FIX 8 (corrected): Do NOT call activate_channels() here.
         # The original code called it for all single-element sequences, which
@@ -721,17 +738,25 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             sequence_list[0]['length']
         )
 
-        # Write all middle instructions (all entries except first and last)
+        # abort immediately on overflow instead of just logging
+        write_failed = False
         for pulse in sequence_list[1:-1]:
             num = self._convert_pulse_to_inst(
                 pulse['active_channels'],
                 pulse['length']
             )
-            if num > 4094:  # 4094 = 2^12 - 2, the maximum instruction address
+            if num > MAX_PB_INSTRUCTIONS - 2:  # reserve room for final + branch
                 self.log.error(
-                    'Instruction count {0} exceeds board maximum (4094). '
-                    'Reduce sequence length.'.format(num)
+                    'Instruction count {0} exceeds board maximum ({1}) '
+                    'mid-sequence. Aborting write.'
+                    ''.format(num, MAX_PB_INSTRUCTIONS)
                 )
+                write_failed = True
+                break
+
+        if write_failed:
+            self.stop_programming()
+            return -1
 
         # ── Final instruction: loop (BRANCH) or run-once (STOP) ───────────────
         active_channels = sequence_list[-1]['active_channels']
@@ -765,10 +790,16 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 length=length
             )
 
-        if num > 4094:
+        # return -1 on overflow instead of just logging ────────────
+        if num > MAX_PB_INSTRUCTIONS:
             self.log.error(
-                'Final instruction count {0} exceeds board maximum (4094).'.format(num)
+                'Final instruction count {0} exceeds board maximum ({1}). '
+                'Sequence write FAILED — board state may be inconsistent. '
+                'Call reset_device() before retrying.'
+                ''.format(num, MAX_PB_INSTRUCTIONS)
             )
+            self.stop_programming()
+            return -1
 
         self.stop_programming()
         return num
