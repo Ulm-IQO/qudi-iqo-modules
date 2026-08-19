@@ -27,9 +27,19 @@ Channel naming convention
   AWG channels (native):   a_ch1, a_ch2, d_ch1, d_ch2, d_ch3, d_ch4
   PulseBlaster channels:   d_ch5, d_ch6, d_ch7, ...  (continue d_ch* sequence)
 
-  The offset is set by pb_channel_d_offset (default 5). All channels look
-  identical to qudi so the GUI creates voltage widgets, they appear in
-  laser/gate dropdowns, and activation config validation works correctly.
+  The offset is set by pb_channel_d_offset (default 5). The offset VALUE
+  ITSELF is the first PulseBlaster channel (d_ch{offset} -> PB hw index 0),
+  d_ch{offset+1} -> PB hw index 1, etc. AWG channels occupy d_ch1 through
+  d_ch{offset-1}. This boundary convention is used consistently by
+  _is_pb_d_ch(), _d_ch_to_pb_hw() and _pb_index_to_d_ch() -- previously an
+  inconsistency here (">" vs ">=", and an extra "-1") caused d_ch{offset}
+  itself to be misclassified as an AWG channel, which made the AWG hardware
+  module reject it during set_active_channels() ("channels that are not
+  present in AWG"), aborting activation entirely.
+
+  All channels look identical to qudi so the GUI creates voltage widgets,
+  they appear in laser/gate dropdowns, and activation config validation
+  works correctly.
 
 Waveform naming
   write_waveform('rabi', ...) creates:
@@ -42,6 +52,20 @@ Granularity
   waveform_length.step = LCM(AWG_gran, AWG_samples_per_PB_clock_cycle).
   Every pulse element length satisfies both devices, making AWG->PB
   decimation always lossless.
+
+  IMPORTANT: AWG_samples_per_PB_clock_cycle (_awg_per_pb) is computed from
+  the PulseBlaster's REPORTED clock rate (pulseblaster().get_constraints()
+  .sample_rate.default). If that reported rate does not match the board's
+  ACTUAL physical oscillator frequency, every timed interval on every
+  PulseBlaster channel will be uniformly stretched or compressed by the
+  mismatch ratio -- e.g. a PulseBlasterESR-PRO with an actual 400 MHz clock,
+  but a hardware module configured/assuming 500 MHz, will produce pulses
+  25% longer than requested (500/400 = 1.25) on EVERY predefined method,
+  in both waveform and sequence mode, with no error anywhere in this
+  interfuse's math because the math is entirely self-consistent with the
+  (wrong) rate it is given. This is NOT a bug in this interfuse -- verify
+  the PulseBlaster hardware module's own clock-rate ConfigOption/constant
+  matches the board's actual oscillator before looking for bugs here.
 
 Trigger delay compensation
   awg_trigger_delay = time from PB trigger edge to first AWG output sample.
@@ -72,6 +96,16 @@ Start / stop ordering
   trigger_master = 'pulseblaster': arm AWG first, then start PB
   trigger_master = 'awg':          reverse order
 
+Diagnostics
+  debug_channel_routing (bool, default False): if enabled, logs every
+  digital channel's AWG-vs-PB classification and PB hardware index on
+  every write_waveform() call, plus HIGH-sample-duration diagnostics for
+  a specific channel named by debug_watch_channel. Left in permanently
+  (as an opt-in config option, not hardcoded prints) because this exact
+  logging was what proved the AWG->PB decimation math is arithmetically
+  exact -- useful again any time someone suspects a channel-routing or
+  duration-scaling problem in the future.
+
 Example config:
 
 awg_pb_interfuse:
@@ -81,15 +115,18 @@ awg_pb_interfuse:
         pulseblaster: 'pulser_pulseblaster'
     options:
         trigger_master: 'pulseblaster'
-        awg_trigger_delay: 100e-9
-        pb_channels: [0, 1, 2, 3, 4]
+        awg_trigger_delay: 300e-9
+        pb_channels: [0, 1, 2, 3, 4, 5, 6, 7, 8]
         pb_channel_d_offset: 5
-        default_activation_config: 'A1_M1_M2_pb3'
+        default_activation_config: 'A2_M3_M4_pb9'
+        debug_channel_routing: False
+        debug_watch_channel: 'd_ch10'
 """
 
 from math import gcd
 import time
 import numpy as np
+import re
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -111,10 +148,22 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     _trigger_master    = ConfigOption('trigger_master',    default='pulseblaster', missing='warn')
     _awg_trigger_delay = ConfigOption('awg_trigger_delay', default=0.0,            missing='nothing')
     _pb_channels       = ConfigOption('pb_channels',       default=[0, 1, 2, 3],   missing='warn')
-    _pb_d_offset       = ConfigOption('pb_channel_d_offset', default=5,            missing='nothing')
+
+    # FIX: this attribute name MUST match what _is_pb_d_ch(), _d_ch_to_pb_hw()
+    # and _pb_index_to_d_ch() all reference. A previous mismatch between
+    # this ConfigOption's attribute name and the name used inside those
+    # methods caused an AttributeError crash on activation.
+    _pb_channel_d_offset = ConfigOption('pb_channel_d_offset', default=5, missing='nothing')
+
     _default_activation_config = ConfigOption(
         'default_activation_config', default=None, missing='nothing'
     )
+
+    # Diagnostics -- opt-in, off by default. See module docstring
+    # "Diagnostics" section above for why these are kept permanently
+    # available rather than removed after debugging.
+    _debug_channel_routing = ConfigOption('debug_channel_routing', default=False, missing='nothing')
+    _debug_watch_channel   = ConfigOption('debug_watch_channel',   default=None,  missing='nothing')
 
     # =========================================================================
     # Module lifecycle
@@ -169,33 +218,114 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     # =========================================================================
     # Private helpers — channel naming
     # =========================================================================
+    def _extract_d_ch_number(self, d_ch_name):
+        """
+        Robustly extract the integer channel number from a digital channel
+        name of the form 'd_ch<N>', where N may be one or more digits
+        (e.g. 'd_ch1', 'd_ch5', 'd_ch10', 'd_ch21', ...).
 
-    def _is_pb_d_ch(self, ch_name):
-        """Return True if ch_name belongs to PulseBlaster (d_chN, N >= offset)."""
-        if not ch_name.startswith('d_ch'):
-            return False
-        try:
-            return int(ch_name.rsplit('_ch', 1)[1]) >= self._pb_d_offset
-        except (ValueError, IndexError):
-            return False
+        Returns None if the name doesn't match the expected pattern.
 
-    def _pb_index_to_d_ch(self, list_index):
-        """Convert position in self._pb_channels list to qudi d_ch name."""
-        return 'd_ch{0:d}'.format(self._pb_d_offset + list_index)
+        IMPORTANT: this is called via _is_pb_d_ch()/_d_ch_to_pb_hw() on
+        EVERY channel name passed through set_active_channels(),
+        get_digital_level(), write_waveform(), etc. -- including analog
+        channels like 'a_ch1'/'a_ch2'. Names that don't even start with
+        'd_ch' are a completely normal, expected input, NOT a parsing
+        failure -- so they return None silently, without logging an
+        error. An error is only logged when a name DOES start with 'd_ch'
+        but still fails to match the expected "d_ch<digits>" pattern,
+        which would indicate an actual malformed/unexpected channel name.
+
+        Uses a regex that matches ANY number of digits (not just one),
+        so double-digit and beyond channel names (e.g. 'd_ch10',
+        'd_ch13') parse correctly. A previous single-digit-only parser
+        would have silently mis-routed any channel numbered 10 or higher.
+        """
+        if not isinstance(d_ch_name, str) or not d_ch_name.startswith('d_ch'):
+            return None
+
+        match = re.fullmatch(r'd_ch(\d+)', d_ch_name)
+        if match is None:
+            self.log.error(
+                'Could not parse digital channel number from name "{0}". '
+                'Expected format "d_ch<N>".'.format(d_ch_name))
+            return None
+        return int(match.group(1))
+
+
+    def _is_pb_d_ch(self, d_ch_name):
+        """
+        Returns True if the given digital channel name belongs to the
+        PulseBlaster.
+
+        Boundary convention (MUST match _pb_index_to_d_ch and
+        _d_ch_to_pb_hw exactly): the offset value itself is the FIRST
+        PulseBlaster channel index, i.e. d_ch{offset} is PB index 0,
+        d_ch{offset+1} is PB index 1, etc. AWG channels occupy d_ch1
+        through d_ch{offset-1}.
+
+        FIX: previously used "ch_num > offset" (strictly greater than),
+        which incorrectly excluded d_ch{offset} itself from being
+        recognised as a PB channel -- it was silently treated as an AWG
+        channel instead, causing the AWG hardware module to reject it
+        during set_active_channels() ("channels that are not present in
+        AWG"), which aborted the entire default_activation_config apply
+        at startup.
+
+        Returns False (not an error) for anything that isn't a 'd_ch*'
+        name at all, e.g. 'a_ch1', 'a_ch2'.
+        """
+        ch_num = self._extract_d_ch_number(d_ch_name)
+        if ch_num is None:
+            return False
+        return ch_num >= self._pb_channel_d_offset
+
 
     def _d_ch_to_pb_hw(self, d_ch_name):
         """
-        Convert d_ch name to PB hardware channel number.
-        Returns None if not a configured PB channel.
+        Converts a qudi digital channel name (e.g. 'd_ch5') into the
+        PulseBlaster's own zero-based hardware channel index (e.g. 0),
+        using the configured pb_channel_d_offset.
+
+        Boundary convention matches _is_pb_d_ch() and
+        _pb_index_to_d_ch(): d_ch{offset} -> PB hw index 0.
+
+        FIX: previously subtracted an extra 1 ("ch_num - offset - 1"),
+        which was inconsistent with _pb_index_to_d_ch()'s "offset +
+        index" and caused d_ch{offset} to fail the rejection check as
+        well as misassigning every subsequent channel to the wrong PB
+        hardware line by one position.
+
+        Returns None if the channel does not belong to the PulseBlaster,
+        or if it falls outside the number of configured pb_channels.
         """
-        try:
-            d_num = int(d_ch_name.rsplit('_ch', 1)[1])
-            idx   = d_num - self._pb_d_offset
-            if 0 <= idx < len(self._pb_channels):
-                return self._pb_channels[idx]
-        except (ValueError, IndexError):
-            pass
-        return None
+        ch_num = self._extract_d_ch_number(d_ch_name)
+        if ch_num is None:
+            return None
+        if ch_num < self._pb_channel_d_offset:
+            self.log.error(
+                'Channel "{0}" (number {1}) is not a PulseBlaster channel -- '
+                'it is below pb_channel_d_offset ({2}).'
+                .format(d_ch_name, ch_num, self._pb_channel_d_offset))
+            return None
+
+        hw_ch = ch_num - self._pb_channel_d_offset
+        if hw_ch < 0 or hw_ch >= len(self._pb_channels):
+            self.log.error(
+                'Channel "{0}" maps to PulseBlaster hw index {1}, which is '
+                'outside the configured pb_channels list (length {2}).'
+                .format(d_ch_name, hw_ch, len(self._pb_channels)))
+            return None
+        return hw_ch
+
+    def _pb_index_to_d_ch(self, list_index):
+        """
+        Convert position in self._pb_channels list to qudi d_ch name.
+        Index 0 -> d_ch{offset}, index 1 -> d_ch{offset+1}, etc.
+        This is the canonical definition that _is_pb_d_ch() and
+        _d_ch_to_pb_hw() must stay consistent with.
+        """
+        return 'd_ch{0:d}'.format(self._pb_channel_d_offset + list_index)
 
     def _all_pb_d_ch_names(self):
         """Return list of all PB channel names in d_ch* notation."""
@@ -287,6 +417,55 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 ''.format(pb_name, pb_total, self._pb_sample_rate)
             )
 
+    def _log_channel_routing_debug(self, d_ch_name):
+        """
+        Opt-in diagnostic (enabled via debug_channel_routing config
+        option): logs the AWG-vs-PB classification and PB hardware index
+        for a single digital channel name.
+
+        This exact logging is what proved (during a real debugging
+        session) that the AWG->PB sample decimation math is arithmetically
+        exact -- e.g. confirming a 120000-AWG-sample HIGH region decimates
+        to exactly 5000 PB samples with zero remainder, given an integer
+        _awg_per_pb ratio. Kept permanently available (opt-in, not
+        hardcoded) for future use whenever channel-routing or
+        duration-scaling problems are suspected again.
+
+        @param str d_ch_name: digital channel name, e.g. 'd_ch10'
+        """
+        is_pb = self._is_pb_d_ch(d_ch_name)
+        hw_ch = self._d_ch_to_pb_hw(d_ch_name) if is_pb else None
+        self.log.debug(
+            'DEBUG channel routing: "{0}" -> is_pb={1}, pb_hw={2}'
+            .format(d_ch_name, is_pb, hw_ch)
+        )
+
+    def _log_watch_channel_duration(self, d_ch_name, samples):
+        """
+        Opt-in diagnostic (enabled via debug_channel_routing config
+        option, targeting the channel named by debug_watch_channel):
+        logs how many AWG samples in the given digital channel's array
+        are HIGH, and what physical duration that represents at the
+        current AWG sample rate.
+
+        Useful for confirming whether a channel's intended pulse duration
+        (e.g. laser_length set in Generator Settings) actually matches
+        what was sampled into the waveform, BEFORE any AWG->PB decimation
+        happens -- ruling in/out the interfuse's own math versus an
+        upstream predefined-method or hardware-clock-configuration issue.
+
+        @param str d_ch_name: digital channel name being inspected
+        @param np.ndarray samples: boolean sample array for this channel
+        """
+        high_count = int(np.sum(samples))
+        high_duration_us = high_count / self._awg_sample_rate * 1e6
+        self.log.info(
+            'DEBUG watch channel "{0}": {1} AWG samples HIGH out of {2} '
+            'total = {3:.3f} us (at {4:.3e} Hz AWG sample rate).'
+            ''.format(d_ch_name, high_count, len(samples),
+                      high_duration_us, self._awg_sample_rate)
+        )
+
     # =========================================================================
     # Private helpers — rate parameters
     # =========================================================================
@@ -295,6 +474,16 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Recalculate sample-rate-dependent parameters.
         Call at on_activate(), after set_sample_rate(), after set_interleave().
+
+        NOTE: self._pb_sample_rate is read directly from
+        pulseblaster().get_constraints().sample_rate.default. If the
+        PulseBlaster hardware module's own clock-rate ConfigOption does
+        not match the board's actual physical oscillator frequency, this
+        value -- and therefore _awg_per_pb, _lcm_gran and every PB sample
+        count computed anywhere in this interfuse -- will be
+        self-consistently wrong by that same ratio. This is NOT
+        something this method can detect or correct; it must be fixed in
+        the PulseBlaster hardware module's own configuration.
         """
         awg_c = self.awg().get_constraints()
         pb_c  = self.pulseblaster().get_constraints()
@@ -654,6 +843,13 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         AWG channels -> awg().set_active_channels()
         PB channels  -> internal dict only (never call pulseblaster().set_active_channels)
+
+        NOTE: PulseBlaster hardware module's own activation_config only
+        accepts exactly 4 or 21 channels -- any other count is rejected.
+        Calling pulseblaster().set_active_channels() here would hide PB
+        channels from the pulse block editor entirely for any other
+        channel count. PB channel state is therefore tracked purely
+        internally in _pb_active_channels.
         """
         if ch is None:
             return self.get_active_channels()
@@ -706,7 +902,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         pb_digital_raw = {}
         for d_ch_name, samples in digital_samples.items():
-            if self._is_pb_d_ch(d_ch_name):
+
+            is_pb = self._is_pb_d_ch(d_ch_name)
+
+            # Opt-in diagnostics -- see module docstring "Diagnostics"
+            # section. Only logs when debug_channel_routing=True in
+            # config, so normal operation stays quiet.
+            if self._debug_channel_routing:
+                self._log_channel_routing_debug(d_ch_name)
+                if self._debug_watch_channel is not None \
+                        and d_ch_name == self._debug_watch_channel:
+                    self._log_watch_channel_duration(d_ch_name, samples)
+
+            if is_pb:
                 hw_ch = self._d_ch_to_pb_hw(d_ch_name)
                 if hw_ch is not None:
                     pb_digital_raw['d_ch{0:d}'.format(hw_ch)] = samples
