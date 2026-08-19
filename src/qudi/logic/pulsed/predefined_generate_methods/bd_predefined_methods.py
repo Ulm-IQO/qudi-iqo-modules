@@ -1710,11 +1710,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 'Frequency', 'Signal'
             )
             cw_odmr_sequence.measurement_information['number_of_lasers']    = len(freq_array)
-            cw_odmr_sequence.measurement_information['counting_length']     = (
-                self._get_sequence_count_length(
-                    cw_odmr_sequence, created_ensembles, created_blocks
-                )
-            )
+            cw_odmr_sequence.measurement_information['counting_length']     = (mw_length + delay_element.init_length_s)
     
             created_sequences.append(cw_odmr_sequence)
             return created_blocks, created_ensembles, created_sequences
