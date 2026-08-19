@@ -201,7 +201,6 @@ def clone_repo(repo: str, location: Path):
 
 
 def choose_install_dir():
-    global INSTALL_DIR
     print("Where do you want to install Qudi?")
     print("1) Home directory")
     print("2) Current directory")
@@ -210,29 +209,26 @@ def choose_install_dir():
     choice = input("Enter 1, 2, or 3 (default 1): ").strip()
 
     if choice == "2":
-        INSTALL_DIR = Path.cwd()
+        CONFIG.install_dir = Path.cwd()
     elif choice == "3":
         custom_path = input("Enter full path for installation: ").strip().strip('"')
         if not custom_path:
             return
         print(custom_path)
-        INSTALL_DIR = Path(custom_path).expanduser().resolve()
+        CONFIG.install_dir = Path(custom_path).expanduser().resolve()
 
 
 def choose_venv_name():
-    global VENV_DIR
     print("Use a custom virtual environment name?")
     print("1) qudi-env")
     print("2) Custom name")
 
     choice = input("Enter 1, 2 (default 1): ").strip()
 
-    custom_name = "qudi-env"
     if choice == "2":
         choice = input("Enter name: ").strip()
         if choice:
-            custom_name = choice
-    VENV_DIR = INSTALL_DIR / custom_name
+            CONFIG.venv_name = choice
 
 
 def run(cmd, cwd=None):
@@ -258,11 +254,11 @@ def check_git():
 
 def create_venv():
     choose_venv_name()
-    if not os.path.exists(VENV_DIR):
-        print(f"Creating virtual environment in '{VENV_DIR}'...")
-        venv.create(VENV_DIR, with_pip=True)
+    if not os.path.exists(CONFIG.venv_dir):
+        print(f"Creating virtual environment in '{CONFIG.venv_dir}'...")
+        venv.create(CONFIG.venv_dir, with_pip=True)
     else:
-        print(f"Virtual environment '{VENV_DIR}' already exists.")
+        print(f"Virtual environment '{CONFIG.venv_dir}' already exists.")
 
         if not yes_no_choice("Continuing will modify the existing virtual environment, do you want to continue?"):
             print("Aborting Qudi installation")
@@ -271,13 +267,13 @@ def create_venv():
 
 def install_modules():
     if os.name == "nt":
-        python_bin = VENV_DIR / "Scripts" / "python.exe"
+        python_bin = CONFIG.venv_dir / "Scripts" / "python.exe"
     else:
-        python_bin = VENV_DIR / "bin" / "python"
+        python_bin = CONFIG.venv_dir / "bin" / "python"
     run(f'"{python_bin}" -m pip install --upgrade pip')
 
-    if CORE_DIR:
-        clone_repo(CORE_REPO, CORE_DIR)
+    if CONFIG.core_dir:
+        clone_repo(CONFIG.core_repo, CONFIG.core_dir)
         run(f'"{python_bin}" -m pip install -e "{CORE_DIR}"')
     else:
         run(f'"{python_bin}" -m pip install qudi-core')
@@ -531,8 +527,8 @@ def main():
 
     choose_install_dir()
 
-    INSTALL_DIR.mkdir(parents=True, exist_ok=True)
-    os.chdir(INSTALL_DIR)
+    CONFIG.install_dir.mkdir(parents=True, exist_ok=True)
+    os.chdir(CONFIG.install_dir)
 
     create_venv()
 
@@ -549,7 +545,7 @@ def main():
     desktop_shortcut()
 
     print("\nInstallation complete!")
-    print(f"Location: {INSTALL_DIR}")
+    print(f"Location: {CONFIG.install_dir}")
 
 
 if __name__ == "__main__":
