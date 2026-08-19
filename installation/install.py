@@ -1,4 +1,5 @@
 import os
+from socket import CAN_RAW_JOIN_FILTERS
 import subprocess
 import sys
 from typing import Optional
@@ -77,29 +78,71 @@ class InstallationConfig:
         return self.install_dir / self.qudi_icon_name
 
     @property
+    def jupyter_icon_file(self) -> Path:
+        if os.name == "nt":
+            return self.venv_dir / "Lib/site-packages/jupyter_server/static/favicons/favicon.ico"
+        else:
+            return self.venv_dir / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages" / "jupyter_server" / "static" / "favicons" / "favicon.ico"
+
+    @property
+    def environment_icon_file(self) -> Path:
+        if os.name == "nt":
+            return self.venv_dir / "Scripts/python.exe,0"
+        else:
+            return self.venv_dir / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages" / "idlelib" / "Icons" / "idle_48.png"
+
+    @property
     def qudi_icon_url(self) -> str:
         return "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/" + self.qudi_icon_name
 
     @property
     def activation_script(self) -> Path:
         if os.name == "nt":
-            return CONFIG.install_dir / "qudi_environment.ps1"
+            return self.install_dir / "qudi_environment.ps1"
         else:
-            return CONFIG.install_dir / "qudi_environment.sh"
+            return self.install_dir / "qudi_environment.sh"
 
     @property
     def launcher_script(self) -> Path:
         if os.name == "nt":
-            return CONFIG.install_dir / "qudi.ps1"
+            return self.install_dir / "qudi.ps1"
         else:
-            return CONFIG.install_dir / "qudi.sh"
+            return self.install_dir / "qudi.sh"
 
     @property
     def jupyter_script(self) -> Path:
         if os.name == "nt":
-            return CONFIG.install_dir / "qudi_jupyter.ps1"
+            return self.install_dir / "qudi_jupyter.ps1"
         else:
-            return CONFIG.install_dir / "qudi_jupyter.sh"
+            return self.install_dir / "qudi_jupyter.sh"
+
+    @property
+    def activation_desktop_file(self) -> Path:
+        if os.name == "nt":
+            return self.install_dir / "qudi_environment.lnk"
+        else:
+            return self.install_dir / "qudi_environment.desktop"
+
+    @property
+    def launcher_desktop_file(self) -> Path:
+        if os.name == "nt":
+            return self.install_dir / "qudi.lnk"
+        else:
+            return self.install_dir / "qudi.desktop"
+
+    @property
+    def jupyter_desktop_file(self) -> Path:
+        if os.name == "nt":
+            return self.install_dir / "qudi_jupyter.lnk"
+        else:
+            return self.install_dir / "qudi_jupyter.desktop"
+
+    @property
+    def python_bin(self) -> Path:
+        if os.name == "nt":
+            return self.venv_dir / "Scripts" / "python.exe"
+        else:
+            return self.venv_dir / "bin" / "python"
 
     def save(self):
         data = asdict(self)
@@ -285,70 +328,60 @@ def create_venv():
 
 
 def install_modules():
-    if os.name == "nt":
-        python_bin = CONFIG.venv_dir / "Scripts" / "python.exe"
-    else:
-        python_bin = CONFIG.venv_dir / "bin" / "python"
-    run(f'"{python_bin}" -m pip install --upgrade pip')
+    run(f'"{CONFIG.python_bin}" -m pip install --upgrade pip')
 
     if CONFIG.core_dir:
         clone_repo(CONFIG.core_repo, CONFIG.core_dir)
-        run(f'"{python_bin}" -m pip install -e "{CORE_DIR}"')
+        run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.core_dir}"')
     else:
-        run(f'"{python_bin}" -m pip install qudi-core')
+        run(f'"{CONFIG.python_bin}" -m pip install qudi-core')
 
     if CONFIG.iqo_modules_dir:
         clone_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir)
-        run(f'"{python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
+        run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
     else:
-        run(f'"{python_bin}" -m pip install qudi-iqo-modules')
+        run(f'"{CONFIG.python_bin}" -m pip install qudi-iqo-modules')
 
-    run(f'"{python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
+    run(f'"{CONFIG.python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
 def create_launcher_scripts():
     if os.name == "nt":
-        activation = CONFIG.install_dir / "qudi_environment.ps1"
-        activation.write_text(f"""Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+        CONFIG.activation_script.write_text(f"""Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
 & "{CONFIG.venv_dir}\\Scripts\\Activate.ps1"
 """)
 
-        launcher = CONFIG.install_dir / "qudi.ps1"
-        launcher.write_text(f"""& "{activation}"
+        CONFIG.launcher_script.write_text(f"""& "{CONFIG.activation_script}"
         qudi -d
         """)
 
-        jupyter = CONFIG.install_dir / "qudi_jupyter.ps1"
-        jupyter.write_text(f"""& "{activation}"
+        CONFIG.jupyter_script.write_text(f"""& "{CONFIG.activation_script}"
         Set-Location "{CONFIG.scripts_dir}"
         jupyter lab
         """)
     else:
-        activation = CONFIG.install_dir / "qudi_environment.sh"
-        activation.write_text(f"""#!/bin/bash
+        CONFIG.activation_script.write_text(f"""#!/bin/bash
 source "{CONFIG.venv_dir}/bin/activate"
 """)
-        activation.chmod(0o755)
+        CONFIG.activation_script.chmod(0o755)
 
-        launcher = CONFIG.install_dir / "qudi.sh"
-        launcher.write_text(f"""#!/bin/bash
-source "{activation}"
+        CONFIG.launcher_script.write_text(f"""#!/bin/bash
+source "{CONFIG.activation_script}"
 qudi -d
 read -n 1 -s -r -p "Press any key to close..."
 echo
 """)
-        launcher.chmod(0o755)
+        CONFIG.launcher_script.chmod(0o755)
 
-        jupyter = CONFIG.install_dir / "qudi_jupyter.sh"
-        jupyter.write_text(f"""#!/bin/bash
-source "{activation}"
+        CONFIG.jupyter_script.write_text(f"""#!/bin/bash
+source "{CONFIG.activation_script}"
 cd "{CONFIG.scripts_dir}"
 jupyter lab
 read -n 1 -s -r -p "Press any key to close..."
 echo
 """)
-        jupyter.chmod(0o755)
-    print(f"Created launcher scripts at {activation}, {launcher}, {jupyter}")
+        CONFIG.jupyter_script.chmod(0o755)
+    print(f"Created launcher scripts at {CONFIG.activation_script}, {CONFIG.launcher_script}, {CONFIG.jupyter_script}")
 
 
 def create_dirs():
@@ -364,130 +397,91 @@ def create_dirs():
 
 
 def create_desktop_file():
-    qudi_iconfile = CONFIG.install_dir
-    jupyter_iconfile = CONFIG.venv_dir
-    environment_iconfile = CONFIG.venv_dir
     if os.name == "nt":
-        qudi_iconname = "logo_qudi.ico"
-        CONFIG.qudi_icon_url += qudi_iconname
-        qudi_iconfile = qudi_iconfile / qudi_iconname
-        QUDI_DESKTOP_FILE = CONFIG.install_dir / "qudi.lnk"
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{QUDI_DESKTOP_FILE}")
+$Shortcut = $WshShell.CreateShortcut("{CONFIG.launcher_desktop_file}")
 $Shortcut.TargetPath = "powershell.exe"
 $Shortcut.WorkingDirectory = "{CONFIG.install_dir}"
-$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{CONFIG.install_dir / "qudi.ps1"}"'
-$Shortcut.IconLocation = "{qudi_iconfile}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{CONFIG.launcher_script}"'
+$Shortcut.IconLocation = "{CONFIG.qudi_icon_file}"
 $Shortcut.Save()
         """
         subprocess.run(["powershell", "-Command", ps_command], check=True)
 
-        jupyter_iconfile = jupyter_iconfile / "Lib/site-packages/jupyter_server/static/favicons/favicon.ico"
-        JUPYTER_DESKTOP_FILE = INSTALL_DIR / "qudi_jupyter.lnk"
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{JUPYTER_DESKTOP_FILE}")
+$Shortcut = $WshShell.CreateShortcut("{CONFIG.jupyter_desktop_file}")
 $Shortcut.TargetPath = "powershell.exe"
-$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
-$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi_jupyter.ps1"}"'
-$Shortcut.IconLocation = "{jupyter_iconfile}"
+$Shortcut.WorkingDirectory = "{CONFIG.install_dir}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{CONFIG.jupyter_script}"'
+$Shortcut.IconLocation = "{CONFIG.jupyter_icon_file}"
 $Shortcut.Save()
         """
         subprocess.run(["powershell", "-Command", ps_command], check=True)
 
-        environment_iconfile = environment_iconfile / "Scripts/python.exe,0"
-        ENVIRONMENT_DESKTOP_FILE = INSTALL_DIR / "qudi_environment.lnk"
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
-$Shortcut = $WshShell.CreateShortcut("{ENVIRONMENT_DESKTOP_FILE}")
+$Shortcut = $WshShell.CreateShortcut("{CONFIG.activation_desktop_file}")
 $Shortcut.TargetPath = "powershell.exe"
-$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
-$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi_environment.ps1"}"'
-$Shortcut.IconLocation = "{environment_iconfile}"
+$Shortcut.WorkingDirectory = "{CONFIG.install_dir}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{CONFIG.activation_script}"'
+$Shortcut.IconLocation = "{CONFIG.environment_icon_file}"
 $Shortcut.Save()
         """
         subprocess.run(["powershell", "-Command", ps_command], check=True)
 
     else:
-        qudi_iconname = "logo-qudi.svg"
-        QUDI_ICON_URL += qudi_iconname
-        qudi_iconfile = qudi_iconfile / qudi_iconname
-
         # Qudi
-        QUDI_DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
-        QUDI_DESKTOP_FILE.write_text(f"""[Desktop Entry]
+        CONFIG.launcher_desktop_file.write_text(f"""[Desktop Entry]
     Version=1.0
     Type=Application
     Name=Qudi
     Comment=Start Qudi Measurement Software
-    Exec="{INSTALL_DIR}/qudi.sh"
-    Path={INSTALL_DIR}
-    Icon={qudi_iconfile}
+    Exec="{CONFIG.launcher_script}"
+    Path={CONFIG.install_dir}
+    Icon={CONFIG.qudi_icon_file}
     Terminal=true
     Categories=Science;Education;
     StartupNotify=true
     """)
-        QUDI_DESKTOP_FILE.chmod(0o755)
+        CONFIG.launcher_desktop_file.chmod(0o755)
 
         # Jupyter
-        jupyter_iconfile = (
-            VENV_DIR
-            / "lib"
-            / f"python{sys.version_info.major}.{sys.version_info.minor}"
-            / "site-packages"
-            / "jupyter_server"
-            / "static"
-            / "favicons"
-            / "favicon.ico"
-        )
-
-        JUPYTER_DESKTOP_FILE = INSTALL_DIR / "qudi_jupyter.desktop"
-        JUPYTER_DESKTOP_FILE.write_text(f"""[Desktop Entry]
+        CONFIG.jupyter_desktop_file.write_text(f"""[Desktop Entry]
     Version=1.0
     Type=Application
     Name=Qudi Jupyter
     Comment=Start Jupyter Notebook in the Qudi environment
-    Exec="{INSTALL_DIR}/qudi_jupyter.sh"
-    Path={INSTALL_DIR}
-    Icon={jupyter_iconfile}
+    Exec="{CONFIG.jupyter_script}"
+    Path={CONFIG.install_dir}
+    Icon={CONFIG.jupyter_icon_file}
     Terminal=true
     Categories=Science;Education;
     StartupNotify=true
     """)
-        JUPYTER_DESKTOP_FILE.chmod(0o755)
+        CONFIG.jupyter_desktop_file.chmod(0o755)
 
         # Environment shell
-        environment_iconfile = (
-            VENV_DIR
-            / "lib"
-            / f"python{sys.version_info.major}.{sys.version_info.minor}"
-            / "site-packages"
-            / "idlelib"
-            / "Icons"
-            / "idle_48.png"
-        )
-
-        ENVIRONMENT_DESKTOP_FILE = INSTALL_DIR / "qudi_environment.desktop"
-        ENVIRONMENT_DESKTOP_FILE.write_text(f"""[Desktop Entry]
+        CONFIG.activation_desktop_file.write_text(f"""[Desktop Entry]
     Version=1.0
     Type=Application
     Name=Qudi Environment
     Comment=Open a shell with the Qudi environment activated
-    Exec=bash -i -c 'source "{INSTALL_DIR}/qudi_environment.sh"; exec bash'
-    Path={INSTALL_DIR}
-    Icon={environment_iconfile}
+    Exec=bash -i -c 'source "{CONFIG.activation_script}"; exec bash'
+    Path={CONFIG.install_dir}
+    Icon={CONFIG.environment_icon_file}
     Terminal=true
     Categories=Development;
     StartupNotify=true
     """)
-        ENVIRONMENT_DESKTOP_FILE.chmod(0o755)
+        CONFIG.activation_desktop_file.chmod(0o755)
 
-    print(f"Downloading Qudi icon from {QUDI_ICON_URL}")
-    with urlopen(QUDI_ICON_URL) as response:
-        qudi_iconfile.write_bytes(response.read())
+    print(f"Downloading Qudi icon from {CONFIG.qudi_icon_url}")
+    with urlopen(CONFIG.qudi_icon_url) as response:
+        CONFIG.qudi_icon_file.write_bytes(response.read())
 
-    print(f"Created desktop file at {QUDI_DESKTOP_FILE}")
+    print(f"Created desktop file at (launcher: {CONFIG.launcher_desktop_file}) , (environment: {CONFIG.activation_desktop_file}), (jupyter: {CONFIG.jupyter_desktop_file})")
 
 def start_menu_shortcut():
     if not yes_no_choice("Create Start Menu shortcut?"):
@@ -499,8 +493,8 @@ def start_menu_shortcut():
     else:
         start_menu = Path.home() / ".local/share/applications"
 
-    destination = start_menu / QUDI_DESKTOP_FILE.name
-    shutil.copy2(QUDI_DESKTOP_FILE, destination)
+    destination = start_menu / CONFIG.launcher_desktop_file.name
+    shutil.copy2(CONFIG.launcher_desktop_file, destination)
     print(f"Registered Start Menu shortcut at {destination}")
 
 
@@ -508,14 +502,13 @@ def desktop_shortcut():
     if not yes_no_choice("Create Desktop shortcut?"):
         return
 
-    destination = Path.home() / "Desktop" / QUDI_DESKTOP_FILE.name
+    destination = Path.home() / "Desktop" / CONFIG.launcher_desktop_file.name
 
-    shutil.copy2(QUDI_DESKTOP_FILE, destination)
+    shutil.copy2(CONFIG.launcher_desktop_file, destination)
     print(f"Created Desktop shortcut at {destination}")
 
 
 def installation_choice():
-    global CORE_DIR, IQO_MODULES_DIR
     print("How to install Qudi?")
     print("1) Latest, editable version of qudi-iqo-modules, but stable qudi-core release")
     print("2) Latest, editable versions of qudi-core and qudi-iqo-modules")
@@ -526,12 +519,12 @@ def installation_choice():
     if choice == "3":
         return
 
-    IQO_MODULES_DIR = INSTALL_DIR / 'qudi-iqo-modules'
+    CONFIG.iqo_modules_dir = CONFIG.install_dir / 'qudi-iqo-modules'
 
     if choice != "2":
         return
 
-    CORE_DIR = INSTALL_DIR / 'qudi-core'
+    CONFIG.core_dir = CONFIG.install_dir / 'qudi-core'
 
 
 def main():
