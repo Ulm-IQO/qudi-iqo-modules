@@ -40,10 +40,6 @@ class InstallationConfig:
     iqo_modules_dir: Optional[Path] = None
 
     # URLs
-    qudi_icon_url: str = (
-        "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/"
-        "refs/heads/main/src/qudi/artwork/logo/"
-    )
     manifest_url: str = (
         "https://raw.githubusercontent.com/actions/python-versions/"
         "main/versions-manifest.json"
@@ -70,16 +66,40 @@ class InstallationConfig:
         return self.install_dir / "installation.json"
 
     @property
-    def qudi_script(self):
-        return self.install_dir / "qudi.sh"
+    def qudi_icon_name(self) -> str:
+        if os.name == "nt":
+            return "logo_qudi.ico"
+        else:
+            return "logo-qudi.svg"
 
     @property
-    def jupyter_script(self):
-        return self.install_dir / "qudi_jupyter.sh"
+    def qudi_icon_file(self) -> Path:
+        return self.install_dir / self.qudi_icon_name
 
     @property
-    def environment_script(self):
-        return self.install_dir / "qudi_environment.sh"
+    def qudi_icon_url(self) -> str:
+        return "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/" + self.qudi_icon_name
+
+    @property
+    def activation_script(self) -> Path:
+        if os.name == "nt":
+            return CONFIG.install_dir / "qudi_environment.ps1"
+        else:
+            return CONFIG.install_dir / "qudi_environment.sh"
+
+    @property
+    def launcher_script(self) -> Path:
+        if os.name == "nt":
+            return CONFIG.install_dir / "qudi.ps1"
+        else:
+            return CONFIG.install_dir / "qudi.sh"
+
+    @property
+    def jupyter_script(self) -> Path:
+        if os.name == "nt":
+            return CONFIG.install_dir / "qudi_jupyter.ps1"
+        else:
+            return CONFIG.install_dir / "qudi_jupyter.sh"
 
     def save(self):
         data = asdict(self)
