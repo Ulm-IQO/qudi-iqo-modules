@@ -10,7 +10,6 @@ from urllib.error import URLError
 import json
 import re
 from dataclasses import dataclass, asdict
-import json
 
 from enum import Enum
 
@@ -115,7 +114,7 @@ CONFIG = InstallationConfig()
 
 
 def read_requires_python() -> str:
-    with urlopen(PYPROJECT_URL) as response:
+    with urlopen(CONFIG.pyproject_url) as response:
         content = response.read().decode("utf-8")
 
     match = re.search(
@@ -130,7 +129,7 @@ def read_requires_python() -> str:
     raise SystemExit("requires-python not found in pyproject.toml")
 
 
-def fetch_manifest(url: str = MANIFEST_URL) -> list[str]:
+def fetch_manifest(url: str = CONFIG.manifest_url) -> list[str]:
     try:
         with urlopen(url, timeout=30) as r:
             manifest = json.load(r)
@@ -278,9 +277,9 @@ def install_modules():
     else:
         run(f'"{python_bin}" -m pip install qudi-core')
 
-    if IQO_MODULES_DIR:
-        clone_repo(IQO_REPO, IQO_MODULES_DIR)
-        run(f'"{python_bin}" -m pip install -e "{IQO_MODULES_DIR}"')
+    if CONFIG.iqo_modules_dir:
+        clone_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir)
+        run(f'"{python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
     else:
         run(f'"{python_bin}" -m pip install qudi-iqo-modules')
 
@@ -289,29 +288,29 @@ def install_modules():
 
 def create_launcher_scripts():
     if os.name == "nt":
-        activation = INSTALL_DIR / "qudi_environment.ps1"
+        activation = CONFIG.install_dir / "qudi_environment.ps1"
         activation.write_text(f"""Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
-& "{VENV_DIR}\\Scripts\\Activate.ps1"
+& "{CONFIG.venv_dir}\\Scripts\\Activate.ps1"
 """)
 
-        launcher = INSTALL_DIR / "qudi.ps1"
+        launcher = CONFIG.install_dir / "qudi.ps1"
         launcher.write_text(f"""& "{activation}"
         qudi -d
         """)
 
-        jupyter = INSTALL_DIR / "qudi_jupyter.ps1"
+        jupyter = CONFIG.install_dir / "qudi_jupyter.ps1"
         jupyter.write_text(f"""& "{activation}"
-        Set-Location "{SCRIPTS_DIR}"
+        Set-Location "{CONFIG.scripts_dir}"
         jupyter lab
         """)
     else:
-        activation = INSTALL_DIR / "qudi_environment.sh"
+        activation = CONFIG.install_dir / "qudi_environment.sh"
         activation.write_text(f"""#!/bin/bash
-source "{VENV_DIR}/bin/activate"
+source "{CONFIG.venv_dir}/bin/activate"
 """)
         activation.chmod(0o755)
 
-        launcher = INSTALL_DIR / "qudi.sh"
+        launcher = CONFIG.install_dir / "qudi.sh"
         launcher.write_text(f"""#!/bin/bash
 source "{activation}"
 qudi -d
@@ -320,10 +319,10 @@ echo
 """)
         launcher.chmod(0o755)
 
-        jupyter = INSTALL_DIR / "qudi_jupyter.sh"
+        jupyter = CONFIG.install_dir / "qudi_jupyter.sh"
         jupyter.write_text(f"""#!/bin/bash
 source "{activation}"
-cd "{SCRIPTS_DIR}"
+cd "{CONFIG.scripts_dir}"
 jupyter lab
 read -n 1 -s -r -p "Press any key to close..."
 echo
@@ -333,37 +332,32 @@ echo
 
 
 def create_dirs():
-    global CONFIG_DIR, SCRIPTS_DIR
-    CONFIG_DIR = INSTALL_DIR / "config/"
-    SCRIPTS_DIR = INSTALL_DIR / "scripts/"
-    CONFIG_DIR.mkdir(exist_ok=True)
-    SCRIPTS_DIR.mkdir(exist_ok=True)
-    if IQO_MODULES_DIR:
-        shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", CONFIG_DIR / "default.cfg")
+    CONFIG.config_dir.mkdir(exist_ok=True)
+    CONFIG.scripts_dir.mkdir(exist_ok=True)
+    if CONFIG.iqo_modules_dir:
+        shutil.copy2(CONFIG.iqo_modules_dir / "qudi-iqo-modules/src/qudi/default.cfg", CONFIG.config_dir / "default.cfg")
     else:
-        site_packages = site_packages = next((VENV_DIR / "lib").glob("python*/site-packages"))
-        shutil.copy2(site_packages / "qudi/default.cfg", CONFIG_DIR / "default.cfg")
-    print(f"Created config directory in {CONFIG_DIR} and copied default config into it")
-    print(f"Created script directory in {SCRIPTS_DIR}")
+        site_packages = site_packages = next((CONFIG.venv_dir / "lib").glob("python*/site-packages"))
+        shutil.copy2(site_packages / "qudi/default.cfg", CONFIG.config_dir / "default.cfg")
+    print(f"Created config directory in {CONFIG.config_dir} and copied default config into it")
+    print(f"Created script directory in {CONFIG.scripts_dir}")
 
 
 def create_desktop_file():
-    global QUDI_DESKTOP_FILE, QUDI_ICON_URL, JUPYTER_DESKTOP_FILE, ENVIRONMENT_DESKTOP_FILE
-
-    qudi_iconfile = INSTALL_DIR
-    jupyter_iconfile = VENV_DIR
-    environment_iconfile = VENV_DIR
+    qudi_iconfile = CONFIG.install_dir
+    jupyter_iconfile = CONFIG.venv_dir
+    environment_iconfile = CONFIG.venv_dir
     if os.name == "nt":
         qudi_iconname = "logo_qudi.ico"
-        QUDI_ICON_URL += qudi_iconname
+        CONFIG.qudi_icon_url += qudi_iconname
         qudi_iconfile = qudi_iconfile / qudi_iconname
-        QUDI_DESKTOP_FILE = INSTALL_DIR / "qudi.lnk"
+        QUDI_DESKTOP_FILE = CONFIG.install_dir / "qudi.lnk"
         ps_command = f"""
 $WshShell = New-Object -ComObject WScript.Shell
 $Shortcut = $WshShell.CreateShortcut("{QUDI_DESKTOP_FILE}")
 $Shortcut.TargetPath = "powershell.exe"
-$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
-$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{INSTALL_DIR / "qudi.ps1"}"'
+$Shortcut.WorkingDirectory = "{CONFIG.install_dir}"
+$Shortcut.Arguments = '-ExecutionPolicy Bypass -NoExit -File "{CONFIG.install_dir / "qudi.ps1"}"'
 $Shortcut.IconLocation = "{qudi_iconfile}"
 $Shortcut.Save()
         """
