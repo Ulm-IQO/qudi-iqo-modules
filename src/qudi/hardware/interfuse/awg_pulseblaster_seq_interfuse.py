@@ -54,9 +54,19 @@ Waveform mode (TRIG/GAT)
 Sequence mode
   User draws AWG trigger in first element of their sequence (same channel).
   AWG step 1 has TWAIT=ON forced by write_sequence().
-  PB loops: [trigger + all step content tiled]
+  PB loops: [tiled content of all steps -- trigger naturally in first step]
   AWG:      all steps once per trigger, then waits for next trigger.
   Identical workflow to waveform mode from user perspective.
+
+Re-write-on-load
+  Both PulseBlaster instruction memory and the AWG's SEQ list are
+  single-slot: writing any waveform/sequence wipes out whatever was
+  there before. load_waveform()/load_sequence() detect when the
+  requested asset is not the one currently programmed on hardware and
+  transparently RE-WRITE it from cached raw sample data (stored by
+  write_waveform()/write_sequence()) before loading -- this is the only
+  way to make a previously-uploaded-but-since-overwritten asset active
+  again.
 
 Start / stop ordering
   trigger_master = 'pulseblaster': arm AWG first, then start PB
@@ -121,7 +131,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         self._pb_waveform_store       = {}
         self._pb_waveform_store_sizes = {}
 
-        # NEW: caches enabling re-write-on-load.
+        # Caches enabling re-write-on-load.
         #
         # PulseBlaster has no multi-slot memory: write_waveform() always
         # immediately reprograms the single instruction-memory bank, and
@@ -209,26 +219,22 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             name = name.rsplit('_ch', 1)[0]
         return name
 
-    def _ensure_stopped_before_load(self, context=''):
+    def _ensure_stopped(self, context=''):
         """
-        Stop both AWG and PulseBlaster before attempting to load a new
+        Stop both AWG and PulseBlaster before writing or loading a new
         waveform or sequence.
 
         WHY THIS IS NECESSARY:
-        SOUR:WAV (waveform selection) and SEQ:ELEM (sequence step) SCPI
-        commands can be silently rejected -- or accepted into a pending
-        register that never reaches actual output -- if the AWG is
-        currently armed (status 2, waiting for trigger) or running
-        (status 1) from a PREVIOUS pulser_on() call. This is the exact
-        same class of problem already fixed for write_sequence(); this
-        helper applies the identical guard to load_waveform() and
-        load_sequence(), which previously lacked it entirely.
+        SOUR:WAV / SEQ:ELEM selection commands (AWG) and instruction-memory
+        reprogramming (PulseBlaster) can be silently rejected -- or take
+        effect only in a pending register that never reaches actual
+        output/execution -- if either device is currently armed (status 2)
+        or running (status 1) from a PREVIOUS pulser_on() call.
 
-        Without this guard: get_loaded_assets() may report a name
-        (sometimes the live SOUR:WAV? echoes back the just-requested
-        name even when the assignment was ineffective) while the
-        physical hardware output never actually changed -- exactly the
-        "shows as loaded but isn't" symptom.
+        Used by write_waveform(), write_sequence(), load_waveform() and
+        load_sequence() -- previously write_sequence() only checked/stopped
+        the AWG and never the PulseBlaster, even though it also writes PB
+        content further along in the same call.
 
         @param str context: label for log messages, e.g. 'load_waveform'
         """
@@ -236,7 +242,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         if awg_status in (1, 2):
             self.log.info(
                 '{0}: AWG was in state {1} (running/armed). Stopping '
-                'before attempting load.'.format(context, awg_status)
+                'before proceeding.'.format(context, awg_status)
             )
             self.awg().pulser_off()
 
@@ -244,9 +250,42 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         if pb_status != 0:
             self.log.info(
                 '{0}: PulseBlaster was running. Stopping before '
-                'attempting load.'.format(context)
+                'proceeding.'.format(context)
             )
             self.pulseblaster().pulser_off()
+
+    def _log_pb_instruction_diagnostics(self, pb_name, pb_total):
+        """
+        Log PB RLE-compressed instruction count and warn if close to the
+        hardware limit of 4094.
+
+        Shared by write_waveform() and write_sequence(), which both upload
+        PB content and previously duplicated this exact logging block
+        independently with only cosmetic variable-name differences.
+
+        @param str pb_name: PulseBlaster waveform name just uploaded
+        @param int pb_total: number of PB samples in the uploaded waveform
+        """
+        try:
+            pb_instr_count       = len(self.pulseblaster()._current_pb_waveform)
+            pb_instr_theoretical = len(self.pulseblaster()._current_pb_waveform_theoretical)
+            self.log.info(
+                'PB "{0}": {1} samples @ {2:.3e} Hz -> '
+                '{3} instructions after RLE compression '
+                '(theoretical {4}, hardware max 4094).'
+                ''.format(pb_name, pb_total, self._pb_sample_rate,
+                          pb_instr_count, pb_instr_theoretical)
+            )
+            if pb_instr_count > 4000:
+                self.log.warning(
+                    'PB instruction count {0} is close to the hardware '
+                    'maximum of 4094.'.format(pb_instr_count)
+                )
+        except Exception:
+            self.log.debug(
+                'Uploaded "{0}" to PulseBlaster: {1} samples @ {2:.3e} Hz.'
+                ''.format(pb_name, pb_total, self._pb_sample_rate)
+            )
 
     # =========================================================================
     # Private helpers — rate parameters
@@ -446,7 +485,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         timeout  = 10.0
         interval = 0.25
 
-        # Step 1: Wait for AWG waveform to be ready
         elapsed = 0.0
         while True:
             loaded, _ = self.awg().get_loaded_assets()
@@ -465,13 +503,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             time.sleep(interval)
             elapsed += interval
 
-        # Step 2: Drain AWG error queue
         try:
             self.awg().get_errors()
         except Exception as exc:
             self.log.debug('pulser_on: could not drain AWG error queue: {0}'.format(exc))
 
-        # Step 3: Arm and start
         if master == 'pulseblaster':
             awg_status = self.awg().pulser_on()
             self.log.debug('AWG armed/started, status={0}.'.format(awg_status))
@@ -651,16 +687,16 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         AWG channels (a_ch*, d_ch1..d_ch4) -> AWG directly.
         PB channels (d_ch5, d_ch6, ...)    -> downsampled, delay-shifted, then PB.
 
-        PB samples buffered across chunks so delay shift applies to full waveform.
+        PB samples buffered across chunks so delay shift applies to full
+        waveform, and the final PB upload happens ONLY on is_last_chunk
+        (see the guard below -- its absence was a critical bug that caused
+        incomplete PB uploads for chunked writes and crashes for waveforms
+        with zero PB channels).
 
         @return (int, list): samples written and list of AWG waveform names.
         """
-
-        # FIX: consistency guard, same reasoning as load_waveform/load_sequence.
-        # Only checked on the first chunk to avoid repeatedly stopping/querying
-        # status on every chunk of a large chunked upload.
         if is_first_chunk:
-            self._ensure_stopped_before_load(context='write_waveform')
+            self._ensure_stopped(context='write_waveform')
 
         # Split channels
         awg_digital = {
@@ -705,73 +741,76 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             else:
                 self._pb_sample_buffer[pb_key] = downsampled
 
-        # Last chunk: apply delay roll and upload to PB
-        # RAW (un-rolled) full-period array.
-        # This is stored for write_sequence() to concatenate later.
-        # The delay roll must NOT be applied here — if applied per-segment
-        # before tiling, each segment's own wraparound displaces content
-        # into neighbouring segments once concatenated, producing stray
-        # pulses at segment boundaries (e.g. an extra laser+gate blip
-        # appearing after the sequence finishes).
-        pb_digital_raw_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
+        # ── 4. Last chunk: apply delay roll and upload to PB ──────────────────
+        # CRITICAL FIX: this block MUST only run once per waveform, on the
+        # FINAL chunk, when the full sample buffer has been accumulated.
+        # Previously this ran unconditionally on EVERY chunk call, which:
+        #   - Wrote incomplete/partial PB content mid-upload for chunked
+        #     waveforms (large waveforms split across multiple calls)
+        #   - Cleared _pb_sample_buffer / _pb_current_wfm_name before the
+        #     final chunk arrived, corrupting the next chunk's accumulation
+        #     (pb_name became '' on the following call)
+        #   - Crashed with StopIteration for ANY waveform using zero PB
+        #     channels, since pb_digital_shifted would be an empty dict
+        if is_last_chunk:
+            if self._pb_sample_buffer:
+                # RAW (un-rolled) full-period array, stored for
+                # write_sequence() to concatenate later. The delay roll
+                # must NOT be applied to this raw copy -- if applied
+                # per-segment before tiling, each segment's own wraparound
+                # displaces content into neighbouring segments once
+                # concatenated, producing stray pulses at segment
+                # boundaries (e.g. an extra laser+gate blip after the
+                # sequence finishes).
+                pb_digital_raw_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
 
-        # Separate shifted copy — ONLY used for standalone waveform mode
-        # (TRIG/GAT), where this single waveform genuinely loops on itself
-        # and the roll correctly represents that periodicity.
-        pb_digital_shifted = {k: v.copy() for k, v in pb_digital_raw_full.items()}
-        if self._delay_pb_samples > 0:
-            for d_key in pb_digital_shifted:
-                pb_digital_shifted[d_key] = np.roll(
-                    pb_digital_shifted[d_key], -self._delay_pb_samples
+                # Separate shifted copy -- ONLY used for standalone
+                # waveform mode (TRIG/GAT), where this single waveform
+                # genuinely loops on itself and the roll correctly
+                # represents that periodicity.
+                pb_digital_shifted = {k: v.copy() for k, v in pb_digital_raw_full.items()}
+                if self._delay_pb_samples > 0:
+                    for d_key in pb_digital_shifted:
+                        pb_digital_shifted[d_key] = np.roll(
+                            pb_digital_shifted[d_key], -self._delay_pb_samples
+                        )
+
+                pb_name  = self._pb_current_wfm_name
+                pb_total = len(next(iter(pb_digital_shifted.values())))
+
+                pb_written, _ = self.pulseblaster().write_waveform(
+                    pb_name, {}, pb_digital_shifted,
+                    True, True, pb_total
                 )
 
-        pb_name  = self._pb_current_wfm_name
-        pb_total = len(next(iter(pb_digital_shifted.values())))
+                self._pb_sample_buffer    = {}
+                self._pb_current_wfm_name = ''
 
-        # Upload the SHIFTED version for standalone waveform-mode playback
-        pb_written, _ = self.pulseblaster().write_waveform(
-            pb_name, {}, pb_digital_shifted,
-            True, True, pb_total
-        )
+                if pb_written < 0:
+                    self.log.error(
+                        'PulseBlaster write_waveform failed for "{0}".'.format(pb_name)
+                    )
+                    return -1, []
 
-        self._pb_sample_buffer    = {}
-        self._pb_current_wfm_name = ''
+                # Store the RAW (un-rolled) samples for write_sequence() to
+                # use. write_sequence() will concatenate these raw segments
+                # and apply the delay roll exactly once, to the correct
+                # combined period.
+                self._pb_waveform_store[pb_name]       = {
+                    k: v.copy() for k, v in pb_digital_raw_full.items()
+                }
+                self._pb_waveform_store_sizes[pb_name] = pb_total
 
-        if pb_written < 0:
-            self.log.error(
-                'PulseBlaster write_waveform failed for "{0}".'.format(pb_name)
-            )
-            return -1, []
-
-        # Store the RAW (un-rolled) samples for write_sequence() to use.
-        # write_sequence() will concatenate these raw segments and apply
-        # the delay roll exactly once, to the correct combined period.
-        self._pb_waveform_store[pb_name]       = {
-            k: v.copy() for k, v in pb_digital_raw_full.items()
-        }
-        self._pb_waveform_store_sizes[pb_name] = pb_total
-
-        # Diagnostic logging
-        try:
-            pb_instr_count       = len(self.pulseblaster()._current_pb_waveform)
-            pb_instr_theoretical = len(self.pulseblaster()._current_pb_waveform_theoretical)
-            self.log.info(
-                'PB "{0}": {1} samples @ {2:.3e} Hz -> '
-                '{3} instructions after RLE compression '
-                '(theoretical {4}, hardware max 4094).'
-                ''.format(pb_name, pb_total, self._pb_sample_rate,
-                            pb_instr_count, pb_instr_theoretical)
-            )
-            if pb_instr_count > 4000:
-                self.log.warning(
-                    'PB instruction count {0} is close to the hardware '
-                    'maximum of 4094.'.format(pb_instr_count)
+                self._log_pb_instruction_diagnostics(pb_name, pb_total)
+            else:
+                # No PB channels were part of this waveform (e.g. an
+                # AWG-only activation config). Nothing to upload to PB;
+                # this is a normal, expected case, not an error.
+                self.log.debug(
+                    'write_waveform: "{0}" contains no PulseBlaster channel '
+                    'content; skipping PB upload.'.format(name)
                 )
-        except Exception:
-            self.log.debug(
-                'Uploaded "{0}" to PulseBlaster: {1} samples @ {2:.3e} Hz.'
-                ''.format(pb_name, pb_total, self._pb_sample_rate)
-                )
+                self._pb_current_wfm_name = ''
 
         if is_last_chunk and name not in self._written_waveform_names:
             self._written_waveform_names.append(name)
@@ -788,7 +827,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         ('pb_seq_{name}') covering exactly one full sequence cycle.
 
         Equivalence with waveform mode
-        ──────────────────────────────
+        -------------------------------
         Waveform mode:
           User draws AWG trigger channel in pulse block.
           PB loops: [trigger][waveform content]
@@ -797,7 +836,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         Sequence mode (this method):
           User draws AWG trigger in FIRST element of their sequence.
           TWAIT=ON is forced on AWG step 1 here.
-          PB loops: [tiled content of all steps — trigger naturally in first step]
+          PB loops: [tiled content of all steps -- trigger naturally in first step]
           AWG:      all steps once per trigger, then waits
 
         No extra config needed. Same channel, same BNC, same workflow.
@@ -806,9 +845,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         awg_seq_name = 'awg_' + name
 
-        # Pre-check AWG sequence step count before doing ANY work ──────
-        # Avoids wasting time on AWG upload if we already know PB or AWG
-        # limits will be exceeded.
+        # Pre-check AWG sequence step count before doing ANY work -- avoids
+        # wasting time on AWG upload if we already know the limit will be
+        # exceeded.
         max_steps = self.awg().get_constraints().sequence_steps.max
         if len(sequence_parameter_list) > max_steps:
             self.log.error(
@@ -820,16 +859,12 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return -1
 
-        # Stop AWG before writing.
-        # If armed (status 2) from a previous run, OUTPUT:STATE? queries in the
-        # AWG reflect the OLD hardware state, not the current activation config.
-        # Stopping first ensures _internal_ch_state is the source of truth.
-        if self.awg()._is_output_on():
-            self.log.info(
-                'write_sequence: stopping AWG (status={0}) before sequence write.'
-                ''.format(self.awg().get_status()[0])
-            )
-            self.awg().pulser_off()
+        # FIX: stop BOTH devices, not just the AWG. This method also
+        # calls pulseblaster().write_waveform() further below to upload
+        # the combined PB sequence content -- PB must be stopped first
+        # for the same reason the AWG must be, but this was previously
+        # missing entirely.
+        self._ensure_stopped(context='write_sequence')
 
         # Drain error queue to remove stale events (E11506, E11203, power-on)
         # so they don't appear as alarming errors during normal write operations.
@@ -847,21 +882,22 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return result
 
-        # Only force TWAIT=ON if NOT in continuous mode.
-        # In CONT mode the sequence loops freely without waiting for
-        # an external trigger — accepting the AWG/PB drift risk noted above.
+        # Only force TWAIT=ON if NOT in continuous mode. In CONT mode the
+        # sequence loops freely without waiting for an external trigger
+        # (accepting the AWG/PB clock-drift risk that entails).
         awg_run_mode = str(getattr(self.awg(), '_run_mode_config', 'TRIG')).upper()
         if awg_run_mode != 'CONT':
-            # Force TWAIT=ON on step 1 so it waits for the user-drawn trigger pulse
+            # Force TWAIT=ON on step 1 so it waits for the user-drawn
+            # trigger pulse -- the same physical channel/BNC used in
+            # waveform mode.
             self.awg().sequence_set_wait_trigger(1, 'ON')
             self.log.debug(
-                        'write_sequence: TWAIT=ON forced on step 1 of "{0}".'.format(awg_seq_name)
-                    )
+                'write_sequence: TWAIT=ON forced on step 1 of "{0}".'.format(awg_seq_name)
+            )
         else:
             self.awg().sequence_set_wait_trigger(1, 'OFF')
             self.log.debug(
-                'write_sequence: TWAIT=OFF on step 1 (continuous free-run mode). '
-                'PB trigger insertion is unnecessary but harmless if present.'
+                'write_sequence: TWAIT=OFF on step 1 (continuous free-run mode).'
             )
 
         # Build combined PB waveform by tiling per-step PB content
@@ -878,7 +914,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             pb_size    = self._pb_waveform_store_sizes.get(pb_key, 0)
 
             if not pb_samples or pb_size == 0:
-                # No PB content — derive idle block length from AWG waveform
+                # No PB content -- derive idle block length from AWG waveform
                 self.log.debug(
                     'write_sequence: no PB samples for "{0}"; '
                     'using all-LOW idle block.'.format(pb_key)
@@ -892,7 +928,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
             step_len = pb_size * reps
 
-            # Tile and accumulate
             for d_ch, samples in pb_samples.items():
                 tiled = np.tile(samples, reps)
                 if d_ch in pb_combined:
@@ -901,7 +936,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     prefix = np.zeros(total_pb_len, dtype=bool)
                     pb_combined[d_ch] = np.concatenate([prefix, tiled])
 
-            # Pad all channels to equal length
             for d_ch in list(pb_combined.keys()):
                 current_len = len(pb_combined[d_ch])
                 new_total   = total_pb_len + step_len
@@ -918,9 +952,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 'write_sequence: no PB content for sequence "{0}". '
                 'PB will not be updated.'.format(name)
             )
-            # NEW: still cache the AWG sequence params so this (PB-channel-free)
-            # sequence remains re-loadable later even after a different
-            # sequence overwrites the AWG's single SEQ list.
             self._awg_seq_param_store[name] = sequence_parameter_list
 
             if name not in self._written_sequence_names:
@@ -946,31 +977,15 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return -1
 
-        # NEW: cache the combined PB waveform and the AWG sequence params.
-        # This is what makes it possible to re-program BOTH devices from
-        # this specific sequence's data on a later load_sequence() call,
+        # Cache the combined PB waveform and the AWG sequence params. This
+        # is what makes it possible to re-program BOTH devices from this
+        # specific sequence's data on a later load_sequence() call,
         # regardless of what has been written to hardware since.
         self._pb_seq_store[pb_seq_name]       = {k: v.copy() for k, v in pb_combined.items()}
         self._pb_seq_store_sizes[pb_seq_name] = total_pb_len
         self._awg_seq_param_store[name]       = sequence_parameter_list
 
-        try:
-            pb_instr = len(self.pulseblaster()._current_pb_waveform)
-            self.log.info(
-                'Combined PB sequence "{0}": {1} PB samples -> '
-                '{2} instructions (hardware max 4094).'
-                ''.format(pb_seq_name, total_pb_len, pb_instr)
-            )
-            if pb_instr > 4000:
-                self.log.warning(
-                    'PB instruction count {0} is close to the hardware '
-                    'maximum of 4094.'.format(pb_instr)
-                )
-        except Exception:
-            self.log.debug(
-                'Combined PB sequence "{0}": {1} samples uploaded.'
-                ''.format(pb_seq_name, total_pb_len)
-            )
+        self._log_pb_instruction_diagnostics(pb_seq_name, total_pb_len)
 
         if name not in self._written_sequence_names:
             self._written_sequence_names.append(name)
@@ -998,7 +1013,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         @return dict: loaded assets per channel (logical names).
         """
-        self._ensure_stopped_before_load(context='load_waveform')
+        self._ensure_stopped(context='load_waveform')
 
         if isinstance(load_dict, list):
             new_dict = {}
@@ -1122,16 +1137,18 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         @return dict: loaded assets per channel, using LOGICAL names.
         """
-        self._ensure_stopped_before_load(context='load_sequence')
+        self._ensure_stopped(context='load_sequence')
 
         awg_seq_name = ('awg_' + sequence_name
                         if not sequence_name.startswith('awg_')
                         else sequence_name)
 
-        # ── Re-write AWG sequence if it's not the currently-programmed one ────
+        # Re-write AWG sequence if it's not the currently-programmed one.
+        # FIX: use the public get_sequence_names() interface method instead
+        # of reaching into the AWG module's private _written_sequences list.
+        awg_currently_written_list = self.awg().get_sequence_names()
         awg_currently_written = (
-            self.awg()._written_sequences[0]
-            if self.awg()._written_sequences else None
+            awg_currently_written_list[0] if awg_currently_written_list else None
         )
 
         if awg_currently_written != awg_seq_name:
@@ -1141,8 +1158,14 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     '"{1}". Re-uploading from cache before loading.'
                     ''.format(awg_currently_written, awg_seq_name)
                 )
-                rewrite_result = self.awg().write_sequence(
-                    awg_seq_name, self._awg_seq_param_store[sequence_name]
+                # FIX: call the INTERFUSE's own write_sequence() here, not
+                # self.awg().write_sequence() directly. The direct AWG call
+                # bypasses TWAIT=ON forcing on step 1 and the PB combined-
+                # waveform rebuild/caching that only happen inside this
+                # interfuse's write_sequence() wrapper -- silently breaking
+                # trigger synchronization after a cache-based re-upload.
+                rewrite_result = self.write_sequence(
+                    sequence_name, self._awg_seq_param_store[sequence_name]
                 )
                 if rewrite_result < 0:
                     self.log.error(
@@ -1155,9 +1178,10 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     'load_sequence: "{0}" is not the currently-written AWG '
                     'sequence, and no cached parameters are available to '
                     're-upload it (it may have been written before this '
-                    'interfuse session started, or clear_all() was called '
-                    'since). Re-sample the sequence to make it loadable '
-                    'again.'.format(sequence_name)
+                    'interfuse session started, or clear_all()/'
+                    'delete_sequence() was called since). Re-sample the '
+                    'sequence to make it loadable again.'
+                    ''.format(sequence_name)
                 )
                 return self.get_loaded_assets()[0]
 
@@ -1179,8 +1203,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return self.get_loaded_assets()[0]
 
-        # ── Re-write PB combined waveform (ALWAYS, same reasoning as
-        #    load_waveform: cheap, guarantees correctness) ─────────────────────
+        # Re-write PB combined waveform (ALWAYS, same reasoning as
+        # load_waveform: cheap, guarantees correctness).
         pb_seq_name = 'pb_seq_' + sequence_name
         pb_load_ok  = True
 
@@ -1263,19 +1287,42 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def get_waveform_names(self):
         """
-        Return all waveform names:
-          'awg_rabi_ch1', 'awg_rabi_ch2'  on AWG hardware
-          'pb_rabi'                         in PB RAM
-          'rabi'                            logical name (both present)
+        Return all waveform names visible to qudi:
+          'awg_rabi_ch1', 'awg_rabi_ch2'  stored on AWG hardware
+          'pb_rabi'                         currently programmed on PB hardware
+          'rabi'                            logical name, re-loadable via cache
+
+        NOTE on PulseBlaster: the PB board is single-slot hardware -- it
+        only ever reports the ONE waveform currently programmed into its
+        instruction memory via its own get_waveform_names(). Relying on
+        that alone would under-report which logical waveforms are
+        genuinely available: load_waveform()'s cache-based re-write
+        mechanism can make ANY previously-written waveform active again
+        even if PB currently holds something else. self._written_waveform_names
+        and the _pb_waveform_store cache keys are included below so the
+        reported list matches what is actually re-loadable.
+
+        Also excludes 'pb_seq_*' names from the naive 3-character prefix
+        strip used to derive logical names -- stripping just 'pb_' from
+        'pb_seq_t1_seq' would incorrectly yield 'seq_t1_seq' instead of a
+        real logical name.
         """
         awg_names = self.awg().get_waveform_names()
-        pb_names  = [n for n in self.pulseblaster().get_waveform_names() if n]
+        pb_live   = [n for n in self.pulseblaster().get_waveform_names() if n]
 
         awg_base = {self._logical_name(n) for n in awg_names if n.startswith('awg_')}
-        pb_base  = {n[3:] for n in pb_names if n.startswith('pb_')}
-        logical  = list(awg_base & pb_base)
+        pb_base  = {
+            n[3:] for n in pb_live
+            if n.startswith('pb_') and not n.startswith('pb_seq_')
+        }
 
-        return natural_sort(list(set(awg_names + pb_names + logical)))
+        cached_pb_base = {
+            key[3:] for key in self._pb_waveform_store if key.startswith('pb_')
+        }
+
+        logical = set(self._written_waveform_names) | (awg_base & pb_base) | cached_pb_base
+
+        return natural_sort(list(set(awg_names + pb_live) | logical))
 
     def get_sequence_names(self):
         """Return logical sequence names tracked since activation."""
@@ -1290,6 +1337,12 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         Delete waveform(s).
         Logical name 'rabi' -> deletes 'awg_rabi_chN' variants on AWG.
 
+        Also purges the corresponding entries from the PulseBlaster
+        re-write caches (_pb_waveform_store / _pb_waveform_store_sizes).
+        Without this, a "deleted" waveform remained silently re-loadable
+        via load_waveform()'s cache-based re-write mechanism, directly
+        contradicting the deletion.
+
         @return list: deleted waveform names.
         """
         if isinstance(waveform_name, str):
@@ -1300,6 +1353,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         for name in waveform_name:
             if name.startswith('awg_'):
                 deleted.extend(self.awg().delete_waveform(name))
+                logical = self._logical_name(name)
 
             elif name.startswith('pb_'):
                 self.log.info(
@@ -1307,6 +1361,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     '"{0}" cleared on next write_waveform call.'.format(name)
                 )
                 deleted.append(name)
+                logical = name[3:]
 
             else:
                 awg_all = self.awg().get_waveform_names()
@@ -1317,15 +1372,38 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 if name in self._written_waveform_names:
                     self._written_waveform_names.remove(name)
                 deleted.append(name)
+                logical = name
+
+            # FIX: purge the PB re-write cache entry too, so a deleted
+            # waveform genuinely cannot be silently reloaded afterward.
+            pb_key = 'pb_{0}'.format(logical)
+            self._pb_waveform_store.pop(pb_key, None)
+            self._pb_waveform_store_sizes.pop(pb_key, None)
 
         return natural_sort(deleted)
 
     def delete_sequence(self, sequence_name):
-        """Delete a sequence from the AWG."""
+        """
+        Delete a sequence from the AWG.
+
+        Also purges the corresponding cache entries (_awg_seq_param_store,
+        _pb_seq_store, _pb_seq_store_sizes) so a deleted sequence cannot be
+        silently re-loaded via the cache-based re-write mechanism in
+        load_sequence(). Previously missing -- same class of bug as
+        delete_waveform() above.
+
+        @return: result from AWG delete_sequence()
+        """
         awg_seq = 'awg_' + sequence_name
         result  = self.awg().delete_sequence(awg_seq)
         if sequence_name in self._written_sequence_names:
             self._written_sequence_names.remove(sequence_name)
+
+        self._awg_seq_param_store.pop(sequence_name, None)
+        pb_seq_key = 'pb_seq_' + sequence_name
+        self._pb_seq_store.pop(pb_seq_key, None)
+        self._pb_seq_store_sizes.pop(pb_seq_key, None)
+
         return result
 
     def clear_all(self):
@@ -1339,7 +1417,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         self._pb_waveform_store.clear()
         self._pb_waveform_store_sizes.clear()
 
-        # NEW: clear the re-write-on-load caches too
         self._pb_seq_store.clear()
         self._pb_seq_store_sizes.clear()
         self._awg_seq_param_store.clear()
