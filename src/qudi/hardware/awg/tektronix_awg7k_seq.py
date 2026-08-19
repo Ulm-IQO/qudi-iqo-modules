@@ -316,13 +316,17 @@ class AWG7k(PulserInterface):
             current_hw_mode = self.query('AWGC:RMOD?')
 
             if current_hw_mode == 'SEQ':
+                if config_mode == 'CONT':
+                    self.write('AWGC:RUN')
+                    # No trigger wait — sequence loops freely via go_to.
                 # Sequence mode: configure the trigger INPUT hardware so that
                 # TWAIT on step 1 responds to the same external BNC trigger
                 # the user already draws in their pulse block.
                 # _configure_trigger_input_only() sets TRIG:SOUR EXT, TRIG:LEV,
                 # TRIG:SLOP and TRIG:IMP without touching AWGC:RMOD.
-                self._configure_trigger_input_only()
-                self.write('AWGC:RUN')
+                else:
+                    self._configure_trigger_input_only()
+                    self.write('AWGC:RUN')
 
                 timeout = 5.0
                 elapsed = 0.0
@@ -934,12 +938,38 @@ class AWG7k(PulserInterface):
 
         for step, (wfm_tuple, seq_params) in enumerate(sequence_parameter_list, 1):
             if num_tracks == len(wfm_tuple):
-                for track, waveform in enumerate(wfm_tuple, 1):
-                    self.sequence_set_waveform(waveform, step, track)
+
+                for waveform in wfm_tuple:
+                    # Extract the channel number directly from the waveform name.
+                    # 'awg_t1_seq_trigger_ch2' → ch_num=2 → SEQ:ELEM{step}:WAV2
+                    #
+                    # This is the correct mapping:
+                    #   _ch1 → WAV1 → OUTPUT1 (a_ch1)
+                    #   _ch2 → WAV2 → OUTPUT2 (a_ch2)
+                    #
+                    # The old code used enumerate(wfm_tuple, 1) which assigns
+                    # track numbers by tuple position, not channel number.
+                    # When only a_ch2 is active, the single waveform '_ch2'
+                    # was getting assigned to WAV1 (ch1) — wrong.
+                    try:
+                        ch_num = int(waveform.rsplit('_ch', 1)[1])
+                    except (ValueError, IndexError):
+                        self.log.error(
+                            'write_sequence: cannot extract channel number from '
+                            'waveform name "{0}". Expected format: name_chN.'
+                            ''.format(waveform)
+                        )
+                        return -1
+
+                    self.sequence_set_waveform(waveform, step, ch_num)
+
             else:
-                self.log.error('Unable to write sequence.\n'
-                               'Length of waveform tuple "{0}" does not '
-                               'match the number of sequence tracks.'.format(wfm_tuple))
+                self.log.error(
+                    'Unable to write sequence.\n'
+                    'Length of waveform tuple "{0}" does not '
+                    'match the number of sequence tracks ({1}).'
+                    ''.format(wfm_tuple, num_tracks)
+                )
                 return -1
 
             self.sequence_set_event_jump(step, seq_params['event_jump_to'])

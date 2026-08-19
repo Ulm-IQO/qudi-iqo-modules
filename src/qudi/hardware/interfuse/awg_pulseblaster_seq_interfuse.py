@@ -646,59 +646,71 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 self._pb_sample_buffer[pb_key] = downsampled
 
         # Last chunk: apply delay roll and upload to PB
-        if is_last_chunk and self._pb_sample_buffer:
-            pb_digital_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
+        # RAW (un-rolled) full-period array.
+        # This is stored for write_sequence() to concatenate later.
+        # The delay roll must NOT be applied here — if applied per-segment
+        # before tiling, each segment's own wraparound displaces content
+        # into neighbouring segments once concatenated, producing stray
+        # pulses at segment boundaries (e.g. an extra laser+gate blip
+        # appearing after the sequence finishes).
+        pb_digital_raw_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
 
-            if self._delay_pb_samples > 0:
-                for d_key in pb_digital_full:
-                    pb_digital_full[d_key] = np.roll(
-                        pb_digital_full[d_key], -self._delay_pb_samples
-                    )
+        # Separate shifted copy — ONLY used for standalone waveform mode
+        # (TRIG/GAT), where this single waveform genuinely loops on itself
+        # and the roll correctly represents that periodicity.
+        pb_digital_shifted = {k: v.copy() for k, v in pb_digital_raw_full.items()}
+        if self._delay_pb_samples > 0:
+            for d_key in pb_digital_shifted:
+                pb_digital_shifted[d_key] = np.roll(
+                    pb_digital_shifted[d_key], -self._delay_pb_samples
+                )
 
-            # Save pb_name before clearing the instance variable
-            pb_name  = self._pb_current_wfm_name
-            pb_total = len(next(iter(pb_digital_full.values())))
+        pb_name  = self._pb_current_wfm_name
+        pb_total = len(next(iter(pb_digital_shifted.values())))
 
-            pb_written, _ = self.pulseblaster().write_waveform(
-                pb_name, {}, pb_digital_full,
-                True, True, pb_total
+        # Upload the SHIFTED version for standalone waveform-mode playback
+        pb_written, _ = self.pulseblaster().write_waveform(
+            pb_name, {}, pb_digital_shifted,
+            True, True, pb_total
+        )
+
+        self._pb_sample_buffer    = {}
+        self._pb_current_wfm_name = ''
+
+        if pb_written < 0:
+            self.log.error(
+                'PulseBlaster write_waveform failed for "{0}".'.format(pb_name)
             )
+            return -1, []
 
-            # Clear buffer
-            self._pb_sample_buffer    = {}
-            self._pb_current_wfm_name = ''
+        # Store the RAW (un-rolled) samples for write_sequence() to use.
+        # write_sequence() will concatenate these raw segments and apply
+        # the delay roll exactly once, to the correct combined period.
+        self._pb_waveform_store[pb_name]       = {
+            k: v.copy() for k, v in pb_digital_raw_full.items()
+        }
+        self._pb_waveform_store_sizes[pb_name] = pb_total
 
-            if pb_written < 0:
-                self.log.error(
-                    'PulseBlaster write_waveform failed for "{0}".'.format(pb_name)
+        # Diagnostic logging
+        try:
+            pb_instr_count       = len(self.pulseblaster()._current_pb_waveform)
+            pb_instr_theoretical = len(self.pulseblaster()._current_pb_waveform_theoretical)
+            self.log.info(
+                'PB "{0}": {1} samples @ {2:.3e} Hz -> '
+                '{3} instructions after RLE compression '
+                '(theoretical {4}, hardware max 4094).'
+                ''.format(pb_name, pb_total, self._pb_sample_rate,
+                            pb_instr_count, pb_instr_theoretical)
+            )
+            if pb_instr_count > 4000:
+                self.log.warning(
+                    'PB instruction count {0} is close to the hardware '
+                    'maximum of 4094.'.format(pb_instr_count)
                 )
-                return -1, []
-
-            # Store PB samples for write_sequence() to use
-            # IMPORTANT: use local pb_name, not self._pb_current_wfm_name (already cleared)
-            self._pb_waveform_store[pb_name]       = {k: v.copy() for k, v in pb_digital_full.items()}
-            self._pb_waveform_store_sizes[pb_name] = pb_total
-
-            # Diagnostic log
-            try:
-                pb_instr_count       = len(self.pulseblaster()._current_pb_waveform)
-                pb_instr_theoretical = len(self.pulseblaster()._current_pb_waveform_theoretical)
-                self.log.info(
-                    'PB "{0}": {1} samples @ {2:.3e} Hz -> '
-                    '{3} instructions after RLE compression '
-                    '(theoretical {4}, hardware max 4094).'
-                    ''.format(pb_name, pb_total, self._pb_sample_rate,
-                              pb_instr_count, pb_instr_theoretical)
-                )
-                if pb_instr_count > 4000:
-                    self.log.warning(
-                        'PB instruction count {0} is close to the hardware '
-                        'maximum of 4094.'.format(pb_instr_count)
-                    )
-            except Exception:
-                self.log.debug(
-                    'Uploaded "{0}" to PulseBlaster: {1} samples @ {2:.3e} Hz.'
-                    ''.format(pb_name, pb_total, self._pb_sample_rate)
+        except Exception:
+            self.log.debug(
+                'Uploaded "{0}" to PulseBlaster: {1} samples @ {2:.3e} Hz.'
+                ''.format(pb_name, pb_total, self._pb_sample_rate)
                 )
 
         if is_last_chunk and name not in self._written_waveform_names:
@@ -761,12 +773,22 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return result
 
-        # Force TWAIT=ON on step 1 so it waits for the user-drawn trigger pulse
-        # This is the key equivalence: same physical trigger, same BNC, same behaviour
-        self.awg().sequence_set_wait_trigger(1, 'ON')
-        self.log.debug(
-            'write_sequence: TWAIT=ON forced on step 1 of "{0}".'.format(awg_seq_name)
-        )
+        # Only force TWAIT=ON if NOT in continuous mode.
+        # In CONT mode the sequence loops freely without waiting for
+        # an external trigger — accepting the AWG/PB drift risk noted above.
+        awg_run_mode = str(getattr(self.awg(), '_run_mode_config', 'TRIG')).upper()
+        if awg_run_mode != 'CONT':
+            # Force TWAIT=ON on step 1 so it waits for the user-drawn trigger pulse
+            self.awg().sequence_set_wait_trigger(1, 'ON')
+            self.log.debug(
+                        'write_sequence: TWAIT=ON forced on step 1 of "{0}".'.format(awg_seq_name)
+                    )
+        else:
+            self.awg().sequence_set_wait_trigger(1, 'OFF')
+            self.log.debug(
+                'write_sequence: TWAIT=OFF on step 1 (continuous free-run mode). '
+                'PB trigger insertion is unnecessary but harmless if present.'
+            )
 
         # Build combined PB waveform by tiling per-step PB content
         pb_combined  = {}
@@ -826,7 +848,21 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 self._written_sequence_names.append(name)
             return result
 
-        # Upload combined PB waveform
+        # ── Apply delay roll ONCE, to the fully assembled combined waveform ────
+        # This is the correct point to compensate for AWG trigger latency:
+        # the combined waveform is the TRUE period that loops (PB fires
+        # trigger -> AWG plays all sequence steps -> loops back to step 1
+        # waiting). Rolling here shifts all PB channels earlier relative to
+        # that true period boundary, with no risk of segment-boundary
+        # artifacts since there are no longer any individual segment
+        # boundaries to worry about — it's one array now.
+        if self._delay_pb_samples > 0:
+            for d_ch in pb_combined:
+                pb_combined[d_ch] = np.roll(
+                    pb_combined[d_ch], -self._delay_pb_samples
+                )
+
+        # ── Upload combined PB waveform ─────────────────────────────────────────
         pb_seq_name = 'pb_seq_' + name
 
         pb_written, _ = self.pulseblaster().write_waveform(
