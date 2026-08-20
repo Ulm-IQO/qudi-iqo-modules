@@ -33,11 +33,31 @@ from qudi.util.benchmark import BenchmarkTool
 # merges with CoreGenerationParameters into the public GenerationParameters class. The base lives
 # over there so that file never has to import back from this one - a cycle would make the merge
 # silently skip extensions depending on which module happened to be imported first.
-from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import (
-    BaseGenerationParameters,
-    as_bool as _as_bool,
-)
-import qudi.logic.pulsed.pulsed_data.generation_parameter_extensions as _generation_parameter_extensions  # noqa: F401
+#
+# Wrapped so a mutable field default in a lab's contributor explains itself. @dataclass raises
+# that one while the module below is still being imported - long before _build_generation_parameters()
+# could inspect anything - so this import is the only place able to add context to it.
+try:
+    from qudi.logic.pulsed.pulsed_data.generation_parameter_extensions import (
+        BaseGenerationParameters,
+        as_bool as _as_bool,
+    )
+    import qudi.logic.pulsed.pulsed_data.generation_parameter_extensions as _generation_parameter_extensions  # noqa: F401
+except ValueError as err:
+    if 'mutable default' not in str(err):
+        raise
+    raise ValueError(
+        f'{err}\n\n'
+        'A generation parameter declared in generation_parameter_extensions.py has a mutable '
+        'default. One default object would be shared by every instance of the class, so Python '
+        'refuses the declaration. Give that field a factory instead:\n'
+        '    envelope: PulseEnvelope = field(\n'
+        '        default_factory=lambda: PulseEnvelope(PulseEnvelopeType.rectangle)\n'
+        '    )\n'
+        'PulseEnvelope needs this despite being a supported parameter type - it is a plain '
+        '@dataclass holding a parameters dict, so it counts as mutable. The same applies to a '
+        'dict, a list, a numpy array, or an instance of any class defining __eq__.'
+    ) from err
 
 _logger = getLogger(__name__)
 

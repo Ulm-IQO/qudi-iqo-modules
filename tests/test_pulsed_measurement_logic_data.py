@@ -14,7 +14,11 @@ def test_execution_state_tracks_pause_and_timing():
     state = ExecutionState()
     state.start()
     assert state.is_paused is False
-    assert state.elapsed_time == 0.0
+    # Not `== 0.0`: elapsed_time is `time.time() - start_time`, and on Windows Python 3.13+ switched
+    # time.time() to GetSystemTimePreciseAsFileTime (100 ns resolution, was 15.625 ms). Two calls
+    # either side of start() used to return the identical value and now usually do not, so the exact
+    # comparison passed on 3.10 and fails on 3.14. Assert it is merely near zero instead.
+    assert 0.0 <= state.elapsed_time < 0.1
 
     state.pause()
     assert state.is_paused is True

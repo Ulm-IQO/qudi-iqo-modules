@@ -72,6 +72,35 @@ Type detection cannot know that a fraction must stay within [0, 1]. Override `_c
             coerced['laser_power_fraction'] = min(1.0, max(0.0, coerced['laser_power_fraction']))
             return coerced
 
+A field whose type is mutable
+-----------------------------
+`str`, `int`, `float`, `bool` and `Enum` members are immutable, so writing the default straight
+after the annotation is fine. A mutable type is not: one default object would be shared by every
+instance of the class that did not override it, so whichever code mutated it first would change
+the default everyone else sees. Python refuses the declaration outright rather than let that
+happen:
+
+    ValueError: mutable default <class 'PulseEnvelope'> for field envelope is not allowed:
+                use default_factory
+
+`PulseEnvelope` is the one to watch here, because it is a supported field type but is *not*
+immutable - it is a plain `@dataclass` carrying a `parameters` dict. So give it a factory, which
+builds a fresh envelope per instance:
+
+    from dataclasses import dataclass, field
+    from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
+
+    @dataclass(frozen=True)
+    class NVCentreParameters(BaseGenerationParameters):
+        envelope: PulseEnvelope = field(
+            default_factory=lambda: PulseEnvelope(PulseEnvelopeType.rectangle)
+        )
+
+`CoreGenerationParameters.pulse_envelope` is written exactly this way. The same applies to a
+`dict`, a `list`, a numpy array, or an instance of any class that defines `__eq__` - defining
+`__eq__` sets `__hash__` to None, which is precisely the test Python applies to decide a default
+is mutable. If in doubt, use `field(default_factory=...)`; it is never wrong.
+
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
@@ -172,6 +201,10 @@ class BaseGenerationParameters:
         become fields and the class contributes nothing at all, which the merge rejects by name;
       * every field needs a default - Python forbids a no-default field following a defaulted one
         in the merged class;
+      * a field of a mutable type needs `field(default_factory=...)` rather than a plain default,
+        or Python rejects the class with "mutable default ... is not allowed". This catches
+        `PulseEnvelope` despite it being a supported type, along with dict, list, numpy arrays and
+        any class defining `__eq__` - see "A field whose type is mutable" in the module docstring;
       * field names must not collide with another contributor's - checked at merge time, which
         raises naming both classes rather than letting one silently win;
       * field types should be str / int / float / bool / Enum / PulseEnvelope, the set the GUI can

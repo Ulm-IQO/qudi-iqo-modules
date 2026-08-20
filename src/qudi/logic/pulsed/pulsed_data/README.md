@@ -302,6 +302,26 @@ since `fields()` never reports `ClassVar`/`InitVar`.
 > still listed all of them. Nothing raised: the module activated normally, the Predefined Methods tab
 > drew an empty parameter grid, and the status file was written with `generation_parameters: {}`.
 
+> **A field of a mutable type needs `field(default_factory=...)`, not a plain default.** One default
+> object is shared by every instance that does not override it, so Python refuses the declaration
+> outright: `ValueError: mutable default <class 'PulseEnvelope'> for field envelope is not allowed:
+> use default_factory`. `PulseEnvelope` trips this despite being a supported parameter type — it is a
+> plain `@dataclass` carrying a `parameters` dict, so it counts as mutable. Write it the way
+> `CoreGenerationParameters.pulse_envelope` does:
+>
+> ```python
+> envelope: PulseEnvelope = field(
+>     default_factory=lambda: PulseEnvelope(PulseEnvelopeType.rectangle)
+> )
+> ```
+>
+> The same applies to a `dict`, a `list`, a numpy array, or an instance of any class defining
+> `__eq__` — defining `__eq__` sets `__hash__` to `None`, and unhashable is exactly the test
+> `dataclasses` applies to decide a default is mutable. Note this test *widened* after Python 3.10,
+> which rejected only `list`/`dict`/`set`: a contributor that was accepted on 3.10 can be rejected on
+> 3.11+. The import of this module in `sequence_generator_logic_data.py` is wrapped to add that
+> explanation to the raw error.
+
 **Why this class lives here and not next to `CoreGenerationParameters`:** so this file never has to
 import from `sequence_generator_logic_data.py`. A circular import between the two would make the merge
 silently skip extensions depending on which module happened to be imported first.

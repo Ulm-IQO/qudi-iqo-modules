@@ -1134,10 +1134,15 @@ def _as_generation_parameter_contributor(entry, owner):
                 f'{owner.__name__}.generation_parameter_contributors: "{name}" is not a valid '
                 f'parameter name.'
             )
-        # Mutable defaults need a factory; dataclass rejects them outright.
+        # Mutable defaults need a factory; dataclass rejects them outright. Test hashability
+        # rather than listing concrete types, because that is the test dataclasses itself applies
+        # ("mutable default ... is not allowed") and an enumerated list silently drifts from it:
+        # Python <= 3.10 rejected only list/dict/set, 3.11+ rejects anything unhashable. That
+        # widens the rule to numpy arrays, deques, and - most easily missed - any instance of a
+        # class defining __eq__, since that sets __hash__ to None.
         spec = (
             field(default_factory=lambda value=default: copy.deepcopy(value))
-            if isinstance(default, (dict, list, set, bytearray))
+            if default.__class__.__hash__ is None
             else field(default=default)
         )
         specs.append((name, type(default), spec))
