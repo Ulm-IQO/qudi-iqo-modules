@@ -19,18 +19,18 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from typing import Dict
 
-try:
-    import pyvisa as visa
-except ImportError:
-    import visa
+import pyvisa as visa
 import time
 
 from collections import OrderedDict
 
-from qudi.core.module import Base
+from qudi.util.mutex import RecursiveMutex
+from qudi.util.constraints import ScalarConstraint
+from qudi.interface.magnet_interface import MagnetInterface, MagnetConstraints, MagnetControlAxis
 from qudi.core.configoption import ConfigOption
-from qudi.interface.motor_interface import MotorInterface
+from qudi.interface.motor_interface import MotorInterface, MotorAxisStatus
 
 
 class MotorStageMicos(MotorInterface):
@@ -153,7 +153,7 @@ class MotorStageMicos(MotorInterface):
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
-        
+
         self.rm = visa.ResourceManager()
         self._serial_connection_xy = self.rm.open_resource(
             resource_name=self._com_port_xy,
@@ -556,7 +556,7 @@ class MotorStageMicos(MotorInterface):
                     break
         return param_dict
 
-    def get_status(self, param_list=None):
+    def get_status(self, param_list=None) -> Dict[str, MotorAxisStatus]:
         """ Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
@@ -832,3 +832,11 @@ class MotorStageMicos(MotorInterface):
             elif axis == 'phi':
                 self._write('phi', '0 {} 0 rmove'.format(step))
         return 0
+
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
+        """
+        self.log.warning("For use as a magnet I need to be implemented")
+        return False # todo: add proper implementation
