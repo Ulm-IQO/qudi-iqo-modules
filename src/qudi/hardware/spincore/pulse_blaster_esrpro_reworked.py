@@ -20,60 +20,32 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 
 ------------------------------------------------------------------------
-FIXES APPLIED (see inline FIX comments for exact locations):
 
-  FIX 1 [CRITICAL] _write_pulse / _setup_lib_signatures:
-        'argtype' typo (missing 's') silently disabled all ctypes type
-        checking. Corrected to 'argtypes'. Also: flags argument type changed
-        from c_int to c_uint to match spinapi.h. Signatures are now defined
-        once in _setup_lib_signatures() rather than on every _write_pulse call.
+OVERVIEW
 
-  FIX 2 [CRITICAL] _write_pulse:
-        inst_data=None was passed to the DLL for CONTINUE/STOP instructions.
-        None is not a valid C int. A guard now converts None → 0. All internal
-        callers updated to explicitly pass inst_data=0.
+This module wraps the SpinCore SpinAPI DLL to control a PulseBlasterESR-PRO
+digital pattern generator card. The board has 21 TTL digital outputs and no
+analog or DDS capability. It exposes two Qudi interfaces:
 
-  FIX 3 [CRITICAL] _set_switch_on / _set_switch_off / activate_channels:
-        Switch methods passed length=100 (100 seconds per loop iteration) to
-        activate_channels(). Since "constantly on" is achieved by looping a
-        BRANCH instruction regardless of length, the loop period should be
-        the minimum allowed value (self.LEN_MIN). activate_channels() default
-        changed from 100e-9 s to None, resolved to self.LEN_MIN inside.
+  - PulserInterface:  used for uploading and playing back arbitrary digital
+                       waveforms (as required by the pulsed measurement
+                       toolchain).
+  - SwitchInterface:  used for simple, static ON/OFF control of individual
+                       channels (e.g. from a GUI switch panel), independent
+                       of any loaded waveform.
 
-  FIX 4 _correct_sequence_for_delays:
-        The original code called corrected_sequence.remove() while iterating
-        over corrected_sequence. Python silently skips the element after each
-        removal, so some pulses were never processed. Fixed by building a new
-        list (cleaned_sequence) during iteration rather than modifying in-place.
+Internally, all waveforms are represented as a run-length-encoded (RLE)
+sequence of instructions: each entry describes a set of active channels and
+a duration. This keeps the number of hardware instructions manageable, since
+the board can hold at most ~4094 instructions in memory regardless of how
+finely time is sampled.
 
-  FIX 5 get_constraints:
-        'constraints.step = 0.0' set a stray attribute on the PulserConstraints
-        object instead of 'constraints.sample_rate.step = 0.0'.
+The board's timing resolution is set entirely by its physical crystal
+oscillator (clock_frequency config option must match the value printed on
+the board / stated in its documentation) — this is not adjustable via
+software and is only used by this driver to convert between nanoseconds and
+clock cycles when programming instructions.
 
-  FIX 6 activate_channels:
-        pb_start() was called without a preceding pb_reset(). SpinCore docs
-        require reset() or stop() before start() to guarantee execution begins
-        at instruction 0. reset_device() now called before start().
-
-  FIX 7 write_pulse_form:
-        Single-element sequences always called activate_channels() which always
-        creates a BRANCH (infinite loop), ignoring loop=False. Single-element
-        sequences now correctly write a STOP instruction when loop=False.
-
-  FIX 8 threadlock (Mutex):
-        self.threadlock was created in __init__ but never acquired in any
-        method. Added 'with self.threadlock:' guards to all public methods
-        that communicate with the hardware board.
-
-  FIX 9 get_digital_level / get_constraints:
-        get_constraints() reported 3.3 V (LVTTL) but get_digital_level()
-        returned 5.0 V for the default (no-argument) case and 3.3 V for the
-        specific-channel case. All paths now consistently return 3.3 V.
-
-  FIX 10 on_activate (library loading):
-        find_library() only searches PATH and System32, not the SpinCore
-        install directory. Added explicit fallback to known installation paths
-        so the library is found without requiring PATH configuration.
 ------------------------------------------------------------------------
 
 Example config for copy-paste:
@@ -189,9 +161,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # FIX 8: Mutex was created here originally but never acquired anywhere.
-        # It is now used as a context manager ('with self.threadlock:') in all
-        # public methods that communicate with the hardware board.
+        # Used as a context manager ('with self.threadlock:') in public
+        # methods that can be invoked directly from another thread (e.g. the
+        # SwitchInterface, which the GUI switch panel can call outside of the
+        # normal pulsed-measurement call chain).
         self.threadlock = Mutex()
 
     # =========================================================================
@@ -218,10 +191,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._current_activation_config.sort()
 
         # ── Library loading ───────────────────────────────────────────────────
-        # FIX 10: The original code relied solely on find_library() which only
-        # searches PATH and System32. Added explicit fallback to well-known
-        # SpinCore installation directories so the DLL is found even if the
-        # install directory is not on PATH.
+        # find_library() only searches the system PATH and (on Windows)
+        # System32, so a few well-known SpinCore installation paths are also
+        # checked directly as a fallback, in case the DLL was never added to
+        # PATH by the installer.
         lib_path = None
 
         # Step 1: Try the user-supplied path from the config option
@@ -246,9 +219,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 libname = 'spinapi64.dll'  # reasonable default fallback
             lib_path = find_library(libname)
 
-        # Step 3: Try known SpinCore installation directories as a last resort.
-        # This handles the common case where the installer puts the DLL in
-        # C:/SpinCore/SpinAPI/dll/ but does not add it to the system PATH.
+        # Step 3: Try known SpinCore installation directories directly, in
+        # case the DLL is present but not registered on PATH.
         if lib_path is None:
             arch = platform.architecture()
             if 'WindowsPE' in arch[1]:
@@ -284,9 +256,11 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             # When debug_mode=True, SpinAPI writes a log.txt to the working directory
             self._lib.pb_set_debug(1)
 
-        # FIX 1: Define all ctypes function signatures ONCE at activation time.
-        # Previously, 'argtype = [...]' (missing 's') was set inside _write_pulse()
-        # on every call, silently doing nothing because ctypes ignores 'argtype'.
+        # ctypes argument/return types must be declared before any calls are
+        # made — otherwise ctypes falls back to unsafe defaults (all
+        # arguments treated as plain C int, return type as int), which can
+        # corrupt values for functions that actually take unsigned int,
+        # double, or return a pointer.
         self._setup_lib_signatures()
 
         self.open_connection()
@@ -295,13 +269,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """
         Define ctypes return types and argument types for all used SpinAPI functions.
 
-        Must be called once after self._lib is loaded. Without these definitions
-        ctypes uses unsafe defaults (all args treated as C int, return type as int),
-        which can corrupt values for functions that return pointers or take
-        unsigned / double arguments.
-
-        FIX 1: This replaces per-call 'argtype = [...]' (wrong key, missing 's')
-        with a single one-time setup using the correct 'argtypes' key.
+        Must be called once after self._lib is loaded.
         """
 
         # ── Board detection and initialization ────────────────────────────────
@@ -349,11 +317,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._lib.pb_stop_programming.restype  = ctypes.c_int
         self._lib.pb_stop_programming.argtypes = []
 
-        # FIX 1 (critical): spinapi.h declares pb_inst_pbonly as:
+        # spinapi.h declares pb_inst_pbonly as:
         #   int pb_inst_pbonly(unsigned int flags, int inst, int inst_data, double length)
-        # The first argument is 'unsigned int', not 'int'. Using c_int here would
-        # corrupt any flags value that has bit 31 set (sign bit in signed 32-bit).
-        # Also note: 'argtypes' (plural) — 'argtype' is silently ignored by ctypes.
+        # 'flags' is unsigned int — using signed int here would corrupt any
+        # flags value with bit 31 set (the sign bit in a signed 32-bit int).
         self._lib.pb_inst_pbonly.restype  = ctypes.c_int
         self._lib.pb_inst_pbonly.argtypes = [
             ctypes.c_uint,    # flags    : unsigned int — bit pattern of active channels
@@ -416,9 +383,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """ Return the most recent error string from the SpinAPI library.
 
         @return str: Human-readable error description, or 'No Error' if none.
-
-        FIX 1: restype is now set once in _setup_lib_signatures(); removed the
-        repeated per-call restype assignment that was in the original.
         """
         return self._lib.pb_get_error().decode('utf-8')
 
@@ -504,9 +468,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @return int: 0 on success, negative on failure.
 
-        FIX 6: SpinCore documentation states that reset() or stop() MUST be
-        called before start() to guarantee execution begins at instruction 0.
-        This method (or stop()) must precede any start() call.
+        SpinCore documentation requires reset() or stop() to be called before
+        start() to guarantee that execution begins at instruction 0.
         """
         return self.check(self._lib.pb_reset())
 
@@ -517,8 +480,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         Must be called before any board communication. If multiple boards are
         present, call select_board() first.
-        Note: No threadlock here — qudi's framework serializes module calls
-        through Qt's event loop, making explicit DLL-level locking unnecessary.
+
+        No threadlock here — qudi's framework serializes module calls through
+        Qt's event loop, making explicit DLL-level locking unnecessary at
+        activation time.
         """
         self.log.debug('Opening connection to SpinCore PulseBlaster.')
         ret_val = self.check(self._lib.pb_init())
@@ -562,7 +527,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         IMPORTANT: This does NOT change the physical clock. It only tells the
         driver what frequency to use when converting nanosecond durations into
         clock cycle counts. The actual frequency is determined by the crystal
-        oscillator soldered to the board (printed on the board label).
+        oscillator soldered to the board (printed on the board label). If this
+        value does not match the board's real oscillator, every timed
+        instruction on every channel will be uniformly stretched or
+        compressed by the mismatch ratio.
 
         pb_core_clock() expects the frequency in MHz, so Hz is divided by 1e6.
         """
@@ -593,18 +561,11 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                      target for BRANCH, JSR, or END_LOOP instructions.
                      Returns a negative value on failure.
 
-        FIX 1: argtypes (including correct c_uint for flags) is now set once in
-        _setup_lib_signatures() rather than here on every call, and the typo
-        'argtype' (missing 's') has been corrected.
-
-        FIX 2: inst_data=None was previously passed for instructions that ignore
-        this field (CONTINUE, STOP, etc.). None is not a valid C int; with
-        argtypes set it raises a TypeError. A guard converts None → 0 for
-        backwards compatibility. Callers should explicitly pass inst_data=0.
+        Opcodes that ignore inst_data (CONTINUE, STOP, RTS, RTI, WAIT) should
+        be called with inst_data=0 explicitly. A defensive guard below
+        substitutes 0 if None slips through, since None is not a valid C int
+        once argtypes are declared.
         """
-        # FIX 2: Guard against None. For opcodes that ignore inst_data
-        # (CONTINUE, STOP, RTS, RTI, WAIT) the caller should pass 0,
-        # but None is handled here defensively.
         if inst_data is None:
             self.log.debug(
                 '_write_pulse received inst_data=None for opcode {0}; '
@@ -662,22 +623,16 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @return int: Address of the last written instruction, or negative on error.
 
-        FIX 7: Single-element sequences now correctly respect loop=False.
-        Previously they always called activate_channels() which always generates
-        a BRANCH (infinite loop), silently ignoring loop=False.
-
-        FIX 8 (corrected): The original FIX 8 added 'with self.threadlock:' here,
-        which caused a deadlock for single-element sequences because this method
-        called activate_channels() which also tried to acquire the same lock.
-        Removed the lock from write_pulse_form entirely — qudi serializes hardware
-        calls through Qt's event loop so explicit DLL-level locking is not needed.
-        Single-element sequences are now handled inline (without calling
-        activate_channels) to avoid any possibility of nested lock acquisition.
+        Single-element sequences are handled inline rather than delegating to
+        activate_channels(), so that loop=False is respected (a single BRANCH
+        instruction would otherwise always loop indefinitely regardless of
+        the loop flag) and so that no nested lock acquisition is possible —
+        activate_channels() holds self.threadlock, and this method does not.
         """
 
-        # Pre-check instruction count before writing anything
-        # Writing partial instructions to the board when we know we'll exceed
-        # the limit leaves the board in an inconsistent state. Abort early.
+        # Pre-check instruction count before writing anything. Writing
+        # partial instructions to the board when we already know we'll
+        # exceed the limit would leave the board in an inconsistent state.
         MAX_PB_INSTRUCTIONS = 4094
 
         if len(sequence_list) > MAX_PB_INSTRUCTIONS:
@@ -693,10 +648,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             return -1
 
         # ── Single-instruction sequence ───────────────────────────────────────
-        # FIX 8 (corrected): Do NOT call activate_channels() here.
-        # The original code called it for all single-element sequences, which
-        # caused a deadlock when FIX 8 added threadlocks to both methods.
-        # Inline the equivalent logic here instead.
         if len(sequence_list) == 1:
             active_channels = sequence_list[0]['active_channels']
             length          = sequence_list[0]['length']
@@ -717,7 +668,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                     length=length
                 )
             else:
-                # FIX 7: run-once — write STOP instead of always using BRANCH
+                # Run-once: write STOP instead of BRANCH
                 retval = self._write_pulse(
                     flags=self.ON | bitmask,
                     inst=self.STOP,
@@ -738,7 +689,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             sequence_list[0]['length']
         )
 
-        # abort immediately on overflow instead of just logging
         write_failed = False
         for pulse in sequence_list[1:-1]:
             num = self._convert_pulse_to_inst(
@@ -790,7 +740,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 length=length
             )
 
-        # return -1 on overflow instead of just logging ────────────
         if num > MAX_PB_INSTRUCTIONS:
             self.log.error(
                 'Final instruction count {0} exceeds board maximum ({1}). '
@@ -963,11 +912,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 '0': 200e-9    # channel 0 has 200 ns delay
                 '2': 500e-9    # channel 2 has 500 ns delay
 
-        FIX 4: The original code called corrected_sequence.remove(pulse) while
-        iterating over corrected_sequence. Python's list iterator advances its
-        internal index after each step; removing an element causes the next
-        element to be silently skipped. Fixed by iterating over the original list
-        and appending accepted elements to a new list (cleaned_sequence).
+        Works by converting the sequence into a list of channel edge events,
+        shifting each event earlier by its channel's configured delay
+        (wrapping around the sequence period), and then reconstructing the
+        RLE sequence from the shifted, re-sorted events.
         """
         # Nothing to correct if no delays are configured
         if len(self._channel_delays) == 0:
@@ -1049,10 +997,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         })
 
         # ── Filter and fix sub-minimum-length pulses ──────────────────────────
-        # FIX 4: Do NOT modify corrected_sequence while iterating over it.
-        # Instead, iterate over corrected_sequence and build cleaned_sequence.
-        # The original code called corrected_sequence.remove(pulse) inside the loop,
-        # which caused Python to skip the element immediately after each removal.
+        # Iterates over corrected_sequence and builds a new list
+        # (cleaned_sequence) rather than removing elements from the list
+        # being iterated over, since that would silently skip entries.
         delta_time    = 0.0
         cleaned_sequence = []
 
@@ -1123,17 +1070,12 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         only — it does NOT limit how long the output stays high. Any value
         >= LEN_MIN is functionally equivalent; LEN_MIN minimises latency.
 
-        FIX 3: length now defaults to self.LEN_MIN (was 100 seconds in the
-        switch methods that called this function).
-
-        FIX 6: reset_device() is called before start() when immediate_start=True.
-
-        FIX 8 (corrected): Only activate_channels keeps the threadlock, as it is
-        the one method that can be called directly from an external thread via
-        the SwitchInterface (e.g., from the GUI switch panel). write_pulse_form
-        no longer calls this method, so there is no nested lock acquisition.
+        This is the one method here that acquires self.threadlock, since it
+        is the entry point most likely to be called directly from another
+        thread (e.g. the GUI switch panel via SwitchInterface). It is never
+        called from write_pulse_form(), avoiding any possibility of nested
+        lock acquisition.
         """
-        # FIX 3: Use minimum instruction length as default loop period
         if length is None:
             length = self.LEN_MIN
 
@@ -1150,7 +1092,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             self.stop_programming()
 
             if immediate_start:
-                # FIX 6: reset_device() must precede start() per SpinCore docs
+                # reset_device() must precede start() per SpinCore docs, to
+                # guarantee execution begins at instruction 0.
                 self.reset_device()
                 self.start()
 
@@ -1204,9 +1147,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         Updates the internal state dict, then reprograms the board with all
         currently-ON channels held high via activate_channels().
-
-        FIX 3: Previously passed length=100 (100 seconds per BRANCH loop cycle)
-        to activate_channels(). Corrected to use self.LEN_MIN as the loop period.
         """
         self._switch_states['d_ch{0}'.format(switch_num)] = True
 
@@ -1217,7 +1157,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             if self._switch_states[entry]
         ]
 
-        # FIX 3: Use LEN_MIN (not 100 seconds) as the BRANCH loop period
         self.activate_channels(ch_list=ch_list, length=self.LEN_MIN, immediate_start=True)
 
         return self._switch_states['d_ch{0}'.format(switch_num)]
@@ -1227,8 +1166,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @param int switch_num: 1-based channel number.
         @return bool: False (the new state of the channel).
-
-        FIX 3: Same length=100 → self.LEN_MIN correction as in _set_switch_on.
         """
         self._switch_states['d_ch{0}'.format(switch_num)] = False
 
@@ -1238,7 +1175,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             if self._switch_states[entry]
         ]
 
-        # FIX 3: Use LEN_MIN (not 100 seconds) as the BRANCH loop period
         self.activate_channels(ch_list=ch_list, length=self.LEN_MIN, immediate_start=True)
 
         return self._switch_states['d_ch{0}'.format(switch_num)]
@@ -1261,21 +1197,12 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return PulserConstraints: Constraints object with min/max sample rate,
                                    voltage levels, waveform lengths, and
                                    supported channel configurations.
-
-        FIX 5: 'constraints.step = 0.0' was setting a stray attribute on the
-        PulserConstraints object rather than 'constraints.sample_rate.step = 0.0'.
-        The attribute name was wrong (should always go via a sub-object).
-
-        FIX 9: get_constraints() declared 3.3 V high (LVTTL), but
-        get_digital_level() returned 5.0 V when called with no arguments.
-        All voltage references now consistently use 3.3 V.
         """
         constraints = PulserConstraints()
 
         # Sample rate is fixed by the on-board oscillator; it cannot be changed.
         constraints.sample_rate.min     = self._clock_freq
         constraints.sample_rate.max     = self._clock_freq
-        # FIX 5: was 'constraints.step = 0.0' (wrong object, missing sub-attribute)
         constraints.sample_rate.step    = 0.0
         constraints.sample_rate.default = self._clock_freq
 
@@ -1285,8 +1212,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         constraints.d_ch_low.step    = 0.0
         constraints.d_ch_low.default = 0.0
 
-        # FIX 9: 3.3 V throughout — was also 3.3 V here in original, but
-        # get_digital_level() default case wrongly returned 5.0 V (fixed below)
         constraints.d_ch_high.min     = 3.3
         constraints.d_ch_high.max     = 3.3
         constraints.d_ch_high.step    = 0.0   # fixed in hardware, cannot be adjusted
@@ -1446,10 +1371,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @param list high: Optional list of channel name strings for high-level query.
         @return (dict, dict): (low_voltages, high_voltages) keyed by channel name.
 
-        FIX 9: The default (no-argument) case previously returned 5.0 V for the
-        high level while the specific-channel case returned 3.3 V, and
-        get_constraints() also reported 3.3 V. All paths now return 3.3 V
-        consistently (LVTTL standard: 3.3 V high, 0 V low).
+        All channels are fixed LVTTL: 0.0 V low, 3.3 V high, consistently
+        across both the default (no-argument) and specific-channel cases,
+        matching get_constraints().
         """
         if low:
             low_dict = {chnl: 0.0 for chnl in low}
@@ -1459,7 +1383,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         if high:
             high_dict = {chnl: 3.3 for chnl in high}
         else:
-            # FIX 9: was 5.0 V here — inconsistent with constraints and specific-channel case
             high_dict = {'d_ch{0:d}'.format(chnl): 3.3 for chnl in range(21)}
 
         return low_dict, high_dict
