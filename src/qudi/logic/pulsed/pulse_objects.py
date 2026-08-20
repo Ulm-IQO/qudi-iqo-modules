@@ -28,7 +28,7 @@ import importlib
 import numpy as np
 import warnings
 
-from dataclasses import dataclass, field
+from dataclasses import field, make_dataclass
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort, iter_modules_recursive
@@ -1127,22 +1127,30 @@ def _as_generation_parameter_contributor(entry, owner):
             f'BaseGenerationParameters subclass or a dict of defaults, got {type(entry).__name__}.'
         )
 
-    namespace = {'__annotations__': {}}
+    specs = []
     for name, default in entry.items():
         if not isinstance(name, str) or not name.isidentifier():
             raise TypeError(
                 f'{owner.__name__}.generation_parameter_contributors: "{name}" is not a valid '
                 f'parameter name.'
             )
-        namespace['__annotations__'][name] = type(default)
-        # Mutable defaults need a factory; dataclass rejects them outright.
-        namespace[name] = (
+        # Mutable defaults need a factory; dataclass rejects them outright. Test hashability
+        # rather than listing concrete types, because that is the test dataclasses itself applies
+        # ("mutable default ... is not allowed") and an enumerated list silently drifts from it:
+        # Python <= 3.10 rejected only list/dict/set, 3.11+ rejects anything unhashable. That
+        # widens the rule to numpy arrays, deques, and - most easily missed - any instance of a
+        # class defining __eq__, since that sets __hash__ to None.
+        spec = (
             field(default_factory=lambda value=default: copy.deepcopy(value))
-            if isinstance(default, (dict, list, set, bytearray))
-            else default
+            if default.__class__.__hash__ is None
+            else field(default=default)
         )
-    return dataclass(frozen=True)(
-        type(f'{owner.__name__}Parameters', (BaseGenerationParameters,), namespace)
+        specs.append((name, type(default), spec))
+    # make_dataclass rather than type() with a hand-built '__annotations__' namespace: it is the
+    # supported way to build a dataclass dynamically, so how annotations reach the decorator stays
+    # the interpreter's business rather than an assumption of ours.
+    return make_dataclass(
+        f'{owner.__name__}Parameters', specs, bases=(BaseGenerationParameters,), frozen=True
     )
 
 

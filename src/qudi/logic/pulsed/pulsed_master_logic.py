@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 Master logic to combine sequence_generator_logic and pulsed_measurement_logic to be
 used with a single GUI.

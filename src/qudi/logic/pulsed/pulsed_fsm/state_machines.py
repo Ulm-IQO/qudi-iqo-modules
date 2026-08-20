@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
 This file contains the Qudi base state machines for organizing the pulsed toolchain.
