@@ -897,6 +897,15 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.error('Failed to de-serialize PulseBlockEnsemble "{0}" from file. '
                                'Deleting broken file.'.format(ensemble_name))
                 os.remove(filepath)
+            except ModuleNotFoundError:
+                # Deliberately not deleted: the file is intact, this installation simply cannot
+                # import a module it references (e.g. an asset saved from a branch carrying classes
+                # this one does not have). Skipping keeps the remaining assets loadable and lets
+                # on_activate finish, where letting this propagate aborts module activation.
+                self.log.error('Failed to de-serialize PulseBlockEnsemble "{0}" from file because of '
+                               'missing dependencies.\n'
+                               'For better debugging I dumped the traceback to debug.'.format(ensemble_name))
+                self.log.debug('{0!s}'.format(traceback.format_exc()))
         return ensemble
 
     def _update_ensembles_from_file(self):
@@ -1017,6 +1026,15 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.error('Failed to de-serialize PulseSequence "{0}" from file.'
                                ''.format(sequence_name))
                 os.remove(filepath)
+                return None
+            except ModuleNotFoundError:
+                # Deliberately not deleted - see the note in _load_ensemble_from_file(). Returns
+                # None rather than falling through, because the backwards-compatibility conversion
+                # below dereferences `sequence`.
+                self.log.error('Failed to de-serialize PulseSequence "{0}" from file because of '
+                               'missing dependencies.\n'
+                               'For better debugging I dumped the traceback to debug.'.format(sequence_name))
+                self.log.debug('{0!s}'.format(traceback.format_exc()))
                 return None
 
         # Conversion for backwards compatibility
