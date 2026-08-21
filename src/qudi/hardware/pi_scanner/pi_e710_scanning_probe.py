@@ -21,6 +21,32 @@ YAML configuration:
                 y_range: [0.0, 100.0]
                 z_range: [0.0,  50.0]
                 trigger_mode: 'SPCM'
+
+Line-by-line 2D scan performance
+---------------------------------
+A 2D scan is executed by the interfuse as a series of 1D fast-axis line
+scans, one per slow-axis position. Configuring a line scan from scratch
+(scan_x/scan_y/scan_z) involves moving the piezo, waiting for it to settle,
+and sending roughly 15-20 sequential GPIB commands to program the segment
+waveform, trigger conditions, and flag timing on the controller.
+
+Since the fast-axis range, pixel dwell time, and trigger mode are identical
+across every line of a given 2D scan, only the FIRST line actually needs
+this full configuration. Every subsequent line only needs to re-fire the
+already-configured segment program, which is done via retrigger_line() --
+this sends a single short command instead of repeating the full setup,
+substantially reducing dead time between lines in a 2D scan.
+
+retrigger_line() relies on the assumption that the final command sent by
+scan_x/scan_y/scan_z ('1SC0,WA{wait_ms}') is what actually (re-)starts
+playback of the previously programmed segments, rather than being part of
+the configuration itself. This is inferred from its position in the command
+sequence (last, and the only command carrying a line-dependent computed
+value) rather than confirmed against PI's GCS segment-protocol
+documentation. If retrigger_line() is ever suspected of producing incorrect
+scan lines, verify by comparing a scan against one taken using only
+scan_x/scan_y/scan_z (i.e. with retrigger_line() disabled), and/or by
+inspecting the trigger output on an oscilloscope for the second line onward.
 """
 
 import ctypes
@@ -106,6 +132,11 @@ class PIE710Controller:
         self._axes: List[str] = []
         self._travel_min: List[float] = []
         self._travel_max: List[float] = []
+        # Remembers the wait time (in ms) used to configure the most
+        # recently programmed line scan (scan_x/scan_y/scan_z). Used by
+        # retrigger_line() to re-fire that exact segment program without
+        # resending its full configuration.
+        self._last_wait_ms: Optional[int] = None
         self._dll = self._load_dll(dll_path, use_windll)
         self._setup_signatures()
 
@@ -506,6 +537,9 @@ class PIE710Controller:
         self.send_raw_string(f'{t_on + curve_pts}FT259')
         wait_ms = round(2 * total_pts / self.SAMP_RATE * 1000 + 100)
         self.send_raw_string(f'1SC0,WA{wait_ms}')
+        # Remember this line's wait time so retrigger_line() can re-fire the
+        # same segment program later without resending its configuration.
+        self._last_wait_ms = wait_ms
 
     def scan_y(self, x, y, z, t_pixel, trigger="SPCM"):
         self._require_connection()
@@ -532,6 +566,8 @@ class PIE710Controller:
         self.send_raw_string(f'{t_on + curve_pts}FT259')
         wait_ms = round(2 * total_pts / self.SAMP_RATE * 1000 + 100)
         self.send_raw_string(f'1SC0,WA{wait_ms}')
+        # See comment in scan_x().
+        self._last_wait_ms = wait_ms
 
     def scan_z(self, x, y, z, t_pixel, trigger="SPCM"):
         self._require_connection()
@@ -558,6 +594,8 @@ class PIE710Controller:
         self.send_raw_string(f'{t_on + curve_pts}FT259')
         wait_ms = round(2 * total_pts / self.SAMP_RATE * 1000 + 100)
         self.send_raw_string(f'1SC0,WA{wait_ms}')
+        # See comment in scan_x().
+        self._last_wait_ms = wait_ms
 
     def scan_xy(self, x, y, z, t_pixel, trigger="SPCM"):
         self._require_connection()
@@ -652,6 +690,35 @@ class PIE710Controller:
         self.send_raw_string(f'{t_on}FT3')
         self.send_raw_string(f'{t_off}FT259')
         self.send_raw_string(f'0SC32,WA1000,RP{nz}')
+
+    def retrigger_line(self):
+        """
+        Re-fire the segment program most recently configured by
+        scan_x()/scan_y()/scan_z(), without resending its configuration.
+
+        Sends only the single command that (re-)starts playback of the
+        already-programmed segments, using the wait time cached from that
+        earlier call. Safe to call repeatedly as long as the fast-axis
+        range, pixel dwell time, and trigger mode are unchanged since the
+        last full scan_x/scan_y/scan_z call -- exactly the situation for
+        every line after the first in a 2D raster scanned line-by-line.
+        """
+        self._require_connection()
+        if self._last_wait_ms is None:
+            raise PIE7XXError(
+                "retrigger_line() called with no prior line scan configured. "
+                "Call scan_x()/scan_y()/scan_z() at least once first."
+            )
+        self.send_raw_string(f'1SC0,WA{self._last_wait_ms}')
+
+    def move_xyz(self, x: float, y: float, z: float, wait: bool = True):
+        self._require_connection()
+        self._check(
+            self._fn("E7XX_MOV")(self._id, b"123", self._darr([x, y, z])),
+            "MOV_xyz",
+        )
+        if wait:
+            self.wait_for_motion("123", timeout=30.0)
 
     # ── Initialisation ────────────────────────────────────────────────────────
 
@@ -842,6 +909,23 @@ class PIE710ScannerInterface(Base):
         """
         pass
 
+    @abstractmethod
+    def retrigger_line(self) -> float:
+        """
+        Re-fire the most recently configured single-axis (fast-axis) line
+        scan WITHOUT reprogramming its segment/trigger/flag configuration.
+
+        Must only be called after start_scan() has been called at least once
+        with a single-axis `axes` tuple, and only while the fast-axis range,
+        pixel dwell time, and trigger mode remain unchanged from that call
+        (exactly the situation for every line after the first in a 2D raster
+        scanned line-by-line).
+
+        @return : estimated duration of this line, in seconds (same value
+                  returned by the original start_scan() call).
+        """
+        pass
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  CONCRETE HARDWARE MODULE — PIE710Scanner
@@ -866,6 +950,12 @@ class PIE710Scanner(PIE710ScannerInterface):
         super().__init__(*args, **kwargs)
         self._ctrl:        Optional[PIE710Controller] = None
         self._target_pos:  Dict[str, float]           = {'x': 0.0, 'y': 0.0, 'z': 0.0}
+        # Estimated duration of the most recently configured single-axis
+        # line scan. Used by retrigger_line() to return a consistent
+        # duration for subsequent lines without recomputing it -- the
+        # formula depends only on the fast-axis range and t_pixel, both of
+        # which are unchanged across lines of the same 2D raster.
+        self._last_line_duration_s: Optional[float] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -1013,10 +1103,34 @@ class PIE710Scanner(PIE710ScannerInterface):
         else:
             raise ValueError(f"Unknown axis '{axis}'")
 
+        # scan_x/y/z() move the piezo via PIE710Controller's own raw
+        # move_absolute(), which does not update self._target_pos. Once the
+        # scan has been programmed and fired, the fast axis physically ends
+        # up back at pos_array[0] (the segment waveform's forward-then-
+        # backward sweep returns to its start point) -- so _target_pos is
+        # updated here to reflect that.
+        #
+        # This matters for line-by-line 2D scans: between lines, only the
+        # slow axis position actually needs to change, but move_absolute()
+        # always re-sends MOV commands for all three axes using whatever is
+        # currently in _target_pos. Keeping _target_pos[axis] accurate here
+        # ensures that per-line move re-asserts the fast axis to its correct
+        # starting position via a real, closed-loop MOV command on every
+        # line, rather than relying on the (skipped, for speed) internal
+        # re-move that scan_x/y/z would otherwise perform on every call.
+        self._target_pos[axis] = pos_array[0]
+
         speed_pts, start_pt = 100, 100
         n = max(1, round(t_pixel * PIE710Controller.SAMP_RATE))
         total_pts = len(pos_array) * n + 2 * speed_pts + 2 * start_pt
-        return 2.0 * total_pts / PIE710Controller.SAMP_RATE + 1.5
+        duration_s = 2.0 * total_pts / PIE710Controller.SAMP_RATE + 1.5
+
+        # Cache this line's estimated duration so retrigger_line() can
+        # return a consistent value for subsequent lines without
+        # recomputing it.
+        self._last_line_duration_s = duration_s
+
+        return duration_s
 
     def _start_2d(self, fast_axis, slow_axis, fast_pos, slow_pos, t_pixel, current_pos) -> float:
         if fast_axis == 'x' and slow_axis == 'y':
@@ -1038,6 +1152,20 @@ class PIE710Scanner(PIE710ScannerInterface):
 
         raise ValueError(
             f"Unsupported 2D axis combination: fast='{fast_axis}', slow='{slow_axis}'")
+
+    def retrigger_line(self) -> float:
+        """
+        See PIE710ScannerInterface.retrigger_line() for the full usage
+        contract. Delegates the actual GPIB command to
+        PIE710Controller.retrigger_line() and returns the cached duration
+        estimate from the most recent single-axis start_scan() call.
+        """
+        self._ctrl.retrigger_line()
+        if self._last_line_duration_s is None:
+            raise PIE7XXError(
+                "retrigger_line() called with no prior single-axis start_scan() call."
+            )
+        return self._last_line_duration_s
 
     def wait_for_scan_complete(
         self,

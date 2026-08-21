@@ -13,7 +13,8 @@ Scan execution
 --------------
 1D scan:
     arm(n_pixels)              <- counter creates CO+CI tasks, both wait
-    fire 1D PI scan            <- GPIB command, BLOCKING (includes 0.5s move + scan)
+    fire 1D PI scan            <- GPIB command, BLOCKING (includes settle
+                                   time + segment/trigger configuration)
     wait_for_scan_complete     <- verify PI generators idle
     read(n_pixels)             <- CO.wait_until_done -> read buffer
 
@@ -21,11 +22,25 @@ Scan execution
     The PI gate fires once per fast-axis sweep.
     For each slow-axis position:
         move slow axis
-        arm(n_fast)            <- fresh CO+CI tasks
-        fire 1D fast-axis scan <- BLOCKING
+        arm(n_fast)                     <- fresh CO+CI tasks
+        fire fast-axis sweep (see below) <- BLOCKING
         wait_for_scan_complete
         read(n_fast)
         accumulate + live GUI update
+
+Firing the fast-axis sweep, line by line
+------------------------------------------
+Since the fast-axis range, pixel dwell time, and trigger mode are identical
+across every line of a given 2D scan, only the FIRST line needs the full
+scan setup (move, settle, and the ~15-20 GPIB commands that program the
+segment waveform and trigger/flag configuration on the PI controller).
+Every subsequent line only needs to re-fire that already-configured segment
+program, which is done via the scanner module's lightweight
+retrigger_line() -- a single short command instead of a full
+reconfiguration, substantially reducing dead time between lines. See
+PIE710Scanner.retrigger_line() (and the underlying
+PIE710Controller.retrigger_line()) for the exact mechanism and a caveat
+about the assumption it relies on.
 
 YAML configuration:
     interfuse:
@@ -390,10 +405,11 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         t_pixel:    float,
     ) -> None:
         """
-        1. arm(n_pts)          -- CO+CI tasks created; CO waits for gate
-        2. start_scan()        -- GPIB: moves to start, fires scan (BLOCKING)
+        1. arm(n_pts)             -- CO+CI tasks created; CO waits for gate
+        2. start_scan()           -- GPIB: moves to start, configures and
+                                      fires the scan (BLOCKING)
         3. wait_for_scan_complete -- verify PI generators idle
-        4. read(n_pts)         -- CO.wait_until_done; read buffer; diff+reshape
+        4. read(n_pts)            -- CO.wait_until_done; read buffer; diff+reshape
         5. store
         """
         pos_array   = np.linspace(scan_range[0], scan_range[1], n_pts).tolist()
@@ -410,7 +426,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             self._counter().stop()
             return
 
-        # 2. Fire PI scan (scan_x is BLOCKING: includes move + 0.5s sleep + scan + WA wait)
+        # 2. Fire PI scan (BLOCKING: includes move, settle, and full
+        #    segment/trigger configuration)
         try:
             estimated_s = self._scanner().start_scan(
                 axes        = (axis,),
@@ -463,6 +480,15 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         The PI gate fires once per fast-axis sweep. The counter re-arms
         before each sweep. After each line, ScanData is updated for live
         GUI display.
+
+        Only the FIRST line calls start_scan(), which performs the full
+        move + settle + segment/trigger/flag configuration on the PI
+        controller. Every subsequent line calls the lightweight
+        retrigger_line() instead, which re-fires the same already-configured
+        segment program with a single short command -- safe because the
+        fast-axis range, dwell time, and trigger mode are identical across
+        all lines of this scan. See PIE710Scanner.retrigger_line() for the
+        exact mechanism and its usage requirements.
         """
         fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
         slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
@@ -497,17 +523,22 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 self._counter().stop()
                 break
 
-            # Fire 1D scan along fast axis (BLOCKING)
-            current_pos = self._scanner().get_target()
+            # Fire this line's fast-axis sweep: full configuration on the
+            # first line, a lightweight retrigger on every line after that.
             try:
-                estimated_s = self._scanner().start_scan(
-                    axes        = (fast_axis,),
-                    positions   = (fast_pos,),
-                    t_pixel     = t_pixel,
-                    current_pos = current_pos,
-                )
+                if i_slow == 0:
+                    current_pos = self._scanner().get_target()
+                    estimated_s = self._scanner().start_scan(
+                        axes        = (fast_axis,),
+                        positions   = (fast_pos,),
+                        t_pixel     = t_pixel,
+                        current_pos = current_pos,
+                    )
+                else:
+                    estimated_s = self._scanner().retrigger_line()
             except Exception as exc:
-                self.log.error(f'Scanner start_scan failed on line {i_slow}: {exc}')
+                action = 'start_scan' if i_slow == 0 else 'retrigger_line'
+                self.log.error(f'Scanner {action} failed on line {i_slow}: {exc}')
                 self._counter().stop()
                 break
 
