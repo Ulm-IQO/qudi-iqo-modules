@@ -6,6 +6,10 @@ existed, all of it was loose dictionaries and ~20 separately-declared `StatusVar
 in a settings key was silently accepted and a missing key in a saved file could reset every setting
 you had.
 
+**If you are here to add a new sequence to the Predefined Methods tab,** you do not need any of the
+dataclass detail below — skip to
+[Writing a predefined generate method](#writing-a-predefined-generate-method).
+
 **If you are here to add a lab-specific global generation parameter, you only need one file:**
 [`generation_parameter_extensions.py`](generation_parameter_extensions.py). Skip to
 [Extending this](#extending-this--notes-for-physicists).
@@ -25,7 +29,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import Generati
 |---|---|---|
 | [`generation_parameter_extensions.py`](generation_parameter_extensions.py) | **Your lab's** extra generation parameters | 2 |
 | [`sequence_generator_logic_data.py`](sequence_generator_logic_data.py) | `SequenceGeneratorLogic` — generation parameters, pulser hardware mirror, sampling results | 14 |
-| [`pulsed_measurement_logic_data.py`](pulsed_measurement_logic_data.py) | `PulsedMeasurementLogic` — microwave, fast counter, readout, live measurement state | 13 |
+| [`pulsed_measurement_logic_data.py`](pulsed_measurement_logic_data.py) | `PulsedMeasurementLogic` — microwave, fast counter, readout, live measurement state | 13 classes + 1 function |
 | [`pulsed_measurement.py`](pulsed_measurement.py) | The top-level snapshot of one complete measurement | 4 |
 | [`pulsed_master_logic_data.py`](pulsed_master_logic_data.py) | `PulsedMasterLogic` — busy flags, fit containers | 2 |
 | [`settings_coercion.py`](settings_coercion.py) | Shared helper every settings setter calls | 1 class + 2 functions |
@@ -657,6 +661,45 @@ breaks lines, so a big settings dict became one unreadable wall of text. This su
 `__repr__` to return `pprint.pformat(...)`, which does contain real newlines — so the existing
 line-prefixing logic handles it with no changes to `DataStorage`.
 
+#### `to_plain_metadata()` *(function)*
+
+The other half of the save boundary, and the one that decides whether a header can be **read back**.
+
+`qudi.util.datastorage` writes each metadata value with `repr()` and restores it with a bare
+`eval()`. `repr()` does not produce a description of a value — it produces *code that rebuilds it* —
+so a repr that names a tool rather than spelling the value out raises `NameError` on the way back
+in. `str_dict_to_metadata()` catches that and silently keeps the raw string, so the value looks
+correct in the file but arrives as a `str`, and a caller doing
+`metadata['generation parameters']['rabi_period']` fails far from the cause with *"string indices
+must be integers"*. Three such reprs really occur:
+
+| repr in the header | comes from | why the parser's one import retry cannot rescue it |
+|---|---|---|
+| `array([0., 1., ...])` | any `np.ndarray`, e.g. `controlled_variable` | it imports the *stdlib* `array` module, whose `array()` then rejects the argument |
+| `np.int64(5943750)` | numpy scalars, numpy ≥ 2.0 | there is no module called `np` — it is a convention, not a name |
+| `qudi.logic.pulsed.sampling_functions.PulseEnvelope(...)` | `pulse_envelope`, plus the `PulseEnvelopeType` enum inside it | importing `qudi` binds only the top-level package, not that submodule |
+
+`to_plain_metadata()` converts recursively — arrays to lists, numpy scalars to `int`/`float`/`bool`,
+`Enum` to its value, sets to sorted lists, anything with `to_dict()` through it — so the header
+becomes self-describing and needs no imports at all to parse. It is applied by
+`PulsedMeasurementLogic._finalize_metadata()`, which sanitizes **then** wraps in
+`MetadataDictRepresentation`.
+
+Two things worth knowing:
+
+- **This is not about the pretty-printing.** Line breaks never affected whether a value parses: a
+  dict literal spanning lines is a valid `eval` expression and `ConfigParser` rejoins continuation
+  lines first. `eval` cares about undefined *names*. A pretty-printed `fast counter settings` parses
+  back to a `dict` perfectly, while a single-line `generation parameters` does not.
+- **It also prevents silent data loss.** numpy summarises the repr of arrays longer than
+  `np.get_printoptions()['threshold']` (1000) as `array([0., 1., ..., 1498., 1499.])`. A controlled
+  variable with more than 1000 points used to reach the header with its middle values already gone,
+  unrecoverably — the text no longer contained them.
+
+**Branch order in the implementation is load-bearing:** `dict`/`list`/`tuple`/`set` are matched
+before the `to_dict()` duck-type, because `AnalysisParameters`, `ExtractionParameters` and
+`GenerationMethodParameters` are dict subclasses that also define `to_dict()` — convention 5 again.
+
 #### `PulsedMeasurementSettings` *(frozen)* — the aggregate
 
 ```python
@@ -990,6 +1033,177 @@ extensions depending on import order.
 ---
 
 ## Extending this — notes for physicists
+
+### Writing a predefined generate method
+
+Everything else in this file is about the dataclasses. This section is about the task most people
+actually come here for: adding a new sequence to the **Predefined Methods** tab. The methods
+themselves live one folder up, in
+[`../predefined_generate_methods/`](../predefined_generate_methods/).
+
+Almost every way of getting this wrong fails **silently** — no error, no log line, the method or the
+widget simply is not there. So each rule below is paired with what you see when you break it.
+
+#### How qudi finds your method
+
+Four conditions, all required:
+
+| Condition | If you break it |
+|---|---|
+| The method sits on a class inheriting `PredefinedGeneratorBase` ([`../pulse_objects.py`](../pulse_objects.py)) | the class is not collected; none of its methods appear |
+| Its name starts with `generate_` | not recognised as a generate method |
+| Its module is under `qudi.logic.pulsed.predefined_generate_methods`, **or** under a path listed in the `additional_predefined_methods_path` ConfigOption of `SequenceGeneratorLogic` | never imported, so never discovered |
+| The module imports cleanly | collection skips it |
+
+The group box on the tab is labelled with the name minus the `generate_` prefix, so
+`generate_rabi` shows up as **rabi**.
+
+#### The contract every method must honour
+
+```python
+def generate_my_sequence(self, name='my_seq', tau_start=10.0e-9, num_of_points=50):
+    ...
+    return created_blocks, created_ensembles, created_sequences
+```
+
+- **Return exactly three lists** — blocks, ensembles, sequences — any of which may be empty.
+  `SequenceGeneratorLogic.generate_predefined_sequence()` unpacks all three
+  ([`../sequence_generator_logic.py`](../sequence_generator_logic.py)).
+- **A `name` argument is mandatory.** Without one, generation is aborted with an error and nothing
+  is created. It is the only argument checked for.
+- **Arguments you do not declare are discarded.** Anything passed that is not in your signature is
+  dropped, recorded only at `debug` level — which nobody sees by default. A typo'd parameter name
+  therefore behaves exactly like a parameter that is ignored.
+
+#### The boxes next to the Generate button
+
+The GUI builds one input widget per argument by inspecting its **default value**, so:
+
+- **Every argument needs a default.** No default, no widget.
+- **Only `bool`, `float`, `int`, `str` and `Enum` are supported.** Anything else logs an error and
+  that one widget is skipped, while the rest of the method still works — see
+  `_create_predefined_methods` in
+  [`../../../gui/pulsed/pulsed_maingui.py`](../../../gui/pulsed/pulsed_maingui.py).
+- **Units come from the name.** A `float` whose name contains `amp` or `volt` gets a `V` suffix,
+  `freq` gets `Hz`, and `time`, `period` or `tau` get `s`.
+
+#### Where does a parameter belong?
+
+Three tiers, and picking the wrong one is the usual mistake:
+
+| Your value is… | Declare it as | Example |
+|---|---|---|
+| changed on every generation | an ordinary method argument (above) | `tau_start`, `num_of_points` |
+| a property of the whole setup, used by several methods | a `BaseGenerationParameters` subclass — see [Adding a global generation parameter](#adding-a-global-generation-parameter-the-common-case) | `green_aom_delay` |
+| needed by one generator only | `generation_parameter_contributors` — see [Adding a parameter only one generator needs](#adding-a-parameter-only-one-generator-needs) | `rf_amplitude` |
+
+Both of the lower two tiers become ordinary `GenerationParameters` fields: a widget in the tab's
+global parameter grid, a slot in the status file, and readable from any generate method as
+
+```python
+self.generation_parameters['green_aom_delay']     # dict style
+self.microwave_amplitude                          # named helper properties, for the built-ins
+```
+
+The global grid supports a slightly wider set of types than the per-method widgets do — `str`,
+`int`, `float`, `bool`, `Enum` and `PulseEnvelope`, with anything else logged and skipped
+(`_create_pm_global_params`). Two behaviours specific to the global grid:
+
+- A parameter whose name **ends in `_channel`** is rendered as a drop-down of the currently active
+  channels, and is auto-corrected by `set_pulse_generator_settings()` if it names a channel that is
+  not in the active activation config.
+- `laser_channel`, `sync_channel` and `gate_channel` deliberately get no widget here — they are
+  already on the Pulse Editor tab.
+
+#### Telling the analysis what you built
+
+If you want **invoke settings** to configure the measurement automatically, attach a
+`MeasurementInformation` to your ensemble or sequence. Five fields are mandatory
+(`MeasurementInformation._MANDATORY_FIELDS`); miss any one and invoke settings silently does
+nothing, because `is_valid` stays `False`:
+
+```python
+block_ensemble.measurement_information.number_of_lasers    = num_of_points
+block_ensemble.measurement_information.controlled_variable = tau_array
+block_ensemble.measurement_information.laser_ignore_list   = list()
+block_ensemble.measurement_information.alternating         = False
+block_ensemble.measurement_information.counting_length     = self._get_ensemble_count_length(
+    ensemble=block_ensemble, created_blocks=created_blocks)
+# optional, but they label the plot axes
+block_ensemble.measurement_information.units  = ('s', '')
+block_ensemble.measurement_information.labels = ('Tau', 'Signal')
+```
+
+Unlike a plain dict, an unknown field name raises `KeyError` listing the valid ones, so typos here
+are caught immediately. `generate_rabi` in
+[`../predefined_generate_methods/basic_predefined_methods.py`](../predefined_generate_methods/basic_predefined_methods.py)
+is the shortest complete example to copy from.
+
+#### A skeleton to start from
+
+```python
+import numpy as np
+from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble
+from qudi.logic.pulsed.pulse_objects import PredefinedGeneratorBase
+
+
+class MyLabGenerator(PredefinedGeneratorBase):
+    """Sequences specific to our setup."""
+
+    # Optional - only if this generator needs its own global parameters (tier 3 above)
+    generation_parameter_contributors = ({'rf_amplitude': 1e-3, 'rf_channel': 'a_ch2'},)
+
+    def generate_my_sequence(self, name='my_seq', tau_start=10.0e-9, tau_step=10.0e-9,
+                             num_of_points=50):
+        """One-line summary shown nowhere, but write it anyway."""
+        created_blocks, created_ensembles, created_sequences = list(), list(), list()
+
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+        mw_element      = self._get_mw_element(length=tau_start, increment=tau_step,
+                                               amp=self.microwave_amplitude,
+                                               freq=self.microwave_frequency, phase=0)
+        laser_element   = self._get_laser_gate_element(length=self.laser_length, increment=0)
+        delay_element   = self._get_delay_gate_element()
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+        block = PulseBlock(name=name)
+        block.append(mw_element)
+        block.append(laser_element)
+        block.append(delay_element)
+        block.append(waiting_element)
+        created_blocks.append(block)
+
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((block.name, num_of_points - 1))
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        block_ensemble.measurement_information.number_of_lasers    = num_of_points
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.laser_ignore_list   = list()
+        block_ensemble.measurement_information.alternating         = False
+        block_ensemble.measurement_information.units               = ('s', '')
+        block_ensemble.measurement_information.labels              = ('Tau', 'Signal')
+        block_ensemble.measurement_information.counting_length     = \
+            self._get_ensemble_count_length(ensemble=block_ensemble,
+                                            created_blocks=created_blocks)
+
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+```
+
+#### When something does not work
+
+| Symptom | Cause |
+|---|---|
+| The method does not appear on the tab at all | one of the four discovery conditions above — most often the class does not inherit `PredefinedGeneratorBase`, or the module is outside both search paths |
+| The method appears but one parameter has no box | that argument has no default, or its type is outside `bool`/`float`/`int`/`str`/`Enum`. The error is in the qudi log |
+| A parameter you pass is ignored | it is not in the method signature — check the spelling; the discard is only logged at `debug` level |
+| A new global parameter has no widget | its type is outside `str`/`int`/`float`/`bool`/`Enum`/`PulseEnvelope`. It still works from scripts |
+| Two generators declare the same parameter name | rejected on purpose. In `generation_parameter_extensions.py` this raises at import; from `generation_parameter_contributors` it is logged and skipped so a faulty lab module cannot block activation |
+| "Invoke settings" does nothing | one of the five mandatory `measurement_information` fields is missing |
+| Your ensemble-only method produces a **sequence** | on a pulser whose constraints report `SequenceOption.FORCED`, `_add_default_sequence()` wraps your ensemble in a generated `PulseSequence` of the same name, and that sequence is what gets loaded |
+| The generated object ignores a parameter you changed | generation parameters are read when the method runs; change them *before* pressing Generate, and re-sample after changing them |
 
 ### Adding a global generation parameter (the common case)
 

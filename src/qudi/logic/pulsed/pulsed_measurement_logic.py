@@ -65,6 +65,7 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     GenerationMethodParameters,
     MeasurementInformation,
     MetadataDictRepresentation,
+    to_plain_metadata,
     MicrowaveSettings,
     FastCounterSettings,
     ReadoutSettings,
@@ -2134,8 +2135,7 @@ class PulsedMeasurementLogic(LogicBase):
             'Measurement sweeps'          : self.measurement_data.elapsed_sweeps,
             'pulsed measurement settings' : self._get_master_settings_metadata(generator_settings)}
         metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
-        return {key: (MetadataDictRepresentation(value) if isinstance(value, dict) else value)
-                for key, value in metadata.items()}
+        return self._finalize_metadata(metadata)
 
     def _get_laser_metadata(self, generator_settings=None, ensembles=None, blocks=None):
         fc = self._settings.fast_counter_settings
@@ -2145,8 +2145,7 @@ class PulsedMeasurementLogic(LogicBase):
             'extraction parameters': self.extraction_settings,
             'pulsed measurement settings': self._get_master_settings_metadata(generator_settings)}
         metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
-        return {key: (MetadataDictRepresentation(value) if isinstance(value, dict) else value)
-                for key, value in metadata.items()}
+        return self._finalize_metadata(metadata)
 
     def _get_signal_metadata(self, generator_settings=None, ensembles=None, blocks=None):
         ms = self._settings.readout_settings
@@ -2180,8 +2179,30 @@ class PulsedMeasurementLogic(LogicBase):
             metadata['fit result'] = FitContainer.dict_result(self._fit_result)
         if self._fit_result_alt:
             metadata['fit result alt'] = FitContainer.dict_result(self._fit_result_alt)
-        return {key: (MetadataDictRepresentation(value) if isinstance(value, dict) else value)
-                for key, value in metadata.items()}
+        return self._finalize_metadata(metadata)
+
+    @staticmethod
+    def _finalize_metadata(metadata):
+        """Shared tail of _get_raw_metadata()/_get_laser_metadata()/_get_signal_metadata().
+
+        Two steps, in this order:
+
+        1. to_plain_metadata() converts every value into types whose repr() can be read back by
+           qudi.util.datastorage's eval()-based parser - see its docstring for the three reprs that
+           otherwise arrive as unparsed strings, and for the >1000-element array truncation it
+           avoids.
+        2. Dicts are wrapped in MetadataDictRepresentation so the header shows them pretty-printed
+           across several lines instead of one wall-of-text line.
+
+        Sanitizing first matters: the wrapper's repr() is what ends up in the file, so it has to be
+        holding already-plain values. The two are independent otherwise - line breaks never affected
+        whether a value parses back (a dict literal spanning lines is a perfectly valid eval
+        expression, and ConfigParser rejoins continuation lines before the parse).
+        """
+        return {
+            key: (MetadataDictRepresentation(plain) if isinstance(plain, dict) else plain)
+            for key, plain in ((key, to_plain_metadata(value)) for key, value in metadata.items())
+        }
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
