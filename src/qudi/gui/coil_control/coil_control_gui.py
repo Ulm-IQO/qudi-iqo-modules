@@ -28,6 +28,48 @@ from qudi.logic.coil_control_logic import CoilControlLogic
 from qudi.gui.switch.switch_state_widgets import ToggleSwitchWidget
 
 
+class InstantStepDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    """ A QDoubleSpinBox that commits its value differently depending on HOW
+    it was changed:
+
+        - Clicking the up/down arrow buttons, using the mouse scroll wheel,
+          or pressing the Up/Down arrow KEYS all internally call Qt's
+          stepBy() method. Each such step is a single, complete, deliberate
+          action -- there is no "intermediate" state -- so sigValueCommitted
+          is emitted immediately after every step.
+
+        - Typing digits directly does NOT call stepBy() at all. Those
+          keystrokes only update the widget's displayed text; the actual
+          value is only considered "committed" once editingFinished fires
+          (Enter/Return pressed, or the widget loses focus). This avoids
+          firing a hardware write for every intermediate value while typing
+          a number character-by-character (e.g. "-5" then "-5.5").
+
+    Without this, a plain QDoubleSpinBox connected only via editingFinished
+    would mean the up/down step buttons and scroll wheel silently do
+    nothing to the underlying hardware (they don't cause focus loss or an
+    Enter keypress) -- this was the case in the original version of this
+    GUI. Connecting only via valueChanged instead would fix the arrows but
+    introduce spurious intermediate hardware writes while typing a new
+    number. This class gives instant on-the-fly updates for discrete
+    stepping, while still committing typed input only once, on Enter or
+    focus loss.
+    """
+
+    sigValueCommitted = QtCore.Signal(float)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.editingFinished.connect(self._emit_committed)
+
+    def stepBy(self, steps):
+        super().stepBy(steps)
+        self._emit_committed()
+
+    def _emit_committed(self):
+        self.sigValueCommitted.emit(self.value())
+
+
 class CoilControlMainWindow(QtWidgets.QMainWindow):
     """ Main window for the CoilControlGui module. """
 
@@ -146,6 +188,17 @@ class CoilControlGui(GuiBase):
         """ Dynamically build one row per axis: label, voltage spinbox,
         current spinbox, output toggle switch.
 
+        Voltage and current spinboxes use InstantStepDoubleSpinBox (see class
+        above) rather than a plain QDoubleSpinBox, connected via its
+        sigValueCommitted signal instead of editingFinished: editingFinished
+        alone means the up/down step buttons and scroll wheel silently do
+        nothing (no focus loss or Enter keypress occurs from those actions).
+        sigValueCommitted fires immediately for discrete step actions
+        (arrows, wheel, arrow keys), but only on Enter/focus-loss for typed
+        input -- giving instant "on the fly" behavior for stepping while
+        avoiding spurious intermediate hardware writes while typing a new
+        number (e.g. typing "-5.5" would otherwise briefly write "-5" first).
+
         Column/row stretch factors are set at the end so the widgets actually
         grow to fill the window on resize -- mirrors the same pattern used in
         SwitchGui._populate_switches(), which sets setColumnStretch() after
@@ -175,7 +228,7 @@ class CoilControlGui(GuiBase):
             axis_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
             voltage_min, voltage_max = logic.get_voltage_limits(axis)
-            voltage_spinbox = QtWidgets.QDoubleSpinBox()
+            voltage_spinbox = InstantStepDoubleSpinBox()
             voltage_spinbox.setRange(voltage_min, voltage_max)
             voltage_spinbox.setDecimals(3)
             voltage_spinbox.setSingleStep(0.1)
@@ -183,12 +236,12 @@ class CoilControlGui(GuiBase):
             voltage_spinbox.setValue(self._safe(logic.get_voltage(axis)))
             voltage_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                           QtWidgets.QSizePolicy.Policy.Preferred)
-            voltage_spinbox.editingFinished.connect(
-                self.__get_voltage_update_func(axis, voltage_spinbox)
+            voltage_spinbox.sigValueCommitted.connect(
+                self.__get_voltage_update_func(axis)
             )
 
             current_min, current_max = logic.get_current_limits(axis)
-            current_spinbox = QtWidgets.QDoubleSpinBox()
+            current_spinbox = InstantStepDoubleSpinBox()
             current_spinbox.setRange(current_min, current_max)
             current_spinbox.setDecimals(3)
             current_spinbox.setSingleStep(0.1)
@@ -196,8 +249,8 @@ class CoilControlGui(GuiBase):
             current_spinbox.setValue(self._safe(logic.get_current(axis)))
             current_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                           QtWidgets.QSizePolicy.Policy.Preferred)
-            current_spinbox.editingFinished.connect(
-                self.__get_current_update_func(axis, current_spinbox)
+            current_spinbox.sigValueCommitted.connect(
+                self.__get_current_update_func(axis)
             )
 
             output_switch = ToggleSwitchWidget(switch_states=('Off', 'On'),
@@ -232,7 +285,7 @@ class CoilControlGui(GuiBase):
         self._mw.main_layout.setRowStretch(0, 0)
         for row in range(1, len(logic.axes) + 1):
             self._mw.main_layout.setRowStretch(row, 1)
-            
+
     def _delete_axes(self):
         """ Delete all row widgets from the main layout. """
         self._widgets.clear()
@@ -244,6 +297,10 @@ class CoilControlGui(GuiBase):
             if widget is not None:
                 try:
                     widget.sigStateChanged.disconnect()
+                except AttributeError:
+                    pass
+                try:
+                    widget.sigValueCommitted.disconnect()
                 except AttributeError:
                     pass
                 widget.setParent(None)
@@ -287,14 +344,14 @@ class CoilControlGui(GuiBase):
             self._mw.action_periodic_state_check.setChecked(enabled)
             self._mw.action_periodic_state_check.blockSignals(False)
 
-    def __get_voltage_update_func(self, axis, spinbox):
-        def update_func():
-            self.sigVoltageSet.emit(axis, spinbox.value())
+    def __get_voltage_update_func(self, axis):
+        def update_func(value):
+            self.sigVoltageSet.emit(axis, value)
         return update_func
 
-    def __get_current_update_func(self, axis, spinbox):
-        def update_func():
-            self.sigCurrentSet.emit(axis, spinbox.value())
+    def __get_current_update_func(self, axis):
+        def update_func(value):
+            self.sigCurrentSet.emit(axis, value)
         return update_func
 
     def __get_output_update_func(self, axis):
