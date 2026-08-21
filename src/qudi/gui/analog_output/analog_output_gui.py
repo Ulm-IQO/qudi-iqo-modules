@@ -28,6 +28,41 @@ from qudi.logic.analog_output_logic import AnalogOutputLogic
 from qudi.gui.switch.switch_state_widgets import ToggleSwitchWidget
 
 
+class InstantStepDoubleSpinBox(QtWidgets.QDoubleSpinBox):
+    """ A QDoubleSpinBox that commits its value differently depending on HOW
+    it was changed:
+
+        - Clicking the up/down arrow buttons, using the mouse scroll wheel,
+          or pressing the Up/Down arrow KEYS all internally call Qt's
+          stepBy() method. Each such step is a single, complete, deliberate
+          action -- there is no "intermediate" state -- so sigValueCommitted
+          is emitted immediately after every step.
+
+        - Typing digits directly does NOT call stepBy() at all. Those
+          keystrokes only update the widget's displayed text; the actual
+          value is only considered "committed" once editingFinished fires
+          (Enter/Return pressed, or the widget loses focus). This avoids
+          firing a hardware write for every intermediate value while typing
+          a number character-by-character (e.g. "-5" then "-5.5").
+
+    This gives instant on-the-fly updates for discrete stepping, while
+    avoiding spurious intermediate hardware writes while typing.
+    """
+
+    sigValueCommitted = QtCore.Signal(float)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.editingFinished.connect(self._emit_committed)
+
+    def stepBy(self, steps):
+        super().stepBy(steps)
+        self._emit_committed()
+
+    def _emit_committed(self):
+        self.sigValueCommitted.emit(self.value())
+
+
 class AnalogOutputMainWindow(QtWidgets.QMainWindow):
     """ Main window for the AnalogOutputGui module. """
 
@@ -137,10 +172,24 @@ class AnalogOutputGui(GuiBase):
         """ Dynamically build one row per channel: label, voltage spinbox,
         output toggle switch.
 
+        Voltage spinboxes use InstantStepDoubleSpinBox (see class above)
+        rather than a plain QDoubleSpinBox, connected via its
+        sigValueCommitted signal instead of editingFinished or valueChanged:
+
+            - editingFinished alone would mean the up/down step buttons and
+              scroll wheel silently do nothing (they don't cause focus loss
+              or an Enter keypress).
+            - valueChanged alone would mean typing "-5.5" fires a hardware
+              write for "-5" and then again for "-5.5" -- an intermediate
+              value getting briefly (but really) written to the DAC.
+
+        sigValueCommitted fires immediately for discrete step actions
+        (arrows, wheel, arrow keys), but only on Enter/focus-loss for typed
+        input -- giving instant "on the fly" behavior for stepping while
+        avoiding spurious intermediate writes while typing a new number.
+
         Column/row stretch factors are set at the end so the widgets grow to
-        fill the window on resize -- see the same fix applied to
-        CoilControlGui._populate_axes() for why this is necessary: without
-        it, QGridLayout leaves all extra space unused on resize.
+        fill the window on resize.
         """
         logic = self.analog_output_logic()
         self._widgets = dict()
@@ -164,7 +213,7 @@ class AnalogOutputGui(GuiBase):
             channel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
             voltage_min, voltage_max = logic.get_limits(channel)
-            voltage_spinbox = QtWidgets.QDoubleSpinBox()
+            voltage_spinbox = InstantStepDoubleSpinBox()
             voltage_spinbox.setRange(voltage_min, voltage_max)
             voltage_spinbox.setDecimals(3)
             voltage_spinbox.setSingleStep(0.1)
@@ -172,8 +221,8 @@ class AnalogOutputGui(GuiBase):
             voltage_spinbox.setValue(self._safe(logic.get_setpoint(channel)))
             voltage_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
                                           QtWidgets.QSizePolicy.Policy.Preferred)
-            voltage_spinbox.editingFinished.connect(
-                self.__get_setpoint_update_func(channel, voltage_spinbox)
+            voltage_spinbox.sigValueCommitted.connect(
+                self.__get_setpoint_update_func(channel)
             )
 
             output_switch = ToggleSwitchWidget(switch_states=('Off', 'On'),
@@ -218,6 +267,10 @@ class AnalogOutputGui(GuiBase):
                     widget.sigStateChanged.disconnect()
                 except AttributeError:
                     pass
+                try:
+                    widget.sigValueCommitted.disconnect()
+                except AttributeError:
+                    pass
                 widget.setParent(None)
                 widget.deleteLater()
 
@@ -250,9 +303,9 @@ class AnalogOutputGui(GuiBase):
             self._mw.action_periodic_state_check.setChecked(enabled)
             self._mw.action_periodic_state_check.blockSignals(False)
 
-    def __get_setpoint_update_func(self, channel, spinbox):
-        def update_func():
-            self.sigSetpointSet.emit(channel, spinbox.value())
+    def __get_setpoint_update_func(self, channel):
+        def update_func(value):
+            self.sigSetpointSet.emit(channel, value)
         return update_func
 
     def __get_activity_update_func(self, channel):
