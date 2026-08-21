@@ -32,7 +32,8 @@ direction of field along a given coil axis. That sign is realised by a single di
 per axis (coil_polarity_switch), which physically reverses the current direction through
 the coil -- the PSU itself always outputs a non-negative current magnitude.
 
-This interfuse presents:
+This module implements CoilControlInterface (see qudi.interface.coil_control_interface),
+presenting:
     - set_voltage(axis, value):  plain, always non-negative compliance voltage. Does NOT
                                  touch the polarity relay.
     - set_current(axis, value): SIGNED current setpoint. A sign change relative to the
@@ -83,13 +84,13 @@ import time
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
-from qudi.core.module import Base
 
+from qudi.interface.coil_control_interface import CoilControlInterface
 from qudi.hardware.power_supply.keithley_2200 import Keithley2200PowerSupply
 from qudi.hardware.switches.digital_switch_ni import DigitalSwitchNI
 
 
-class CoilControlInterfuse(Base):
+class CoilControlInterfuse(CoilControlInterface):
     """ Combines three Keithley 2200 power supplies and one NI digital polarity switch
     into a unified control interface, one channel per magnet axis ('x', 'y', 'z').
 
@@ -123,6 +124,11 @@ class CoilControlInterfuse(Base):
     # the PSU output is momentarily off. Mirrors the settle delays already
     # used in the underlying PSU and switch modules.
     _polarity_switch_delay = ConfigOption('polarity_switch_delay', default=0.2, missing='nothing')
+
+    # Preferred display/iteration order for axes, used by the axes property.
+    # Any configured axis name not in this tuple is appended afterward,
+    # sorted alphabetically.
+    _AXIS_ORDER = ('x', 'y', 'z')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -160,15 +166,52 @@ class CoilControlInterfuse(Base):
                     f'Axis "{axis}" will not function correctly.'
                 )
 
-        self.log.info('CoilControlInterfuse activated for axes: {0}'.format(
-            list(self._switch_names)
-        ))
+        self.log.info('CoilControlInterfuse activated for axes: {0}'.format(list(self.axes)))
 
     def on_deactivate(self):
         """ Nothing to do -- the underlying PSU and switch modules manage their
         own connections and lifecycle independently.
         """
         pass
+
+    # =========================================================================
+    # CoilControlInterface -- axes and limits
+    # =========================================================================
+
+    @property
+    def axes(self):
+        """ Names of all available axes, in a stable, predictable order
+        (x, y, z first if present, then any other configured axis names
+        sorted alphabetically).
+
+        @return tuple: Axis name strings.
+        """
+        known = [a for a in self._AXIS_ORDER if a in self._switch_names]
+        extra = sorted(a for a in self._switch_names if a not in self._AXIS_ORDER)
+        return tuple(known + extra)
+
+    def get_voltage_limits(self, axis):
+        """ Return the allowed (min, max) compliance voltage for the given axis,
+        taken directly from the underlying PSU's configured voltage_limits.
+
+        @param str axis: Axis name, case-insensitive ('x', 'y', or 'z').
+        @return tuple: (min_voltage, max_voltage) in volts, always non-negative.
+        """
+        axis = self._validate_axis(axis)
+        min_v, max_v = self._get_psu(axis)._voltage_limits
+        return (max(0.0, min_v), max_v)
+
+    def get_current_limits(self, axis):
+        """ Return the allowed (min, max) SIGNED current for the given axis,
+        derived from the underlying PSU's configured current_limits magnitude.
+
+        @param str axis: Axis name, case-insensitive ('x', 'y', or 'z').
+        @return tuple: (-max_magnitude, +max_magnitude) in amps.
+        """
+        axis = self._validate_axis(axis)
+        min_mag, max_mag = self._get_psu(axis)._current_limits
+        magnitude_limit = max(abs(min_mag), abs(max_mag))
+        return (-magnitude_limit, magnitude_limit)
 
     # =========================================================================
     # Internal helpers
@@ -256,17 +299,6 @@ class CoilControlInterfuse(Base):
         with self._axis_locks[axis]:
             return self._get_psu(axis).set_voltage(value)
 
-    def set_voltage_relative(self, axis, delta):
-        """ Step the compliance voltage for the given axis by a relative amount.
-
-        @param str axis: Axis name, case-insensitive ('x', 'y', or 'z').
-        @param float delta: Amount to add to the current voltage (volts).
-        @return float: The new voltage actually applied (after clipping).
-        """
-        axis = self._validate_axis(axis)
-        current = self.get_voltage(axis)
-        return self.set_voltage(axis, current + float(delta))
-
     def get_voltage(self, axis):
         """ Return the currently programmed compliance voltage for the given axis.
 
@@ -340,17 +372,6 @@ class CoilControlInterfuse(Base):
 
         return applied_magnitude * self._sign_of_polarity(desired_polarity)
 
-    def set_current_relative(self, axis, delta):
-        """ Step the signed current setpoint for the given axis by a relative amount.
-
-        @param str axis: Axis name, case-insensitive ('x', 'y', or 'z').
-        @param float delta: Amount to add to the current signed current (amps).
-        @return float: The new signed current actually applied (after clipping).
-        """
-        axis = self._validate_axis(axis)
-        current = self.get_current(axis)
-        return self.set_current(axis, current + float(delta))
-
     def get_current(self, axis):
         """ Return the currently programmed signed current setpoint for the given axis.
 
@@ -415,31 +436,3 @@ class CoilControlInterfuse(Base):
         """
         axis = self._validate_axis(axis)
         return self._get_polarity(axis)
-
-    # =========================================================================
-    # Convenience: all axes at once
-    # =========================================================================
-
-    def all_outputs_off(self):
-        """ Turn off the PSU output on all three axes. Does not change any
-        relay polarity or programmed setpoint.
-        """
-        for axis in self._switch_names:
-            try:
-                self.output_off(axis)
-            except Exception:
-                self.log.exception(f'Error while turning off output for axis "{axis}":')
-
-    def get_all_voltages(self):
-        """ Return the currently programmed compliance voltage for all axes.
-
-        @return dict: {'x': float, 'y': float, 'z': float}, volts (all >= 0).
-        """
-        return {axis: self.get_voltage(axis) for axis in self._switch_names}
-
-    def get_all_currents(self):
-        """ Return the currently programmed signed current setpoint for all axes.
-
-        @return dict: {'x': float, 'y': float, 'z': float}, amps.
-        """
-        return {axis: self.get_current(axis) for axis in self._switch_names}
