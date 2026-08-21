@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, replace, field, fields, asdict
+from enum import Enum
 from typing import ClassVar, Optional
 import pprint
 import time
@@ -515,6 +516,70 @@ class MetadataDictRepresentation(dict):
 
     def __repr__(self):
         return pprint.pformat(dict(self), indent=2, sort_dicts=False, width=100)
+
+
+def to_plain_metadata(value):
+    """Recursively convert `value` into types whose repr() is valid Python needing no imports.
+
+    qudi.util.datastorage writes every saved-file metadata value with repr() and reads it back with
+    a bare eval() (metadata_to_str_dict()/str_dict_to_metadata()). A repr that NAMES A TOOL instead
+    of spelling the value out therefore raises NameError on the way back in, and
+    str_dict_to_metadata() silently keeps the raw string rather than raising - so the value looks
+    fine in the file but arrives as a str, and a caller doing
+    metadata['generation parameters']['rabi_period'] fails far away from the cause with
+    "string indices must be integers". Three such reprs actually occur here:
+
+        array([0., 1., ...])                                     numpy arrays
+        np.int64(5943750)                                        numpy scalars (numpy >= 2.0)
+        qudi.logic.pulsed.sampling_functions.PulseEnvelope(...)   PulseEnvelope, and the
+                                                                 PulseEnvelopeType enum inside it
+
+    str_dict_to_metadata() does try importing the missing name once, but that cannot rescue any of
+    them: there is no module called "np"; importing "qudi" binds only the top-level package, not the
+    sampling_functions submodule the repr addresses; and "array" resolves to the *stdlib* array
+    module, whose array() then rejects the argument. Converting here - at the save boundary, so only
+    the header text is affected - makes the file self-describing instead, which also means it no
+    longer depends on numpy's repr staying stable across versions.
+
+    Also fixes a silent data loss unrelated to parsing: numpy summarises the repr of any array
+    longer than np.get_printoptions()['threshold'] (1000 by default) as
+    "array([0., 1., 2., ..., 1497., 1498., 1499.])". A controlled variable with more than 1000
+    points is therefore written to the header with its middle values already gone - unrecoverably,
+    since the text itself no longer contains them. tolist() writes all of them.
+
+    NOTE the branch order: dict/list/tuple/set are tested BEFORE the to_dict() duck-type at the
+    bottom, because AnalysisParameters/ExtractionParameters/GenerationMethodParameters are dict
+    subclasses that also define to_dict() (see this module's docstrings, and convention 5 in
+    pulsed_data/README.md) - matching them as dicts keeps their contents recursed instead of
+    bouncing through a redundant round trip.
+    """
+    if isinstance(value, np.ndarray):
+        return to_plain_metadata(value.tolist())
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, dict):
+        return {to_plain_metadata(key): to_plain_metadata(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [to_plain_metadata(item) for item in value]
+    if isinstance(value, tuple):
+        return tuple(to_plain_metadata(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        # Sorted rather than left as a set so the header text for identical settings is identical
+        # every run (set repr order is arbitrary), and so the value stays literal-parseable - an
+        # empty set reprs as "set()", which is a call, not a literal.
+        items = [to_plain_metadata(item) for item in value]
+        try:
+            return sorted(items)
+        except TypeError:
+            return items
+    if isinstance(value, Enum):
+        return to_plain_metadata(value.value)
+    # Duck-typed rather than importing PulseEnvelope: this file sits below sampling_functions.py in
+    # the layering, and any future metadata value offering to_dict() should convert the same way.
+    to_dict = getattr(value, 'to_dict', None)
+    if callable(to_dict):
+        return to_plain_metadata(to_dict())
+    return value
 
 
 # Default sub-settings for PulsedMeasurementSettings.from_dict()'s per-field fallbacks (a saved
