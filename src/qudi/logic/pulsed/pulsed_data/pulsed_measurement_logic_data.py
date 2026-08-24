@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import dataclass, replace, field, fields, asdict
 from enum import Enum
 from typing import ClassVar, Optional
-import pprint
+import math
 import time
 import numpy as np
 
@@ -499,23 +499,6 @@ class GenerationMethodParameters(dict):
         return cls(data) if isinstance(data, dict) else cls()
 
 
-class MetadataDictRepresentation(dict):
-    """A dict whose repr() is pretty-printed (multi-line, indented) instead of the default
-    single-line dict repr.
-
-    qudi's DataStorage header writer (qudi.util.datastorage) renders every saved-file metadata
-    value via plain repr() and then prefixes each resulting physical line with the file's
-    comment marker. A plain dict's repr() never inserts line breaks no matter how deeply nested
-    it is, so a big settings dict ends up as one unreadable wall-of-text line. Wrapping such a
-    dict in this class instead makes repr() return pprint-formatted text - which does contain
-    real line breaks - so the existing line-by-line comment-prefixing already handles it, with
-    no changes needed to DataStorage itself.
-    """
-
-    def __repr__(self):
-        return pprint.pformat(dict(self), indent=2, sort_dicts=False, width=100)
-
-
 def to_plain_metadata(value):
     """Recursively convert `value` into types whose repr() is valid Python needing no imports.
 
@@ -525,19 +508,31 @@ def to_plain_metadata(value):
     str_dict_to_metadata() silently keeps the raw string rather than raising - so the value looks
     fine in the file but arrives as a str, and a caller doing
     metadata['generation parameters']['rabi_period'] fails far away from the cause with
-    "string indices must be integers". Three such reprs actually occur here:
+    "string indices must be integers". Four such reprs actually occur here:
 
         array([0., 1., ...])                                     numpy arrays
         np.int64(5943750)                                        numpy scalars (numpy >= 2.0)
         qudi.logic.pulsed.sampling_functions.PulseEnvelope(...)   PulseEnvelope, and the
                                                                  PulseEnvelopeType enum inside it
+        nan / inf / -inf                                         non-finite floats
 
     str_dict_to_metadata() does try importing the missing name once, but that cannot rescue any of
     them: there is no module called "np"; importing "qudi" binds only the top-level package, not the
-    sampling_functions submodule the repr addresses; and "array" resolves to the *stdlib* array
-    module, whose array() then rejects the argument. Converting here - at the save boundary, so only
-    the header text is affected - makes the file self-describing instead, which also means it no
-    longer depends on numpy's repr staying stable across versions.
+    sampling_functions submodule the repr addresses; "array" resolves to the *stdlib* array module,
+    whose array() then rejects the argument; and there is no module called "nan" either. Converting
+    here - at the save boundary, so only the header text is affected - makes the file
+    self-describing instead, which also means it no longer depends on numpy's repr staying stable
+    across versions.
+
+    The non-finite floats are the one case that changes the value's TYPE (float -> str), and that is
+    unavoidable rather than a preference: Python has no literal for nan or inf, so no value that is
+    still a float can repr as something eval() resolves. They are written as 'nan'/'inf'/'-inf' and
+    a reader recovers the number with float(v). Writing None instead would have collapsed the three
+    cases together; a float subclass with a constructor-shaped __repr__ was rejected as not worth a
+    class. This matters more than it looks: PulseGeneratorSettings.upload_speed is nan until the
+    pulse generator has been benchmarked (PulserBenchmarks.estimate_combined_speed()), so before
+    this branch existed EVERY saved file on a fresh install had its whole 'pulsed measurement
+    settings' block come back as an unparsed str - one leaf poisons the entire key.
 
     Also fixes a silent data loss unrelated to parsing: numpy summarises the repr of any array
     longer than np.get_printoptions()['threshold'] (1000 by default) as
@@ -554,7 +549,12 @@ def to_plain_metadata(value):
     if isinstance(value, np.ndarray):
         return to_plain_metadata(value.tolist())
     if isinstance(value, np.generic):
-        return value.item()
+        # Recursed rather than returned directly (like the ndarray branch above) so a numpy nan/inf
+        # reaches the non-finite branch below instead of leaving here as a raw Python float.
+        return to_plain_metadata(value.item())
+    if isinstance(value, float) and not math.isfinite(value):
+        # 'nan' / 'inf' / '-inf' - see the fourth row of the table in this docstring.
+        return repr(value)
     if isinstance(value, dict):
         return {to_plain_metadata(key): to_plain_metadata(item) for key, item in value.items()}
     if isinstance(value, list):

@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import dataclass, replace, field, fields
 from enum import Enum
 from logging import getLogger
-from typing import Optional, get_type_hints
+from typing import ClassVar, Optional, get_type_hints
 import numpy as np
 
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
@@ -645,9 +645,14 @@ class PulserBenchmarks:
 
 @dataclass(frozen=True)
 class EnsembleAnalysisResult:
-    """Result of analyzing a single PulseBlockEnsemble: sample/element counts, channel
-    transition timings and the generation parameters used, as returned by
-    SequenceGeneratorLogic.analyze_block_ensemble()."""
+    """Result of analyzing a single PulseBlockEnsemble: sample/element counts and channel
+    transition timings, as returned by SequenceGeneratorLogic.analyze_block_ensemble().
+
+    Deliberately carries no generation_parameters: those live only on
+    SequenceGeneratorSettings. This class used to hold a snapshot of them that nothing read,
+    and _dataclass_to_dict() dumps every field of it straight into SamplingInformation - which
+    is how a second, silently diverging copy ended up pickled into every saved asset. See
+    SamplingInformation below."""
 
     number_of_samples: int
     number_of_elements: int
@@ -657,7 +662,6 @@ class EnsembleAnalysisResult:
     analog_channels: set
     digital_channels: set
     channel_set: set
-    generation_parameters: GenerationParameters
     ideal_length: float
     laser_rising_bins: np.ndarray
     laser_falling_bins: np.ndarray
@@ -667,12 +671,12 @@ class EnsembleAnalysisResult:
 class SequenceAnalysisResult:
     """Result of analyzing a PulseSequence: the same information as
     EnsembleAnalysisResult, aggregated over the whole sequence plus broken down per step, as
-    returned by SequenceGeneratorLogic.analyze_sequence()."""
+    returned by SequenceGeneratorLogic.analyze_sequence(). Carries no generation_parameters, for
+    the reason given on EnsembleAnalysisResult."""
 
     digital_channels: set
     analog_channels: set
     channel_set: set
-    generation_parameters: GenerationParameters
     digital_rising_bins: dict
     digital_falling_bins: dict
     number_of_steps: int
@@ -722,6 +726,9 @@ class SamplingInformation:
     # - these two used to only arrive here implicitly, via that dump landing in _legacy_data
     # (since they weren't declared fields), rather than because they were designed to live here.
     # Read by pulse_extraction_methods/basic_extraction_methods.py's ungated_gated_conv_deriv().
+    # Declaring a field is one of the two ways to answer that accidental-arrival problem; the
+    # other is to refuse the key outright - see _REJECTED_KEYS below, which is what
+    # 'generation_parameters' got, since unlike these it had no reader at all.
     laser_rising_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
     laser_falling_bins: np.ndarray = field(default_factory=lambda: np.empty(0, dtype='int64'))
 
@@ -731,6 +738,17 @@ class SamplingInformation:
 
     # Legacy fields catch-all (optional, to ensure no data is lost)
     _legacy_data: dict = field(default_factory=dict)
+
+    #: Keys refused by __setitem__/from_dict instead of being absorbed into _legacy_data.
+    #: 'generation_parameters' is here because those belong to SequenceGeneratorSettings and
+    #: nowhere else. It used to arrive by accident: analyze_block_ensemble()/analyze_sequence()
+    #: returned it as one field among many, and _dataclass_to_dict() dumps every field of that
+    #: result through from_dict() below - so an undeclared key landed in _legacy_data, got pickled
+    #: into every .ensemble/.sequence, and then diverged from the live settings the moment anyone
+    #: edited a generation parameter (nothing re-samples on that change, and the sequence sampling
+    #: cache does not key on it). Nothing ever read it back except one save-time fallback, now
+    #: gone. Refusing it here also strips it from assets pickled before that change, on load.
+    _REJECTED_KEYS: ClassVar[frozenset] = frozenset({'generation_parameters'})
 
     def __bool__(self):
         """
@@ -753,6 +771,8 @@ class SamplingInformation:
         raise KeyError(key)
 
     def __setitem__(self, key, value):
+        if key in self._REJECTED_KEYS:
+            return
         if key in self._field_names():
             setattr(self, key, value)
         else:
@@ -814,10 +834,14 @@ class SamplingInformation:
         # unrecognized keys on top.
         known_field_names = {f.name for f in fields(cls) if f.name != '_legacy_data'}
         init_kwargs = {}
-        legacy_kwargs = dict(data.get('_legacy_data') or {})
+        legacy_kwargs = {
+            key: value
+            for key, value in (data.get('_legacy_data') or {}).items()
+            if key not in cls._REJECTED_KEYS
+        }
 
         for key, value in data.items():
-            if key == '_legacy_data':
+            if key == '_legacy_data' or key in cls._REJECTED_KEYS:
                 continue
             elif key in known_field_names:
                 init_kwargs[key] = value

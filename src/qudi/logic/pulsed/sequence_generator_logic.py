@@ -2033,7 +2033,6 @@ class SequenceGeneratorLogic(LogicBase):
             analog_channels=analog_channels,
             digital_channels=digital_channels,
             channel_set=analog_channels.union(digital_channels),
-            generation_parameters=self._generator_settings.generation_parameters,
             ideal_length=current_end_time,
             laser_rising_bins=laser_rising_bins,
             laser_falling_bins=laser_falling_bins,
@@ -2256,7 +2255,6 @@ class SequenceGeneratorLogic(LogicBase):
             digital_channels=digital_channels,
             analog_channels=analog_channels,
             channel_set=analog_channels.union(digital_channels),
-            generation_parameters=self._generator_settings.generation_parameters,
             digital_rising_bins=digital_rising_bins,
             digital_falling_bins=digital_falling_bins,
             number_of_steps=len(sequence),
@@ -2795,7 +2793,17 @@ class SequenceGeneratorLogic(LogicBase):
                             '_legacy_data',
                         ),
                     )
-                    existing_info.update(existing._legacy_data)
+                    # _legacy_data is the untyped back door, and what lands here goes on to nest
+                    # inside SamplingInformation.ensemble_info - a declared dict field, so
+                    # from_dict()'s key filtering does not reach into it. Filter here too, or a
+                    # rejected key could ride back in one level down.
+                    existing_info.update(
+                        {
+                            key: value
+                            for key, value in existing._legacy_data.items()
+                            if key not in type(existing)._REJECTED_KEYS
+                        }
+                    )
                     state.record_ensemble(name_tag, existing_info, existing.waveforms)
 
                 # Append written sequence step to step_results
@@ -3142,3 +3150,18 @@ class SequenceGeneratorLogic(LogicBase):
                         backfilled, attr_name, loaded_object.name
                     )
                 )
+            # from_dict() refuses these, but pickle.load() bypasses it and restores _legacy_data
+            # verbatim - so an asset saved before a key was rejected still carries it. Drop it
+            # here instead, on the one path every unpickled asset goes through.
+            rejected = getattr(type(value), '_REJECTED_KEYS', frozenset())
+            legacy_data = getattr(value, '_legacy_data', None)
+            if rejected and isinstance(legacy_data, dict):
+                dropped = [key for key in legacy_data if key in rejected]
+                for key in dropped:
+                    del legacy_data[key]
+                if dropped:
+                    self.log.debug(
+                        'Dropped stale key(s) {0} from legacy {1} for {2}'.format(
+                            dropped, attr_name, loaded_object.name
+                        )
+                    )

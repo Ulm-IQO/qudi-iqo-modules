@@ -644,15 +644,25 @@ class PulseBlockEnsemble(object):
 
     @staticmethod
     def ensemble_from_dict(ensemble_dict):
+        # The three info containers are read with .get(): each one's from_dict() already returns an
+        # empty container for None, and a dict that is missing one must not raise. Besides the
+        # convention that from_dict() tolerates absent keys, this is load-bearing for the trimmed
+        # dicts PulseObjects.to_metadata_dict() writes into saved file headers - those deliberately
+        # leave containers out, and reading one back should give a partial object, not a KeyError.
+        # name/block_list stay required: without them there is no ensemble to build.
         new_ens = PulseBlockEnsemble(
             name=ensemble_dict['name'],
             block_list=ensemble_dict['block_list'],
-            rotating_frame=ensemble_dict['rotating_frame'],
+            rotating_frame=ensemble_dict.get('rotating_frame', False),
         )
-        new_ens.sampling_information = SamplingInformation.from_dict(ensemble_dict['sampling_information'])
-        new_ens.measurement_information = MeasurementInformation.from_dict(ensemble_dict['measurement_information'])
+        new_ens.sampling_information = SamplingInformation.from_dict(
+            ensemble_dict.get('sampling_information')
+        )
+        new_ens.measurement_information = MeasurementInformation.from_dict(
+            ensemble_dict.get('measurement_information')
+        )
         new_ens.generation_method_parameters = GenerationMethodParameters.from_dict(
-            ensemble_dict['generation_method_parameters']
+            ensemble_dict.get('generation_method_parameters')
         )
         return new_ens
 
@@ -1079,15 +1089,20 @@ class PulseSequence(object):
 
     @staticmethod
     def sequence_from_dict(sequence_dict):
+        # .get() for the three info containers - see ensemble_from_dict() for why.
         new_seq = PulseSequence(
             name=sequence_dict['name'],
             ensemble_list=sequence_dict['ensemble_list'],
-            rotating_frame=sequence_dict['rotating_frame'],
+            rotating_frame=sequence_dict.get('rotating_frame', False),
         )
-        new_seq.sampling_information = SamplingInformation.from_dict(sequence_dict['sampling_information'])
-        new_seq.measurement_information = MeasurementInformation.from_dict(sequence_dict['measurement_information'])
+        new_seq.sampling_information = SamplingInformation.from_dict(
+            sequence_dict.get('sampling_information')
+        )
+        new_seq.measurement_information = MeasurementInformation.from_dict(
+            sequence_dict.get('measurement_information')
+        )
         new_seq.generation_method_parameters = GenerationMethodParameters.from_dict(
-            sequence_dict['generation_method_parameters']
+            sequence_dict.get('generation_method_parameters')
         )
         return new_seq
 

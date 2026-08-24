@@ -60,6 +60,29 @@ class Settings:
             ),
         }
 
+    def to_metadata_dict(self, omit=()):
+        """Trimmed variant of to_dict() for saved-measurement metadata: drops any nested settings
+        container that the calling header already writes out in full at its own top level, so no
+        container is ever written twice into one file and the two copies cannot drift apart.
+
+        `omit` holds dotted paths into the dict to_dict() returns, e.g.
+        'measurement_settings.fast_counter_settings' or 'generator_settings.generation_parameters'.
+        A path naming something absent is ignored, so a caller may list a key that only exists when
+        generator_settings is not None.
+
+        Which paths each saved file omits is decided by its metadata builder - see the
+        _*_METADATA_OMIT constants in pulsed_measurement_logic.py. One-way/display-only, mirroring
+        PulseObjects.to_metadata_dict() below - no from_metadata_dict(); to_dict() stays lossless
+        for the .pulsedmeasurement snapshot.
+        """
+        data = self.to_dict()
+        for path in omit:
+            container_key, _, field_key = path.partition('.')
+            container = data.get(container_key)
+            if isinstance(container, dict):
+                container.pop(field_key, None)
+        return data
+
     @classmethod
     def from_dict(cls, data):
         generator_data = data.get('generator_settings')
@@ -76,12 +99,12 @@ class PulsedData:
     """Bundles this measurement's raw/laser/signal arrays with any fit results computed for it.
 
     fit_result/fit_result_alt are lmfit.model.ModelResult objects (or None) - the output of
-    PulsedMeasurementLogic.do_fit(). Like `sequence` on PulsedMeasurement, these have only a
+    PulsedMeasurementLogic.do_fit(). Like `loaded_asset` on PulseObjects, these have only a
     one-way, lossy export path: FitContainer.dict_result() (model name + parameter values/
     stderr, already used in saved metadata today via _get_signal_metadata()) - there is no
     reconstruction path anywhere in this codebase, and lmfit does not offer a simple one either,
     so from_dict() cannot restore live ModelResult objects; round-tripping through to_dict()/
-    from_dict() loses them, same as `sequence` on PulsedMeasurement.
+    from_dict() loses them, same as `loaded_asset` on PulseObjects.
 
     """
 
@@ -118,20 +141,50 @@ class PulseObjects:
 
     Frozen-in-time: mutating SequenceGeneratorLogic's live registries after a snapshot was taken
     never affects an already-built PulseObjects instance.
+
+    One slot holds the loaded asset (`loaded_asset`) whichever kind it is; `loaded_sequence` and
+    `loaded_ensemble` are Optional views over it that read as None for the other kind. to_dict()
+    names the saved key after the kind, and shows `ensembles` only when they mean something.
     """
 
-    #: The loaded top-level asset - independent copy (PulseBlockEnsemble.copy()/
-    #: PulseSequence.copy()), or None if nothing is loaded. Also carries that asset's own
-    #: sampling_information/measurement_information/generation_method_parameters - deliberately
-    #: not duplicated as separate fields here.
-    sequence: Optional[Union['PulseBlockEnsemble', 'PulseSequence']] = None
-    #: Every PulseBlockEnsemble `sequence` references by name, keyed by name - independent copies.
-    #: Empty if `sequence` is itself a bare PulseBlockEnsemble (or nothing is loaded): there is
-    #: nothing to resolve one level up in that case.
+    #: The loaded top-level asset, whichever kind it is - independent copy
+    #: (PulseBlockEnsemble.copy()/PulseSequence.copy()), or None if nothing is loaded. Named for
+    #: the concept rather than for one of the two types it can hold, matching
+    #: PulsedMeasurementLogic/PulsedMasterLogic/SequenceGeneratorLogic, which all call it
+    #: `loaded_asset` too. Read it through `loaded_sequence`/`loaded_ensemble` below when you care
+    #: which kind it is. Also carries that asset's own sampling_information/
+    #: measurement_information/generation_method_parameters - deliberately not duplicated as
+    #: separate fields here.
+    loaded_asset: Optional[Union['PulseBlockEnsemble', 'PulseSequence']] = None
+    #: Every PulseBlockEnsemble `loaded_asset` references by name, keyed by name - independent
+    #: copies. Empty if `loaded_asset` is itself a bare PulseBlockEnsemble (or nothing is loaded):
+    #: there is nothing to resolve one level up in that case, which is why to_dict() leaves the key
+    #: out entirely rather than writing an empty dict.
     ensembles: Dict[str, 'PulseBlockEnsemble'] = field(default_factory=dict)
-    #: Every PulseBlock referenced by `ensembles` (or, for a bare-ensemble `sequence`, referenced
-    #: directly by it), keyed by name - independent copies, same provenance as `ensembles`.
+    #: Every PulseBlock referenced by `ensembles` (or, for a bare-ensemble `loaded_asset`,
+    #: referenced directly by it), keyed by name - independent copies, same provenance as
+    #: `ensembles`.
     blocks: Dict[str, 'PulseBlock'] = field(default_factory=dict)
+
+    @property
+    def loaded_sequence(self) -> Optional['PulseSequence']:
+        """`loaded_asset` when a PulseSequence is loaded, else None.
+
+        A view over the single `loaded_asset` slot rather than a field of its own, so this and
+        `loaded_ensemble` can never disagree with each other or with `loaded_asset`, and there is
+        no "at most one of them is set" invariant for anyone to break.
+
+        The tri-state getattr mirrors _resolve_asset_closure() in sequence_generator_logic.py:
+        None means "not a pulse asset at all", so an unrelated object reads as None from both
+        properties instead of raising AttributeError.
+        """
+        return self.loaded_asset if getattr(self.loaded_asset, 'is_sequence', None) is True else None
+
+    @property
+    def loaded_ensemble(self) -> Optional['PulseBlockEnsemble']:
+        """`loaded_asset` when a bare PulseBlockEnsemble is loaded, else None - see
+        `loaded_sequence` for why both are properties over one slot."""
+        return self.loaded_asset if getattr(self.loaded_asset, 'is_sequence', None) is False else None
 
     @property
     def elements(self) -> List['PulseBlockElement']:
@@ -141,24 +194,33 @@ class PulseObjects:
         return [element for block in self.blocks.values() for element in block.element_list]
 
     def to_dict(self):
-        """`sequence` is tagged with its own class name so from_dict() knows which class to
-        reconstruct.
+        """The loaded asset is written under 'loaded_sequence' or 'loaded_ensemble' - the key name
+        itself says which kind it is, so a saved file never reads 'sequence' while describing a
+        PulseBlockEnsemble. It still also carries a 'type' tag holding the class name: that is the
+        forward-compatible hook a third asset type would use, and it survives being read back
+        without the classes importable.
+
+        'ensembles' appears only when a PulseSequence is loaded. A bare ensemble resolves nothing
+        one level up, so for it the key is left out rather than written as an empty dict - an empty
+        'ensembles' next to an ensemble is exactly the reading that used to confuse people.
 
         The flattened `elements` view (see the property above) is deliberately NOT exported: every
         element already appears inside its block's 'element_list', so a second copy would only
         duplicate them. Use the `elements` property on a live instance if you want them flat.
         """
-        sequence_dict = None
-        if self.sequence is not None:
-            sequence_dict = {'type': type(self.sequence).__name__}
-            sequence_dict.update(self.sequence.get_dict_representation())
-        return {
-            'sequence': sequence_dict,
-            'ensembles': {name: ens.get_dict_representation() for name, ens in self.ensembles.items()},
-            'blocks': {name: blk.get_dict_representation() for name, blk in self.blocks.items()},
-        }
+        data = {}
+        if self.loaded_asset is not None:
+            asset_dict = {'type': type(self.loaded_asset).__name__}
+            asset_dict.update(self.loaded_asset.get_dict_representation())
+            data['loaded_sequence' if self.loaded_asset.is_sequence else 'loaded_ensemble'] = asset_dict
+        if self.loaded_sequence is not None:
+            data['ensembles'] = {
+                name: ens.get_dict_representation() for name, ens in self.ensembles.items()
+            }
+        data['blocks'] = {name: blk.get_dict_representation() for name, blk in self.blocks.items()}
+        return data
 
-    def to_metadata_dict(self):
+    def to_metadata_dict(self, omit_generation_method_parameters=False):
         """Trimmed variant of to_dict() for saved-measurement metadata: drops fields from each
         sequence/ensemble's 'sampling_information' that are either pure duplication
         ('ensemble_info' duplicates this same PulseObjects' `ensembles`; 'pulse_generator_settings'
@@ -168,6 +230,14 @@ class PulseObjects:
         rather than sequence structure. Structural fields (name, block_list/ensemble_list,
         generation_method_parameters, element definitions) are unaffected. One-way/display-only -
         no from_metadata_dict().
+
+        Parameters
+        ----------
+        omit_generation_method_parameters : bool
+            Optional, also drop 'generation_method_parameters' from the loaded asset's own entry,
+            for a header that already writes it out at its top level (only the signal file does -
+            see _get_signal_metadata()). Deliberately applies to the loaded asset alone: every
+            ensemble under 'ensembles' has its own, which is not duplicated anywhere.
         """
         def trim_sampling_information(sampling_info_dict):
             return {
@@ -179,11 +249,14 @@ class PulseObjects:
             }
 
         data = self.to_dict()
-        if data['sequence'] is not None:
-            data['sequence']['sampling_information'] = trim_sampling_information(
-                data['sequence']['sampling_information']
+        asset_dict = data.get('loaded_sequence') or data.get('loaded_ensemble')
+        if asset_dict is not None:
+            asset_dict['sampling_information'] = trim_sampling_information(
+                asset_dict['sampling_information']
             )
-        for ensemble_dict in data['ensembles'].values():
+            if omit_generation_method_parameters:
+                asset_dict.pop('generation_method_parameters', None)
+        for ensemble_dict in data.get('ensembles', {}).values():
             ensemble_dict['sampling_information'] = trim_sampling_information(
                 ensemble_dict['sampling_information']
             )
@@ -203,22 +276,39 @@ class PulseObjects:
             name: PulseBlockEnsemble.ensemble_from_dict(ensemble_dict)
             for name, ensemble_dict in (data.get('ensembles') or {}).items()
         }
-        sequence_dict = data.get('sequence')
-        sequence = None
+        sequence_dict = data.get('loaded_sequence')
+        ensemble_dict = data.get('loaded_ensemble')
+        if sequence_dict is None and ensemble_dict is None:
+            # Files written before the key split put both kinds under one 'sequence' key,
+            # distinguished only by the 'type' tag inside it - see to_dict().
+            legacy_dict = data.get('sequence')
+            if legacy_dict is not None:
+                if legacy_dict.get('type') == 'PulseSequence':
+                    sequence_dict = legacy_dict
+                elif legacy_dict.get('type') == 'PulseBlockEnsemble':
+                    ensemble_dict = legacy_dict
+        loaded_asset = None
         if sequence_dict is not None:
-            seq_type = sequence_dict.get('type')
-            if seq_type == 'PulseSequence':
-                sequence = PulseSequence.sequence_from_dict(sequence_dict)
-            elif seq_type == 'PulseBlockEnsemble':
-                sequence = PulseBlockEnsemble.ensemble_from_dict(sequence_dict)
-        return cls(sequence=sequence, ensembles=ensembles, blocks=blocks)
+            loaded_asset = PulseSequence.sequence_from_dict(sequence_dict)
+        elif ensemble_dict is not None:
+            loaded_asset = PulseBlockEnsemble.ensemble_from_dict(ensemble_dict)
+        return cls(loaded_asset=loaded_asset, ensembles=ensembles, blocks=blocks)
+
+    def __setstate__(self, state):
+        """Unpickles a '.pulsedmeasurement' snapshot written before `sequence` was renamed to
+        `loaded_asset`. Pickle restores instance state directly, bypassing from_dict()'s legacy
+        branch, so such a file would otherwise arrive with no `loaded_asset` at all."""
+        if 'sequence' in state and 'loaded_asset' not in state:
+            state = dict(state)
+            state['loaded_asset'] = state.pop('sequence')
+        self.__dict__.update(state)
 
 
 @dataclass
 class PulsedMeasurement:
     """Top-level container for everything that makes up a single pulsed measurement: its
-    settings, its acquired/evaluated data, and the pulse objects (sequence/ensembles/blocks) that
-    produced it. Built by PulsedMeasurementLogic.get_pulsed_measurement() / PulsedMasterLogic.
+    settings, its acquired/evaluated data, and the pulse objects (loaded asset/ensembles/blocks)
+    that produced it. Built by PulsedMeasurementLogic.get_pulsed_measurement() / PulsedMasterLogic.
     get_pulsed_measurement() as a frozen-in-time snapshot: `data` and `objects` are populated from
     independent copies, not live references, so a returned/stored PulsedMeasurement does not keep
     changing under the caller as the source measurement continues running or a same-named asset
@@ -235,11 +325,11 @@ class PulsedMeasurement:
     data: Optional[PulsedData] = None
     #: Source: PulsedMeasurementLogic.loaded_asset.copy() plus SequenceGeneratorLogic.
     #: resolve_asset_closure() - see PulseObjects. Always present (never None itself); "nothing
-    #: loaded" is represented by objects.sequence is None.
+    #: loaded" is represented by objects.loaded_asset is None.
     objects: PulseObjects = field(default_factory=PulseObjects)
 
     def to_dict(self):
-        """Serializes `settings`, `data`, and `objects` (sequence/ensembles/blocks)."""
+        """Serializes `settings`, `data`, and `objects` (loaded asset/ensembles/blocks)."""
         return {
             'settings': self.settings.to_dict(),
             'data': self.data.to_dict() if self.data is not None else None,

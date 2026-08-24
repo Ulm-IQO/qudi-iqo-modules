@@ -132,9 +132,9 @@ disconnect `PulseAnalyzer` from the settings the rest of the app thinks it is us
 
 ### 5. `class X(dict)` is a compatibility shim, not a mistake
 
-Five classes subclass `dict` instead of being dataclasses:
+Four classes subclass `dict` instead of being dataclasses:
 `AnalysisParameters`, `ExtractionParameters`, `GenerationMethodParameters`,
-`MetadataDictRepresentation`, `PulsedMasterStatus`.
+`PulsedMasterStatus`.
 
 They exist where old call sites index and assign directly and were not worth rewriting:
 
@@ -186,7 +186,9 @@ PulsedMeasurement                                   [mutable]  pulsed_measuremen
 │   └── fit_result_alt   : lmfit ModelResult | None             (one-way export only)
 │
 └── objects : PulseObjects                          [mutable]
-    ├── sequence  : PulseBlockEnsemble | PulseSequence | None    ← lives in pulse_objects.py
+    ├── loaded_asset : PulseBlockEnsemble | PulseSequence | None ← lives in pulse_objects.py
+    │   ├── loaded_sequence : PulseSequence | None      ┐ properties over the one slot above,
+    │   └── loaded_ensemble : PulseBlockEnsemble | None ┘ not fields — see PulseObjects
     ├── ensembles : {name: PulseBlockEnsemble}                   independent copies
     └── blocks    : {name: PulseBlock}                           independent copies
 ```
@@ -221,7 +223,7 @@ These are containers, not a class hierarchy. Two exceptions:
 ```
 BaseGenerationParameters                    generation_parameter_extensions.py
 ├── CoreGenerationParameters                sequence_generator_logic_data.py  (built-in, 14 fields)
-├── <your setup's class here>               generation_parameter_extensions.py
+├── <your setup's class here>               generation_parameter_extensions.py (none right now)
 └── <one generator's own parameters>        declared via generation_parameter_contributors
         │
         ├──► merged at import time by _build_generation_parameters()
@@ -236,8 +238,7 @@ dict
 ├── AnalysisParameters             ┐
 ├── ExtractionParameters           │ compatibility shims — see convention 5
 ├── GenerationMethodParameters     │
-├── PulsedMasterStatus             │
-└── MetadataDictRepresentation     ┘ (pretty-printing wrapper only)
+└── PulsedMasterStatus             ┘
 ```
 
 ---
@@ -331,8 +332,8 @@ silently skip extensions depending on which module happened to be imported first
 
 #### No extensions are declared by default
 
-The file ships with an empty extension section, so `GenerationParameters` is `CoreGenerationParameters`
-and nothing else. Adding one is the whole of the worked example in
+The file ships with an empty extension section, so `GenerationParameters` has exactly the 14 fields of
+`CoreGenerationParameters` and nothing else. Adding one is the whole of the worked example in
 [Extending this](#extending-this--notes-for-physicists):
 
 ```python
@@ -341,8 +342,16 @@ class NVCentreParameters(BaseGenerationParameters):
     green_aom_delay: float = 700e-9
 ```
 
-Two lines is the complete modern form — the type-driven `_coerce_fields` handles the rest. Override it
-only for a field whose type cannot express its own constraints.
+Two lines is the complete modern form, and there is no registration step:
+`_build_generation_parameters()` finds every contributor through
+`BaseGenerationParameters.__subclasses__()`, so simply defining the class in this file puts it in
+effect. Coercion is driven by the annotated type, a spin box appears on the Predefined Methods tab,
+and the value is saved to and restored from the status file.
+
+> **Note:** older extensions carry a hand-written `_coerce_fields()` classmethod. It predates the
+> automatic, type-driven version and does exactly what the base class now does for a `float` field.
+> **Do not write one in a new class** — override it only for a field whose type cannot express its
+> own constraints.
 
 ---
 
@@ -480,14 +489,18 @@ and `analyze_sequence()`.
 
 `EnsembleAnalysisResult`: `number_of_samples`, `number_of_elements`, `elements_length_bins`,
 `digital_rising_bins`, `digital_falling_bins`, `analog_channels`, `digital_channels`, `channel_set`,
-`generation_parameters`, `ideal_length`, `laser_rising_bins`, `laser_falling_bins`.
+`ideal_length`, `laser_rising_bins`, `laser_falling_bins`.
 
 `SequenceAnalysisResult`: the same information aggregated over a whole sequence, plus per-step
 breakdowns (`number_of_steps`, `number_of_samples_per_step`, `number_of_ensembles`, `ensemble_names`,
 `number_of_elements_per_step`, `elements_length_bins_per_step`, `ideal_length_per_step`).
 
-Both carry the `generation_parameters` in force at analysis time, which is how those end up in a saved
-measurement's metadata.
+Neither carries `generation_parameters`, and that absence is load-bearing. `_dataclass_to_dict()`
+dumps **every** field of one of these straight into `SamplingInformation.from_dict()`, so a field
+here is a field that ends up pickled onto every sampled asset. A `generation_parameters` snapshot
+used to ride along that way, read by nothing and free to diverge from the live settings — see
+`SamplingInformation._REJECTED_KEYS` above. Think twice before adding a field here: it is not a
+private return value, it is an input to what gets persisted.
 
 #### `SamplingInformation` *(mutable, dict-like)*
 
@@ -502,8 +515,9 @@ happened when that object was sampled.
 | `laser_rising_bins`, `laser_falling_bins` | laser pulse edges, read by the extraction methods |
 | `step_waveform_list`, `ensemble_info` | sequence-specific |
 | `_legacy_data` | catch-all for keys that are not declared fields |
+| `_REJECTED_KEYS` | `ClassVar` — keys refused outright instead of being absorbed |
 
-Three things to know:
+Four things to know:
 
 - **`__bool__` returns `bool(self.waveforms)`.** Logic all over the toolchain does
   `if ensemble.sampling_information:` to mean *"has this actually been sampled?"* — do not add fields
@@ -515,6 +529,21 @@ Three things to know:
 - **`_legacy_data` absorbs unknown keys** so nothing is ever lost round-tripping an old file. It also
   means a typo'd key is silently accepted — check `_field_names()` if something you set does not seem
   to take effect.
+- **`_REJECTED_KEYS` is the escape hatch from that**, for a key that must never live here at all.
+  `generation_parameters` is the one entry. It used to arrive by accident: `analyze_block_ensemble()`
+  returned it as one field among many, and `_dataclass_to_dict()` dumps every field of that result
+  through `from_dict()` — so an undeclared key landed in `_legacy_data`, got pickled into every
+  `.ensemble`/`.sequence`, and then diverged from the live `SequenceGeneratorSettings` the moment
+  anyone edited a generation parameter (nothing re-samples on that change, and the sequence sampling
+  cache does not key on it). Nothing read it back except one save-time fallback. Generation
+  parameters now have exactly one home. `__setitem__` and `from_dict()` both drop the key; for assets
+  pickled before this, `SequenceGeneratorLogic._migrate_legacy_info_container()` strips it on load,
+  since `pickle` bypasses `from_dict()` entirely.
+
+  Note this is a *targeted* refusal, not a general tightening — every other unknown key still lands
+  in `_legacy_data` as before. Promoting a key to a declared field (as `laser_rising_bins` /
+  `laser_falling_bins` were) is the right move when it has a real reader; refusing it is right when
+  it has none and a rightful owner elsewhere.
 
 This is the only class in the package with a YAML representer and constructor registered for it
 (in [`../sequence_generator_logic.py`](../sequence_generator_logic.py), just after the imports), so it
@@ -653,17 +682,9 @@ The keyword arguments used to generate the loaded asset, e.g. `{'xy8_order': 8}`
 the key set depends entirely on which predefined generate method ran, and because
 `PulseBlockEnsemble`/`PulseSequence` already store it as a plain dict.
 
-#### `MetadataDictRepresentation` *(dict subclass)*
-
-Pure display helper. `qudi.util.datastorage`'s header writer renders each metadata value with
-`repr()` and prefixes every resulting line with the comment marker. A plain dict's `repr()` never
-breaks lines, so a big settings dict became one unreadable wall of text. This subclass overrides
-`__repr__` to return `pprint.pformat(...)`, which does contain real newlines — so the existing
-line-prefixing logic handles it with no changes to `DataStorage`.
-
 #### `to_plain_metadata()` *(function)*
 
-The other half of the save boundary, and the one that decides whether a header can be **read back**.
+The save boundary: the function that decides whether a header can be **read back**.
 
 `qudi.util.datastorage` writes each metadata value with `repr()` and restores it with a bare
 `eval()`. `repr()` does not produce a description of a value — it produces *code that rebuilds it* —
@@ -671,26 +692,50 @@ so a repr that names a tool rather than spelling the value out raises `NameError
 in. `str_dict_to_metadata()` catches that and silently keeps the raw string, so the value looks
 correct in the file but arrives as a `str`, and a caller doing
 `metadata['generation parameters']['rabi_period']` fails far from the cause with *"string indices
-must be integers"*. Three such reprs really occur:
+must be integers"*. Four such reprs really occur:
 
 | repr in the header | comes from | why the parser's one import retry cannot rescue it |
 |---|---|---|
 | `array([0., 1., ...])` | any `np.ndarray`, e.g. `controlled_variable` | it imports the *stdlib* `array` module, whose `array()` then rejects the argument |
 | `np.int64(5943750)` | numpy scalars, numpy ≥ 2.0 | there is no module called `np` — it is a convention, not a name |
 | `qudi.logic.pulsed.sampling_functions.PulseEnvelope(...)` | `pulse_envelope`, plus the `PulseEnvelopeType` enum inside it | importing `qudi` binds only the top-level package, not that submodule |
+| `nan`, `inf`, `-inf` | `upload_speed`, and any measured array with a gap in it | there is no module called `nan` either — and no Python *literal* for it, which is what makes this one different |
 
 `to_plain_metadata()` converts recursively — arrays to lists, numpy scalars to `int`/`float`/`bool`,
 `Enum` to its value, sets to sorted lists, anything with `to_dict()` through it — so the header
-becomes self-describing and needs no imports at all to parse. It is applied by
-`PulsedMeasurementLogic._finalize_metadata()`, which sanitizes **then** wraps in
-`MetadataDictRepresentation`.
+becomes self-describing and needs no imports at all to parse. It is the whole of
+`PulsedMeasurementLogic._finalize_metadata()`.
 
-Two things worth knowing:
+##### The non-finite floats are the one case that changes the value's *type*
 
-- **This is not about the pretty-printing.** Line breaks never affected whether a value parses: a
-  dict literal spanning lines is a valid `eval` expression and `ConfigParser` rejoins continuation
-  lines first. `eval` cares about undefined *names*. A pretty-printed `fast counter settings` parses
-  back to a `dict` perfectly, while a single-line `generation parameters` does not.
+Every other conversion above lands on a type whose repr is already a literal. NaN has no literal at
+all, so no value that is still a `float` can repr as something `eval()` resolves. They are therefore
+written as the **strings** `'nan'` / `'inf'` / `'-inf'`, and a reader recovers the number with
+`float(v)`. Writing `None` instead would have collapsed the three cases together; a `float` subclass
+with a constructor-shaped `__repr__` would have kept the type but was not worth a class.
+
+This was not a rare edge case. `PulseGeneratorSettings.upload_speed` is NaN until the pulse
+generator has been benchmarked — `PulserBenchmarks.estimate_combined_speed()` returns
+`np.nan` until it has samples, and `_DEFAULT_PULSE_GENERATOR_SETTINGS` seeds it that way. Before this
+branch existed, **every** saved file on a fresh install had its entire `pulsed measurement settings`
+block come back as an unparsed `str`, in all three `.dat` files. One leaf poisons the whole key, and
+nothing anywhere reports it. (`pulsed_maingui.py` has long guarded the same value with
+`if np.isnan(...): = 0.` for display, which is the clue that NaN is a normal state here.)
+
+The YAML status file was never affected — ruamel writes `.nan` natively — nor is the
+`.pulsedmeasurement` pickle, which keeps a real `float('nan')`. Only the `eval()`-based header path
+needed this.
+
+Two more things worth knowing:
+
+- **Line breaks were never part of this.** Whether a value parses back has nothing to do with how
+  it is laid out: a dict literal spanning lines is a valid `eval` expression and `ConfigParser`
+  rejoins continuation lines first. `eval` cares about undefined *names*. A wall-of-text
+  `fast counter settings` parses back to a `dict` perfectly, while a `generation parameters` naming
+  `np.int64` does not, however it is formatted. There used to be a `MetadataDictRepresentation`
+  wrapper here whose `repr()` returned `pprint.pformat(...)` so big dicts wrapped across lines —
+  it bought readability and nothing else, and was removed. Every metadata value is now written on
+  one line.
 - **It also prevents silent data loss.** numpy summarises the repr of arrays longer than
   `np.get_printoptions()['threshold']` (1000) as `array([0., 1., ..., 1498., 1499.])`. A controlled
   variable with more than 1000 points used to reach the header with its middle values already gone,
@@ -746,6 +791,30 @@ module's `StatusVar`; this only holds references. `generator_settings` is `Optio
 `PulsedMeasurementLogic` has no `Connector` to `SequenceGeneratorLogic` and cannot fetch it alone —
 it is `None` whenever the snapshot was built by code with only measurement-logic access.
 
+##### One copy of a container per file
+
+`to_metadata_dict(omit=...)` is the display-only variant used for `.dat` headers; `to_dict()` stays
+lossless for the `.pulsedmeasurement` pickle.
+
+Each header writes some settings containers out flat at its top level (`fast counter settings`,
+`generation parameters`, …) and also carries the whole `Settings` dump under
+`pulsed measurement settings`. Writing a container in both places is a standing invitation for the
+two copies to drift, with no way for a reader to tell which to believe — so `omit` names the
+containers this particular file already wrote flat, as dotted paths, and they are dropped from the
+nested block. Paths naming something absent are ignored, so a caller can list
+`generator_settings.generation_parameters` even when `generator_settings` is `None`.
+
+Which paths go with which file lives in one place: the `_RAW_METADATA_OMIT` /
+`_LASER_METADATA_OMIT` / `_SIGNAL_METADATA_OMIT` constants in
+[`../pulsed_measurement_logic.py`](../pulsed_measurement_logic.py). The nested block's contents
+therefore vary per file, while every file stays complete on its own.
+
+The rule is deliberately **container-level**. Scalar overlap is left alone — `bin width (s)` beside
+`fast_counter_settings['bin_width']` in the raw/laser files, `loaded asset name` beside the asset's
+own `name`. Those flat keys are the long-standing readable convention, their nested homes cannot be
+removed without breaking reconstruction, and both copies are read off one object in one call, so
+they cannot diverge.
+
 #### `PulsedData` *(mutable)*
 
 `measurement_data: PulsedMeasurementData` plus `fit_result` / `fit_result_alt`.
@@ -758,10 +827,24 @@ the round-trip test asserts it.
 
 #### `PulseObjects` *(mutable)*
 
-`sequence` (the loaded top-level asset), plus `ensembles` and `blocks` — independent copies of
-everything `sequence` references **by name**. The real objects live in `SequenceGeneratorLogic`'s
-saved-asset registries and are untouched; these copies are resolved via
+`loaded_asset` (the loaded top-level asset, either kind), plus `ensembles` and `blocks` —
+independent copies of everything `loaded_asset` references **by name**. The real objects live in
+`SequenceGeneratorLogic`'s saved-asset registries and are untouched; these copies are resolved via
 `SequenceGeneratorLogic.resolve_asset_closure()`.
+
+`loaded_sequence` and `loaded_ensemble` are `Optional` **properties** over that one slot, each
+reading `None` for the other kind. Deliberately not two fields: one slot cannot contradict itself,
+so there is no "at most one is set" invariant for `replace()` or a stray assignment to break. They
+follow the tri-state `getattr(x, 'is_sequence', None)` pattern, so an object that is not a pulse
+asset at all reads `None` from both rather than raising.
+
+`to_dict()` writes the asset under `loaded_sequence` or `loaded_ensemble` — the key names the kind,
+so a saved file never reads `sequence` while describing a `PulseBlockEnsemble` — and shows
+`ensembles` **only** for a sequence. A bare ensemble resolves nothing one level up, so the key is
+left out rather than written as an empty dict; an empty `ensembles` beside an ensemble was exactly
+the reading that used to confuse people. `from_dict()` branches on which key is present, and still
+reads the pre-split single `sequence` key by its `type` tag; `__setstate__` does the same for a
+`.pulsedmeasurement` pickled before the rename.
 
 The point is that a saved measurement's dict shows every block/ensemble definition in full rather than
 just a name, and stays frozen in time — editing a same-named asset later never changes an
@@ -772,8 +855,10 @@ already-taken snapshot.
   `element_list`; exporting it would duplicate all of them.
 - `to_metadata_dict()` is a trimmed, display-only variant for saved-file headers. It drops per-sample
   arrays (`laser_rising_bins`, `elements_length_bins`, `_legacy_data`) and duplicated sections so the
-  header shows sequence *structure* rather than thousands of numbers. There is no
-  `from_metadata_dict()`.
+  header shows sequence *structure* rather than thousands of numbers. Its
+  `omit_generation_method_parameters` flag additionally drops the loaded asset's own
+  `generation_method_parameters` for the signal file, which writes that container flat at its top
+  level — see **One copy of a container per file** below. There is no `from_metadata_dict()`.
 
 #### `PulsedMeasurement` *(mutable)* — the root
 
@@ -991,9 +1076,11 @@ would have defaulted it to `False` on every pre-existing file, silently reclassi
 `PulseSequence` as an ensemble.
 
 It is therefore **not** in `to_dict()`, `to_metadata_dict()` or any pickle. The saved form carries the
-distinction as a class-name string instead — `PulseObjects.to_dict()['sequence']['type']`, which is
-what `from_dict()` branches on, and `'loaded asset type'` in each `.dat` header. Keep those as strings:
-they must survive without the classes present, and a name still works if a third asset type appears.
+distinction as strings instead, in three places: the key name `PulseObjects.to_dict()` files the asset
+under (`loaded_sequence` / `loaded_ensemble`), which is what `from_dict()` branches on; a `'type'` tag
+holding the class name inside that value; and `'loaded asset type'` in each `.dat` header. Keep all
+three as strings: they must survive without the classes present, and the `'type'` tag in particular
+is what a third asset type would extend — the key name alone would not generalise as cleanly.
 
 Three places it deliberately does **not** replace `isinstance`:
 
