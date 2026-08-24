@@ -64,7 +64,6 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     ExtractionParameters,
     GenerationMethodParameters,
     MeasurementInformation,
-    MetadataDictRepresentation,
     to_plain_metadata,
     MicrowaveSettings,
     FastCounterSettings,
@@ -338,17 +337,17 @@ class PulsedMeasurementLogic(LogicBase):
     @property
     def _loaded_asset(self):
         """Whichever PulseBlockEnsemble/PulseSequence is currently loaded, held on
-        self._pulsed_measurement.objects.sequence. Not independently persisted - only ever set
+        self._pulsed_measurement.objects.loaded_asset. Not independently persisted - only ever set
         externally by PulsedMasterLogic, since this module has no Connector to
         SequenceGeneratorLogic to re-derive it on its own. sampling_information/
         measurement_information/generation_method_parameters are exposed as properties over this
         one reference rather than copied, avoiding the save/load race that existed when they were
         copied on every load."""
-        return self._pulsed_measurement.objects.sequence
+        return self._pulsed_measurement.objects.loaded_asset
 
     @_loaded_asset.setter
     def _loaded_asset(self, asset):
-        self._pulsed_measurement.objects.sequence = asset
+        self._pulsed_measurement.objects.loaded_asset = asset
 
     @property
     def _fit_result(self):
@@ -459,7 +458,11 @@ class PulsedMeasurementLogic(LogicBase):
                 fit_result_alt=current.data.fit_result_alt,
             ),
             objects=PulseObjects(
-                sequence=current.objects.sequence.copy() if current.objects.sequence is not None else None,
+                loaded_asset=(
+                    current.objects.loaded_asset.copy()
+                    if current.objects.loaded_asset is not None
+                    else None
+                ),
                 ensembles=dict(ensembles) if ensembles else {},
                 blocks=dict(blocks) if blocks else {},
             ),
@@ -1866,24 +1869,55 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     ############################################################################
-    def _get_master_settings_metadata(self, generator_settings=None):
-        """Builds the single 'pulsed measurement settings' dict shared by all three saved-file
-        metadata functions below (_get_raw_metadata/_get_laser_metadata/_get_signal_metadata),
-        so raw/laser/signal files all describe the exact same configuration without duplicating
-        this construction logic three times. Built directly (not via get_pulsed_measurement())
-        to avoid that method's measurement_data/loaded_asset .copy() calls - wasted work here
-        since only .settings is used."""
+    #: Nested settings containers each saved file leaves out of its 'pulsed measurement settings'
+    #: block, because that same file already writes the container out in full at its top level.
+    #: The rule is one copy of a container per file: two copies could drift apart, and a reader
+    #: would have no way to tell which one to believe. Scalar-level overlap is deliberately left
+    #: alone (e.g. 'bin width (s)' beside fast_counter_settings['bin_width'] in the raw/laser
+    #: files, or 'loaded asset name' beside the asset's own 'name') - those flat keys are the
+    #: long-standing readable convention, their nested homes cannot be dropped without breaking
+    #: reconstruction, and both copies are read off one object in one call so they cannot diverge.
+    _RAW_METADATA_OMIT = ()
+    _LASER_METADATA_OMIT = ('measurement_settings.extraction_parameters',)
+    _SIGNAL_METADATA_OMIT = (
+        'measurement_settings.fast_counter_settings',
+        'measurement_settings.extraction_parameters',
+        'measurement_settings.analysis_parameters',
+        'generator_settings.generation_parameters',
+    )
+
+    def _get_master_settings_metadata(self, generator_settings=None, omit=()):
+        """Builds the 'pulsed measurement settings' dict shared by all three saved-file metadata
+        functions below (_get_raw_metadata/_get_laser_metadata/_get_signal_metadata), so raw/laser/
+        signal files all describe the exact same configuration without duplicating this
+        construction logic three times. Built directly (not via get_pulsed_measurement()) to avoid
+        that method's measurement_data/loaded_asset .copy() calls - wasted work here since only
+        .settings is used.
+
+        Parameters
+        ----------
+        omit : tuple of str
+            Dotted paths to nested containers this file writes out flat at its own top level - see
+            the _*_METADATA_OMIT constants above and Settings.to_metadata_dict(). Each file gets a
+            different set, so the block's contents vary per file while each file stays complete on
+            its own.
+        """
         return Settings(
             measurement_settings=self._settings, generator_settings=generator_settings
-        ).to_dict()
+        ).to_metadata_dict(omit=omit)
 
-    def _get_loaded_asset_metadata(self, ensembles=None, blocks=None):
+    def _get_loaded_asset_metadata(self, ensembles=None, blocks=None,
+                                   omit_generation_method_parameters=False):
         """Resolved closure of the currently loaded sequence/ensemble - name/type plus the
-        sequence/ensembles/blocks/elements structure, embedded directly into every raw/laser/
+        loaded asset/ensembles/blocks/elements structure, embedded directly into every raw/laser/
         signal .dat file's metadata rather than requiring a separate '.pulsedmeasurement'
         snapshot file. Uses PulseObjects.to_metadata_dict() (not to_dict()) - the trimmed,
         display-only variant that drops duplicate/bulky SamplingInformation fields (see its
         docstring); the full snapshot file still uses to_dict() for lossless round-tripping.
+
+        Inside 'loaded asset objects' the asset appears under 'loaded_sequence' or
+        'loaded_ensemble' after its kind, and 'ensembles' shows up only for a sequence - see
+        PulseObjects.to_dict().
 
         Parameters
         ----------
@@ -1893,17 +1927,22 @@ class PulsedMeasurementLogic(LogicBase):
             Connector to SequenceGeneratorLogic and cannot resolve this itself.
         blocks : dict
             Optional, {name: PulseBlock}, same caveat as `ensembles`.
+        omit_generation_method_parameters : bool
+            Optional, drop the loaded asset's own 'generation_method_parameters' because this file
+            already writes it out at its top level - only _get_signal_metadata() does.
         """
         if self._loaded_asset is None:
             return {}
         objects = PulseObjects(
-            sequence=self._loaded_asset,
+            loaded_asset=self._loaded_asset,
             ensembles=dict(ensembles) if ensembles else {},
             blocks=dict(blocks) if blocks else {},
         )
         return {'loaded asset name': self._loaded_asset.name,
                 'loaded asset type': type(self._loaded_asset).__name__,
-                'loaded asset objects': objects.to_metadata_dict()}
+                'loaded asset objects': objects.to_metadata_dict(
+                    omit_generation_method_parameters=omit_generation_method_parameters
+                )}
 
     def _get_raw_metadata(self, generator_settings=None, ensembles=None, blocks=None):
         fc = self._settings.fast_counter_settings
@@ -1916,7 +1955,8 @@ class PulsedMeasurementLogic(LogicBase):
             'Controlled variable'         : list(self.measurement_data.signal_data[0]),
             'Approx. measurement time (s)': self.measurement_data.elapsed_time,
             'Measurement sweeps'          : self.measurement_data.elapsed_sweeps,
-            'pulsed measurement settings' : self._get_master_settings_metadata(generator_settings)}
+            'pulsed measurement settings' : self._get_master_settings_metadata(
+                generator_settings, omit=self._RAW_METADATA_OMIT)}
         metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
         return self._finalize_metadata(metadata)
 
@@ -1926,26 +1966,22 @@ class PulsedMeasurementLogic(LogicBase):
             'record length (s)'    : fc.record_length,
             'gated counting'       : fc.is_gated,
             'extraction parameters': self.extraction_settings,
-            'pulsed measurement settings': self._get_master_settings_metadata(generator_settings)}
+            'pulsed measurement settings': self._get_master_settings_metadata(
+                generator_settings, omit=self._LASER_METADATA_OMIT)}
         metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
         return self._finalize_metadata(metadata)
 
     def _get_signal_metadata(self, generator_settings=None, ensembles=None, blocks=None):
         ms = self._settings.readout_settings
-        # 'generation parameters' fallback: self.sampling_information.get('generation_parameters')
-        # CAN be populated - SequenceGeneratorLogic's sample_pulse_block_ensemble()/
-        # sample_pulse_sequence() store an EnsembleAnalysisResult/SequenceAnalysisResult (which has
-        # its own generation_parameters field) into sampling_information; since that key isn't a
-        # declared SamplingInformation field, it lands in _legacy_data as a raw GenerationParameters
-        # instance, not a dict. Normalize it here so this key is always a dict (or None) regardless
-        # of which branch supplied it. generator_settings, handed down from PulsedMasterLogic (see
-        # save_measurement_data), is preferred when available.
-        if generator_settings is not None:
-            generation_parameters = generator_settings.generation_parameters.to_dict()
-        else:
-            generation_parameters = self.sampling_information.get('generation_parameters')
-            if hasattr(generation_parameters, 'to_dict'):
-                generation_parameters = generation_parameters.to_dict()
+        # Generation parameters have exactly one home: SequenceGeneratorSettings, handed down from
+        # PulsedMasterLogic (see save_measurement_data). None when this module is driven directly
+        # without going through it, since PulsedMeasurementLogic has no Connector to
+        # SequenceGeneratorLogic. There used to be a fallback reading them back off the loaded
+        # asset's sampling_information, where they arrived as an undeclared _legacy_data key - that
+        # copy is no longer written (see SamplingInformation) precisely so the two cannot disagree.
+        generation_parameters = (
+            generator_settings.generation_parameters.to_dict() if generator_settings is not None else None
+        )
         metadata = {'Approx. measurement time (s)': self.measurement_data.elapsed_time,
                 'Measurement sweeps'          : self.measurement_data.elapsed_sweeps,
                 'Number of laser pulses'      : ms.number_of_lasers,
@@ -1956,8 +1992,10 @@ class PulsedMeasurementLogic(LogicBase):
                 'fast counter settings'       : self.fast_counter_settings,
                 'generation parameters'       : generation_parameters,
                 'generation method parameters': self.generation_method_parameters,
-                'pulsed measurement settings' : self._get_master_settings_metadata(generator_settings)}
-        metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
+                'pulsed measurement settings' : self._get_master_settings_metadata(
+                    generator_settings, omit=self._SIGNAL_METADATA_OMIT)}
+        metadata.update(self._get_loaded_asset_metadata(
+            ensembles=ensembles, blocks=blocks, omit_generation_method_parameters=True))
         if self._fit_result:
             metadata['fit result'] = FitContainer.dict_result(self._fit_result)
         if self._fit_result_alt:
@@ -1968,24 +2006,17 @@ class PulsedMeasurementLogic(LogicBase):
     def _finalize_metadata(metadata):
         """Shared tail of _get_raw_metadata()/_get_laser_metadata()/_get_signal_metadata().
 
-        Two steps, in this order:
+        Runs every value through to_plain_metadata(), which converts it into types whose repr() can
+        be read back by qudi.util.datastorage's eval()-based parser - see its docstring for the
+        three reprs that otherwise arrive as unparsed strings, and for the >1000-element array
+        truncation it avoids.
 
-        1. to_plain_metadata() converts every value into types whose repr() can be read back by
-           qudi.util.datastorage's eval()-based parser - see its docstring for the three reprs that
-           otherwise arrive as unparsed strings, and for the >1000-element array truncation it
-           avoids.
-        2. Dicts are wrapped in MetadataDictRepresentation so the header shows them pretty-printed
-           across several lines instead of one wall-of-text line.
-
-        Sanitizing first matters: the wrapper's repr() is what ends up in the file, so it has to be
-        holding already-plain values. The two are independent otherwise - line breaks never affected
-        whether a value parses back (a dict literal spanning lines is a perfectly valid eval
-        expression, and ConfigParser rejoins continuation lines before the parse).
+        Nothing here reformats the values for display: each one is written as a single line. Line
+        breaks never affected whether a value parses back (a dict literal spanning lines is a
+        perfectly valid eval expression, and ConfigParser rejoins continuation lines before the
+        parse), so the multi-line pretty-printing this used to apply bought readability only.
         """
-        return {
-            key: (MetadataDictRepresentation(plain) if isinstance(plain, dict) else plain)
-            for key, plain in ((key, to_plain_metadata(value)) for key, value in metadata.items())
-        }
+        return {key: to_plain_metadata(value) for key, value in metadata.items()}
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
