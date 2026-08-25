@@ -48,9 +48,16 @@ class StateEstimatorSettings(CustomDataclass):
     bin_width: float = 1e-9
 
 
-@dataclass
-class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
-    name: str = "default"
+# NOTE: TimeSeriesStateEstimatorSettings used to be declared here, but the matching
+# TimeSeriesStateEstimator below has been commented out for a long time. Because the settings
+# classes and the estimator classes are discovered separately (get_subclass_dict over the settings,
+# get_subclasses over the implementations), that orphan made the GUI advertise a "TimeSeries" method
+# that raised KeyError in configure_method() the moment it was selected - settings offered
+# ['TimeSeries', 'TimeTag'] while implementations were only ['TimeTag'].
+#
+# The settings class is removed rather than the estimator restored, because the implementation below
+# needs PulseExtractor/PulseAnalyzer and a PulsedMeasurementLogic reference that nothing currently
+# supplies. If you bring TimeSeries back, restore BOTH halves together, or the same mismatch returns.
 
 
 #    extractor_settings: dict
@@ -185,8 +192,30 @@ class StateEstimatorMain:
         estimator_subclasses = get_subclasses(__name__, StateEstimator)
         self.method_list = [get_subclass_qualifier(subclass, StateEstimator) for subclass in estimator_subclasses]
 
+    @property
+    def method(self):
+        return self._method
+
+    @method.setter
+    def method(self, method):
+        """Select the estimator method and build it.
+
+        This property is the reason QdyneLogic.input_estimator_method() works at all: without it,
+        `self.estimator.method = ...` merely created a stray attribute and configure_method() was
+        never reached, leaving self.estimator as None. TimeTraceAnalyzerMain has had the equivalent
+        property all along - the two Main classes are meant to present the same interface.
+        """
+        self._method = method
+        self.configure_method(method)
+
     def configure_method(self, method):
-        self.estimator = globals()[method + "StateEstimator"](self.log)
+        estimator_cls = globals().get(method + "StateEstimator")
+        if estimator_cls is None:
+            raise ValueError(
+                f"No state estimator implementation for method '{method}'. "
+                f"Available: {sorted(self.method_list)}."
+            )
+        self.estimator = estimator_cls(self.log)
 
     def get_pulse(self, raw_data, settings):
         self.log.debug("StateEstimatorMain: get_pulse: estimator.get_pulse")

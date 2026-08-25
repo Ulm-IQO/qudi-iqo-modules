@@ -18,6 +18,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from dataclasses import fields
+
 from PySide6.QtCore import Signal, Slot
 
 from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
@@ -107,16 +109,37 @@ class MultiSettingsMediator(SettingsMediator):
             self.method_dict[key] = self._create_default(dataclass_cls_dict[key])
 
     def load_from_dict(self, dataclass_cls_dict, method_map):
-        """Load data from dict."""
+        """Load data from dict.
+
+        Tolerant on both axes, because the saved status file and the current code are allowed to
+        disagree: a method present in the code but absent from the file falls back to defaults, and
+        saved keys that are no longer fields of the dataclass are dropped rather than passed to
+        __init__. Previously either case aborted the whole load - a missing method raised KeyError
+        and a stale field raised TypeError - which left every method unconfigured.
+        """
         self._log.debug(f"load_from_dict {dataclass_cls_dict=}, {method_map=}")
 
-        for method in dataclass_cls_dict:
-            dataclass_cls = dataclass_cls_dict[method]
-            mode_map = method_map[method]
+        for method, dataclass_cls in dataclass_cls_dict.items():
+            mode_map = method_map.get(method)
+            if not mode_map:
+                self.method_dict[method] = self._create_default(dataclass_cls)
+                self._log.info(
+                    f"No saved settings for method '{method}'. Created defaults."
+                )
+                continue
 
+            valid_fields = {f.name for f in fields(dataclass_cls)}
             mode_dict = dict()
-            for mode in method_map[method].keys():
-                mode_dict[mode] = dataclass_cls(**mode_map[mode])
+            for mode, saved in mode_map.items():
+                unknown = set(saved) - valid_fields
+                if unknown:
+                    self._log.warning(
+                        f"Dropping saved setting(s) {sorted(unknown)} for '{method}/{mode}' - "
+                        f"no longer field(s) of {dataclass_cls.__name__}."
+                    )
+                mode_dict[mode] = dataclass_cls(
+                    **{k: v for k, v in saved.items() if k in valid_fields}
+                )
             self.method_dict[method] = mode_dict
 
     def dump_as_dict(self):

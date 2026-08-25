@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import ctypes
 import numpy as np
-from typing import Union, List, Sequence
+from typing import Union, List, Sequence, Tuple
 import time
 from os import path
 from datetime import datetime
@@ -210,8 +210,13 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             record_length: float,
             gate_mode: GateMode,
             data_type: type
-    ) -> None:
-        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
+    ) -> Tuple[float, float, GateMode, type]:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter.
+
+        Returns the values actually applied - see QdyneCounterInterface.configure(). The bin width
+        and record length come back read from the device, since set_binwidth()/set_length() quantise
+        to what the hardware supports.
+        """
         number_of_gates = 1
         with self._thread_lock:
             if self.module_state() == "locked":
@@ -231,26 +236,16 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
             self.set_cycles(number_of_gates)
 
-            return self.get_binwidth(), self.get_length() * self.get_binwidth(), number_of_gates
-
-            # Cache current values to restore them if configuration fails
-            old_binwidth = self.binwidth
-            old_record_length = self.record_length
-            old_gate_mode = self.gate_mode
-            self.log.warning(['settings:', bin_width, record_length])
-            try:
-                self._binwidth = self.set_binwidth(bin_width)
-                self.change_sweep_mode(gated=False, cycles=None, preset=None)
-                no_of_bins = int((record_length - self._trigger_safety) / self.binwidth)
-                self._record_length = self.set_length(no_of_bins) * self._binwidth + self._trigger_safety
-            except Exception as err:
-                self._binwidth = self.set_binwidth(old_binwidth)
-                self.change_sweep_mode(old_gate_mode)
-                old_no_of_bins = int((old_record_length - self._trigger_safety) / self.binwidth)
-                self._record_length = self.set_length(old_no_of_bins) * self._binwidth
-                raise RuntimeError(
-                    "Error while trying to configure data in-streamer"
-                ) from err
+            # All four values, in the interface's order. This used to return three
+            # (binwidth, record_length, number_of_gates), which the caller unpacks into four names -
+            # so configuring real hardware raised ValueError before it ever reached the device
+            # settings. gate_mode/data_type are echoed from this module's current state.
+            return (
+                self.get_binwidth(),
+                self.get_length() * self.get_binwidth(),
+                self.gate_mode,
+                self.data_type,
+            )
 
         return self._binwidth, self._record_length, self._gated, self._data_type
 

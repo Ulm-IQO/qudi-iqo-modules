@@ -69,7 +69,9 @@ class SettingsMediator(DataclassMediator):
 
     @data_container.setter
     def data_container(self, data_container):
-        self.mode_dict = data_container
+        # Assign the backing attribute, not the `mode_dict` property - that property is read-only
+        # here, so assigning to it raised AttributeError and this setter could never be used.
+        self._mode_dict = data_container
 
     @property
     def default_data(self):
@@ -93,7 +95,12 @@ class SettingsMediator(DataclassMediator):
         self._log.debug(f"add_mode {new_mode_name=}, {force_creation=}, {setting=}")
         if new_mode_name not in self.mode_dict or force_creation:
             try:
-                self.mode_dict[new_mode_name] = deepcopy(self.default_data)
+                # Seed from `setting` when the caller supplied one, falling back to the default mode
+                # otherwise. This argument used to be accepted and then ignored, so a caller handing
+                # over settings loaded from a file (QdyneLogic.load_data) had them silently replaced
+                # by defaults - which is why loaded settings never appeared.
+                source = self.default_data if setting is None else setting
+                self.mode_dict[new_mode_name] = deepcopy(source)
                 self.mode_dict[new_mode_name].name = new_mode_name
                 self.set_mode(new_mode_name)
             except Exception as e:
@@ -121,11 +128,16 @@ class SettingsMediator(DataclassMediator):
 
     @staticmethod
     def find_key_before(d: dict, k: str):
-        it = iter(d)
-        for key in it:
+        previous_key = None
+        for key in d:
             if key == k:
                 break
             previous_key = key
+        if previous_key is None:
+            # `k` is the first key, or is absent - either way there is no predecessor. Raise
+            # KeyError, which is what delete_mode's `except KeyError` already handles; the previous
+            # version left `previous_key` unbound and raised UnboundLocalError straight past it.
+            raise KeyError(k)
         return previous_key
 
     @property

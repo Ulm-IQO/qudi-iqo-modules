@@ -185,11 +185,27 @@ class QdyneDataManager:
         if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
-        try:
-            self.data.metadata = QDyneMetadata(**metadata)
-        except Exception as e:
-            self.log.exception(e)
+        self.data.metadata = self._metadata_from_dict(metadata)
         self.settings.load_options(general, metadata)
+
+    def _metadata_from_dict(self, metadata) -> QDyneMetadata:
+        """Build QDyneMetadata from a saved file's metadata, tolerating schema drift.
+
+        A file written by an older (or newer) version carries keys that are not fields of the
+        current QDyneMetadata. Passing those straight to the constructor raised TypeError, which was
+        swallowed by a blanket `except` - so the metadata was silently left at its previous value and
+        callers went on to read stale settings out of it. Unknown keys are dropped with a warning
+        instead, and missing ones fall back to the field defaults.
+        """
+        if not isinstance(metadata, dict):
+            return QDyneMetadata()
+        valid_fields = {f.name for f in fields(QDyneMetadata)}
+        unknown = set(metadata) - valid_fields
+        if unknown:
+            self.log.warning(
+                f"Ignoring saved metadata key(s) {sorted(unknown)} - not field(s) of QDyneMetadata."
+            )
+        return QDyneMetadata(**{k: v for k, v in metadata.items() if k in valid_fields})
 
     def set_metadata(self, metadata: dict, data_type: str = "") -> None:
         if not data_type:

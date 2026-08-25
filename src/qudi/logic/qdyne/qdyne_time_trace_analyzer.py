@@ -79,7 +79,11 @@ class FourierAnalyzer(Analyzer):
         elif stg.spectrum_type == "power":
             spectrum = self.get_norm_psd(ft_signal)
         else:
-            print("{}_is not defined".format(stg.spectrum_type))
+            # Previously this printed to stdout and fell through, leaving `spectrum` unbound so the
+            # next line raised UnboundLocalError - which says nothing about the real cause.
+            raise ValueError(
+                f"Unsupported spectrum_type '{stg.spectrum_type}'. Choose 'amp' or 'power'."
+            )
         return spectrum
 
     def do_fft(self, time_trace, padding_param=0, sequence_length_bins=1):

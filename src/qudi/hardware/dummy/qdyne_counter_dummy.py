@@ -24,7 +24,7 @@ import datetime
 import numpy as np
 import os
 import time
-from typing import Sequence, Union
+from typing import Sequence, Tuple, Union
 
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
@@ -122,8 +122,13 @@ class QdyneCounterDummy(QdyneCounterInterface):
         record_length: float,
         gate_mode: GateMode,
         data_type: type,
-    ) -> None:
-        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
+    ) -> Tuple[float, float, GateMode, type]:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter.
+
+        Returns the values actually applied - see QdyneCounterInterface.configure(). This dummy
+        forces GateMode.UNGATED and rejects unknown data types, so the returned tuple can differ
+        from what was asked for.
+        """
         self._binwidth = bin_width
         self._record_length = record_length
         if gate_mode != GateMode.UNGATED:

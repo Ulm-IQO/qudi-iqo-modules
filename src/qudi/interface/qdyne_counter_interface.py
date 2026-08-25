@@ -156,8 +156,18 @@ class QdyneCounterInterface(Base):
         record_length: float,
         gate_mode: GateMode,
         data_type: type
-    ) -> None:
-        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
+    ) -> Tuple[float, float, GateMode, type]:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter.
+
+        Returns the values the hardware ACTUALLY applied, in the same order as the arguments:
+        (bin_width, record_length, gate_mode, data_type). Hardware is free to clip a value to its
+        constraints or refuse a mode, so the returned tuple is authoritative and the caller should
+        store it rather than the values it asked for.
+
+        Implementations must return all four, even when nothing was adjusted. This is load-bearing:
+        the caller unpacks the result into four names, so returning None or a shorter tuple raises
+        at the call site rather than in the hardware module.
+        """
         pass
 
     @abstractmethod

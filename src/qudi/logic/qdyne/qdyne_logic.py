@@ -164,7 +164,10 @@ class MeasurementGenerator:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['sequence_length'] = ens_length
 
-        if "_bin_width" in settings_dict:
+        # Guarded on "bin_width", not "_bin_width": the leading underscore meant this branch never
+        # fired for the key callers actually pass, so the estimator's bin_width was never kept in
+        # step with the measurement settings.
+        if "bin_width" in settings_dict:
             settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
             self._qdyne_logic.settings.estimator_stg.set_single_value('bin_width', settings_dict["bin_width"])
         if "sequence_length" in settings_dict:
@@ -297,8 +300,13 @@ class QdyneLogic(LogicBase):
     default_estimator_method = ConfigOption(
         name="default_estimator_method", default="TimeTag", missing="warn"
     )
+    # name="default_analyzer_method", not "analyzer_method": this used to declare the same config
+    # key as the `analyzer_method` option above, so both attributes read one value and whichever
+    # descriptor resolved last won. It failed silently because both use missing="nothing" - note the
+    # startup log warns about estimator_method and default_estimator_method but never the analyzer
+    # pair.
     default_analyzer_method = ConfigOption(
-        name="analyzer_method", default="Fourier", missing="nothing"
+        name="default_analyzer_method", default="Fourier", missing="nothing"
     )
     # data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(
@@ -420,7 +428,10 @@ class QdyneLogic(LogicBase):
 
     def _save_status_variables(self):
         self._measurement_generator_dict = self.measurement_generator.generation_parameters
-        self._measurement_generator_dict.pop('is_gated')  # remove is_gated from StatusVar dict
+        # pop(..., None): is_gated is a live hardware property, not a generation parameter, so it is
+        # kept out of the StatusVar - but it is not guaranteed to be present, and a bare pop() made
+        # deactivation raise KeyError and abort before the remaining status variables were saved.
+        self._measurement_generator_dict.pop('is_gated', None)
         self._counter_settings_dict = self.measurement_generator.counter_settings
         self._measurement_settings_dict = self.measurement_generator.measurement_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
