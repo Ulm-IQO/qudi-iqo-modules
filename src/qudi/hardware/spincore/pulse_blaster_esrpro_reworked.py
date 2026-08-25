@@ -23,9 +23,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 OVERVIEW
 
-This module wraps the SpinCore SpinAPI DLL to control a PulseBlasterESR-PRO
-digital pattern generator card. The board has 21 TTL digital outputs and no
-analog or DDS capability. It exposes two Qudi interfaces:
+This module wraps the SpinCore SpinAPI DLL to control a PulseBlaster-family digital
+pattern generator. It has been used successfully with both the PulseBlasterESR-PRO
+PCI series (21 physical channels) and the PulseBlasterUSB series (e.g. the
+PBUSB-TTL-24-100-4k, 24 physical channels). It exposes two Qudi interfaces:
 
   - PulserInterface:  used for uploading and playing back arbitrary digital
                        waveforms (as required by the pulsed measurement
@@ -37,27 +38,157 @@ analog or DDS capability. It exposes two Qudi interfaces:
 Internally, all waveforms are represented as a run-length-encoded (RLE)
 sequence of instructions: each entry describes a set of active channels and
 a duration. This keeps the number of hardware instructions manageable, since
-the board can hold at most ~4094 instructions in memory regardless of how
-finely time is sampled.
-
-The board's timing resolution is set entirely by its physical crystal
-oscillator (clock_frequency config option must match the value printed on
-the board / stated in its documentation) — this is not adjustable via
-software and is only used by this driver to convert between nanoseconds and
-clock cycles when programming instructions.
+the board can hold at most a few thousand instructions in memory regardless
+of how finely time is sampled.
 
 ------------------------------------------------------------------------
 
-Example config for copy-paste:
+BOARD IDENTIFICATION -- what is and isn't actually possible
+
+SpinAPI, as wrapped by this module, exposes pb_get_version() (a driver/
+library version string, NOT a board model) and pb_get_firmware_id() (a
+numeric ID whose mapping to board model is not documented anywhere this
+module's author has been able to verify). There is no SCPI-style *IDN?
+equivalent available here that reliably reports board model, physical
+clock frequency, or channel count.
+
+Because of this, TRUE automatic hardware detection of board model/clock/
+channel count is not implemented, since doing so would require guessing at
+an unverified ID-to-model mapping. Instead, this module provides a small
+table of known board profiles (BOARD_PROFILES below), selected explicitly
+via the board_model config option -- this lets you specify the board model
+ONCE, with clock frequency, channel count, control-bit behavior, and the
+stop/output workaround (see below) all resolved consistently from that
+single choice, rather than needing to set each of them separately and keep
+them consistent by hand.
+
+get_version() and get_firmware_id() are logged at activation purely for
+diagnostic reference (e.g. if you want to help build a verified ID-to-model
+mapping in the future) -- they are not used to make any automatic decision.
+
+Config resolution order (highest priority first):
+    1. Explicit individual config option (clock_frequency, num_channels,
+       use_output_control_bits, min_instr_len, max_instructions,
+       zero_output_on_stop_workaround) -- always wins if given.
+    2. Value from the board_model profile, if board_model is set and
+       recognised.
+    3. Built-in fallback default (matches the original PulseBlasterESR-PRO
+       PCI behavior: 500 MHz, 21 channels, control bits reserved, 6-cycle
+       minimum instruction, 4094 max instructions, stop/output workaround
+       disabled).
+
+------------------------------------------------------------------------
+
+MINIMUM PULSE WIDTH -- a genuine hardware limit, surfaced as an error
+
+The minimum instruction duration a board can produce is
+min_instr_len / clock_frequency (LEN_MIN). This is a REAL physical limit of
+the hardware. If a pulse sequence requests an instruction shorter than
+LEN_MIN, this module does NOT silently round it up or drop it (except as an
+internal side-effect of channel_delays correction below) -- it is passed
+through to the hardware as-is and SpinAPI will return error -91
+("instruction length shorter than the minimum allowed"), which check()
+reports clearly.
+
+This is intentional: silently rounding arbitrary waveform content in this
+low-level hardware file would hide upstream problems (e.g. a mismatched
+clock_frequency, or an interfuse/logic layer generating a pulse pattern
+that doesn't respect this board's granularity) behind an apparently-working
+but subtly wrong output. Any required downsampling/re-timing to match this
+board's granularity (e.g. when driven from a separate, faster-clocked
+instrument via an interfuse) belongs in that upstream layer, which has the
+context to do it correctly, not here.
+
+------------------------------------------------------------------------
+
+OUTPUT/CONTROL WORD BIT USAGE -- use_output_control_bits
+
+On the PulseBlasterESR-PRO (21 physical output channels, 0-20), bits 21-23
+of the 24-bit output/control word are NOT physical outputs -- they form a
+reserved control field that must be set to 0b111 (the ON constant,
+0xE00000) to indicate "normal operation" (as opposed to a special sub-10 ns
+short-pulse encoding). Since that board has no physical channels 21-23,
+sacrificing those bits for control purposes is harmless.
+
+On boards with 22 or more REAL physical output channels (e.g. the
+PulseBlasterUSB PBUSB-TTL-24-100-4k, which has 24 full, independent output
+channels occupying the entire 24-bit output/control word, and documents no
+reserved short-pulse control field at all), bits 21-23 are genuine physical
+outputs. Unconditionally OR-ing in the ON constant on every instruction (as
+required on the ESR-PRO) would silently force channels 21, 22, and 23
+permanently HIGH on every single instruction, regardless of what the actual
+pulse sequence requests for those channels -- with no error, since nothing
+about this is invalid from the SpinAPI's point of view.
+
+The use_output_control_bits config option (or board profile) controls this:
+    True  -- OR in the ON constant on every instruction, exactly as
+             required by the ESR-PRO's reserved control field.
+    False -- write the requested channel bitmask directly, with no
+             reserved control field. Required for boards where bits 21-23
+             are genuine physical outputs.
+
+------------------------------------------------------------------------
+
+OUTPUT LEVEL AFTER STOP -- zero_output_on_stop_workaround
+
+pb_stop() halts the instruction pointer; it does not clear the physical
+output register. On the ESR-PRO series, this has never been observed to be
+a problem in practice, so the plain pb_stop()/pb_start() pair is used as-is.
+
+On the PulseBlasterUSB (PBUSB-TTL-24-100-4k), this has been confirmed on
+real hardware (oscilloscope) to leave outputs frozen indefinitely at
+whatever channel pattern was active in the last-executed instruction of a
+waveform, with pb_stop() and pb_reset() both individually confirmed on
+scope to have no effect on that frozen output level. For a pulsed
+measurement, where the loaded waveform's last instruction can hold any
+arbitrary pattern HIGH, this means the physical outputs stay at an
+arbitrary, uncontrolled level between measurement runs.
+
+The only mechanism confirmed on scope to force a real 0V output on this
+board is to reprogram it with a trivial all-channels-LOW self-looping
+instruction and start it running -- i.e. the same mechanism the
+SwitchInterface uses via activate_channels(). Since this board holds only
+one program in memory at a time, doing this necessarily overwrites
+whatever waveform was previously loaded. To keep this transparent to the
+pulsed measurement toolchain, pulser_on() re-writes the real waveform back
+to the board before resuming playback, if pulser_off() had to overwrite it.
+
+The zero_output_on_stop_workaround config option (or board profile)
+controls whether this mechanism is used:
+    True  -- pulser_off() forces a real 0V output as described above;
+             pulser_on() transparently restores the real waveform first,
+             if needed, before starting playback.
+    False -- pulser_off()/pulser_on() are the plain pb_stop()/pb_start()
+             calls, with no extra reprogramming. This is the confirmed-
+             correct behavior for the ESR-PRO series.
+
+------------------------------------------------------------------------
+
+Example config for copy-paste (using a known board profile):
 
     pulseblaster:
         module.Class: 'spincore.pulse_blaster_esrpro.PulseBlasterESRPRO'
         options:
-            clock_frequency: 500e6       # Hz — must match oscillator on board
-            min_instr_len: 6             # clock cycles; typically 5-7, check manual
-            debug_mode: False            # set True to write SpinAPI log to log.txt
-            use_smart_pulse_creation: False  # enable LONG_DELAY factorization
-            #library_path: 'C:/SpinCore/SpinAPI/dll/spinapi64.dll'  # optional override
+            board_model: 'PBUSB-TTL-24-100-4K'
+            debug_mode: False
+            use_smart_pulse_creation: False
+            library_path: 'C:/SpinCore/SpinAPI/dll/spinapi64.dll'
+
+Example config for copy-paste (fully manual, no board profile -- identical
+behavior to specifying everything by hand):
+
+    pulseblaster:
+        module.Class: 'spincore.pulse_blaster_esrpro.PulseBlasterESRPRO'
+        options:
+            clock_frequency: 100e6
+            num_channels: 24
+            use_output_control_bits: False
+            min_instr_len: 6
+            max_instructions: 4094
+            zero_output_on_stop_workaround: True
+            debug_mode: False
+            use_smart_pulse_creation: False
+            library_path: 'C:/SpinCore/SpinAPI/dll/spinapi64.dll'
             #channel_delays:             # optional per-channel cable delay correction
             #    '0': 200e-9             # channel 0 has 200 ns propagation delay
             #    '2': 500e-9             # channel 2 has 500 ns propagation delay
@@ -76,10 +207,76 @@ from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 
 
-class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
-    """ Hardware class to control the PulseBlasterESR-PRO card from SpinCore.
+# ══════════════════════════════════════════════════════════════════════════════
+#  KNOWN BOARD PROFILES
+#
+#  Selected explicitly via the board_model config option (case-insensitive,
+#  matched against both the key and each entry's 'aliases'). Values here are
+#  taken from each board's published datasheet/manual, plus, where noted,
+#  behavior confirmed directly on real hardware with an oscilloscope. If a
+#  profile's exact max_instructions figure has not been independently
+#  verified against real hardware, that is noted in its 'description'.
+# ══════════════════════════════════════════════════════════════════════════════
 
-    This file is compatible with the PCI version SP18A of the PulseBlasterESR.
+BOARD_PROFILES = {
+    'PBUSB-TTL-24-100-4K': {
+        'aliases': ['PBUSB-24-100-4K', 'PB24-100-4K', 'PULSEBLASTERUSB-24-100-4K'],
+        'clock_frequency': 100e6,
+        'num_channels': 24,
+        'use_output_control_bits': False,
+        'min_instr_len': 6,
+        # Manual states "4k" memory depth (4096 words). 4094 is used here as
+        # a conservative reuse of the same reserved-slot margin documented
+        # for the ESR-PRO series (4096 - 2 reserved), NOT independently
+        # confirmed against this specific board -- override via
+        # max_instructions if you find the true usable limit differs.
+        'max_instructions': 4094,
+        # Confirmed on oscilloscope: this board holds its last active
+        # output pattern indefinitely after pb_stop(), with pb_stop() and
+        # pb_reset() individually confirmed to have no effect on that
+        # frozen level. See module docstring, "OUTPUT LEVEL AFTER STOP".
+        'zero_output_on_stop_workaround': True,
+        'description': (
+            'PulseBlasterUSB (v2), 24 physical output channels, 100 MHz core '
+            'clock, ~4k instruction memory. max_instructions is a conservative '
+            'estimate, not independently verified for this exact board. '
+            'zero_output_on_stop_workaround is enabled based on confirmed '
+            'oscilloscope testing of this board.'
+        ),
+    },
+    'ESR-PRO-500': {
+        'aliases': ['ESR-PRO', 'PULSEBLASTERESR-PRO', 'ESRPRO', 'ESRPRO-500'],
+        'clock_frequency': 500e6,
+        'num_channels': 21,
+        'use_output_control_bits': True,
+        'min_instr_len': 6,
+        'max_instructions': 4094,
+        'zero_output_on_stop_workaround': False,
+        'description': (
+            'PulseBlasterESR-PRO PCI, 21 physical output channels, 500 MHz '
+            'core clock, ~4k instruction memory.'
+        ),
+    },
+    'ESR-PRO-400': {
+        'aliases': ['ESRPRO-400', 'PBESR-PRO-400'],
+        'clock_frequency': 400e6,
+        'num_channels': 21,
+        'use_output_control_bits': True,
+        'min_instr_len': 6,
+        'max_instructions': 4094,
+        'zero_output_on_stop_workaround': False,
+        'description': (
+            'PulseBlasterESR-PRO PCI, 21 physical output channels, 400 MHz '
+            'core clock, ~4k instruction memory.'
+        ),
+    },
+}
+
+
+class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
+    """ Hardware class to control a SpinCore PulseBlaster-family digital pattern
+    generator (PCI ESR-PRO series or USB series).
+
     The wrapped commands are based on the 'spinapi.h' header file and can be
     looked up in the SpinAPI Documentation on the SpinCore website.
 
@@ -95,8 +292,19 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
     # ── Config options ────────────────────────────────────────────────────────
     _library_path = ConfigOption('library_path', default='', missing='info')
-    _clock_freq   = ConfigOption('clock_frequency', default=500e6, missing='warn')
-    _min_instr_len = ConfigOption('min_instr_len', default=6, missing='warn')
+    _board_model  = ConfigOption('board_model', default=None, missing='nothing')
+
+    # These six default to None (sentinel "not explicitly set") so that
+    # on_activate() can tell the difference between "the user explicitly
+    # asked for this value" and "fall back to the board_model profile, or
+    # ultimately the built-in default". See _resolve_hardware_parameters().
+    _clock_freq_cfg              = ConfigOption('clock_frequency', default=None, missing='nothing')
+    _num_channels_cfg            = ConfigOption('num_channels', default=None, missing='nothing')
+    _use_output_control_bits_cfg = ConfigOption('use_output_control_bits', default=None, missing='nothing')
+    _min_instr_len_cfg           = ConfigOption('min_instr_len', default=None, missing='nothing')
+    _max_instructions_cfg        = ConfigOption('max_instructions', default=None, missing='nothing')
+    _zero_output_workaround_cfg  = ConfigOption('zero_output_on_stop_workaround', default=None, missing='nothing')
+
     _debug_mode   = ConfigOption('debug_mode', default=False)
     _use_smart_pulse_creation = ConfigOption('use_smart_pulse_creation', default=False)
     _channel_delays = ConfigOption('channel_delays', default=[])
@@ -110,7 +318,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     PULSE_PROGRAM = 0
 
     # Instruction opcodes passed as 'inst' argument to pb_inst_pbonly()
-    # See spinapi.h and PBESR-Pro manual for detailed descriptions.
+    # See spinapi.h and the board manual for detailed descriptions.
     CONTINUE   = 0   # Continue to next instruction
     STOP       = 1   # Stop execution
     LOOP       = 2   # Begin a loop (inst_data = loop count)
@@ -122,10 +330,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     WAIT       = 8   # Wait for hardware/software trigger
     RTI        = 9   # Return from interrupt
 
-    # Short-pulse control flags (bits 21-23 of the flags word).
-    # For instruction durations > 10 ns, bits 21-23 must all be 1 (= ON).
-    # For sub-10 ns pulses, these bits select how many clock cycles are HIGH.
-    # See PBESR-Pro manual p. 28, Fig. 16 for the full description.
+    # Short-pulse control flags (bits 21-23 of the flags word). ONLY
+    # applicable on boards where these bits are a reserved control field
+    # rather than genuine physical outputs -- see use_output_control_bits
+    # in the module docstring. For instruction durations > 10 ns on such
+    # boards, bits 21-23 must all be 1 (= ON). For sub-10 ns pulses, these
+    # bits select how many clock cycles are HIGH. See the ESR-PRO manual's
+    # instruction set appendix for the full description.
     ONE_PERIOD   = 0x200000  # bits 21-23 = 001 → 1 clock cycle HIGH
     TWO_PERIOD   = 0x400000  # bits 21-23 = 010 → 2 clock cycles HIGH
     THREE_PERIOD = 0x600000  # bits 21-23 = 011 → 3 clock cycles HIGH
@@ -133,10 +344,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     FIVE_PERIOD  = 0xA00000  # bits 21-23 = 101 → 5 clock cycles HIGH (= 10 ns)
     ON           = 0xE00000  # bits 21-23 = 111 → normal operation (> 10 ns)
     SIX_PERIOD   = 0xC00000  # bits 21-23 = 110 → used on some old boards only
-
-    # Convenient output bitmasks for the 21 TTL channels (bits 0-20)
-    ALL_FLAGS_ON  = 0x1FFFFF  # all 21 channels HIGH
-    ALL_FLAGS_OFF = 0x0       # all 21 channels LOW
 
     # Human-readable labels for the pb_read_status() bitmask
     STATUS_DICT = {
@@ -146,18 +353,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         8:  'Waiting',
         16: 'Scanning',   # RadioProcessor boards only
     }
-
-    # Internal state tracking for the SwitchInterface (21 channels, all initially off)
-    _switch_states = {
-        'd_ch0':  False, 'd_ch1':  False, 'd_ch2':  False,
-        'd_ch3':  False, 'd_ch4':  False, 'd_ch5':  False,
-        'd_ch6':  False, 'd_ch7':  False, 'd_ch8':  False,
-        'd_ch9':  False, 'd_ch10': False, 'd_ch11': False,
-        'd_ch12': False, 'd_ch13': False, 'd_ch14': False,
-        'd_ch15': False, 'd_ch16': False, 'd_ch17': False,
-        'd_ch18': False, 'd_ch19': False, 'd_ch20': False,
-    }
-    _channel_states = _switch_states.copy()
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -171,14 +366,129 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # Qudi module lifecycle
     # =========================================================================
 
+    def _resolve_board_profile(self, board_model):
+        """ Look up a board profile by name, matching against both the
+        BOARD_PROFILES dict keys and each entry's 'aliases' list,
+        case-insensitively.
+
+        @param str board_model: Board model string from config, or None.
+        @return dict: The matched profile dict, or an empty dict if
+                      board_model is None or not recognised (in which case
+                      a warning is logged).
+        """
+        if not board_model:
+            return {}
+
+        needle = str(board_model).strip().upper()
+
+        for key, profile in BOARD_PROFILES.items():
+            candidates = [key.upper()] + [a.upper() for a in profile.get('aliases', [])]
+            if needle in candidates:
+                self.log.info(
+                    'board_model "{0}" matched known profile "{1}": {2}'.format(
+                        board_model, key, profile.get('description', '')
+                    )
+                )
+                return profile
+
+        self.log.warning(
+            'board_model "{0}" was not found in the list of known profiles: '
+            '{1}. Falling back to explicit individual config options (or '
+            'their built-in defaults).'.format(
+                board_model, list(BOARD_PROFILES.keys())
+            )
+        )
+        return {}
+
+    def _resolve_hardware_parameters(self):
+        """ Resolve clock_frequency, num_channels, use_output_control_bits,
+        min_instr_len, max_instructions, and zero_output_on_stop_workaround,
+        in this priority order:
+            1. Explicit individual config option, if given.
+            2. Value from the board_model profile, if board_model is set
+               and recognised.
+            3. Built-in fallback default (matches the original
+               PulseBlasterESR-PRO PCI behavior).
+
+        Sets self._clock_freq, self._num_channels,
+        self._use_output_control_bits, self._min_instr_len,
+        self._max_instructions, and self._zero_output_on_stop_workaround.
+        """
+        profile = self._resolve_board_profile(self._board_model)
+
+        self._clock_freq = (
+            self._clock_freq_cfg if self._clock_freq_cfg is not None
+            else profile.get('clock_frequency', 500e6)
+        )
+        self._num_channels = (
+            self._num_channels_cfg if self._num_channels_cfg is not None
+            else profile.get('num_channels', 21)
+        )
+        self._use_output_control_bits = (
+            self._use_output_control_bits_cfg if self._use_output_control_bits_cfg is not None
+            else profile.get('use_output_control_bits', True)
+        )
+        self._min_instr_len = (
+            self._min_instr_len_cfg if self._min_instr_len_cfg is not None
+            else profile.get('min_instr_len', 6)
+        )
+        self._max_instructions = (
+            self._max_instructions_cfg if self._max_instructions_cfg is not None
+            else profile.get('max_instructions', 4094)
+        )
+        self._zero_output_on_stop_workaround = (
+            self._zero_output_workaround_cfg if self._zero_output_workaround_cfg is not None
+            else profile.get('zero_output_on_stop_workaround', False)
+        )
+
+        self.log.info(
+            'PulseBlaster hardware parameters resolved: clock_frequency='
+            '{0:.3e} Hz, num_channels={1}, use_output_control_bits={2}, '
+            'min_instr_len={3} cycles, max_instructions={4}, '
+            'zero_output_on_stop_workaround={5}.'.format(
+                self._clock_freq, self._num_channels,
+                self._use_output_control_bits, self._min_instr_len,
+                self._max_instructions, self._zero_output_on_stop_workaround
+            )
+        )
+
+        if self._num_channels >= 22 and self._use_output_control_bits:
+            self.log.warning(
+                'num_channels={0} but use_output_control_bits=True. On '
+                'boards with 22 or more real output channels, bits 21-23 '
+                'are typically genuine physical outputs, not a reserved '
+                'control field -- leaving use_output_control_bits=True in '
+                'this configuration will silently force channels 21, 22, '
+                'and 23 permanently HIGH on every instruction. Set '
+                'use_output_control_bits: False (or select a board_model '
+                'profile with the correct value) unless you have '
+                'specifically confirmed this board reserves those bits '
+                'for control purposes.'.format(self._num_channels)
+            )
+
     def on_activate(self):
         """ Initialization performed during activation of the module. """
+
+        self._resolve_hardware_parameters()
+
+        # ── Channel count and state tracking ────────────────────────────────────
+        self._switch_states = {
+            'd_ch{0}'.format(i): False for i in range(self._num_channels)
+        }
+        self._channel_states = self._switch_states.copy()
+
+        # ── Output/control word base flags ──────────────────────────────────────
+        # Precomputed once here so every call site below uses the same
+        # value consistently rather than repeating the config-dependent
+        # choice inline everywhere.
+        self._output_flag_base = self.ON if self._use_output_control_bits else 0x000000
 
         # ── Timing constants ──────────────────────────────────────────────────
         # GRAN_MIN: the time represented by one clock cycle (in seconds)
         self.GRAN_MIN   = 1.0 / self._clock_freq
-        # LEN_MIN: the minimum valid instruction duration in seconds.
-        # Equals min_instr_len clock cycles (typically 5-7 depending on board).
+        # LEN_MIN: the minimum valid instruction duration in seconds. This is
+        # a genuine physical limit of the hardware -- see the module
+        # docstring's "MINIMUM PULSE WIDTH" section.
         self.LEN_MIN    = self.GRAN_MIN * self._min_instr_len
         self.SAMPLE_RATE = self._clock_freq
 
@@ -189,6 +499,15 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._currently_loaded_waveform        = ''
         self._current_activation_config = list(self.get_constraints().activation_config['all'])
         self._current_activation_config.sort()
+
+        # Tracks, on boards where zero_output_on_stop_workaround is enabled,
+        # whether the board's single program memory slot currently holds the
+        # real loaded waveform (True) or the all-zero filler pattern written
+        # by pulser_off() to force a 0V output (False). Used by pulser_on()
+        # to decide whether the real waveform needs to be re-written before
+        # resuming playback. Unused, and harmless, on boards where the
+        # workaround is disabled.
+        self._board_holds_real_waveform = False
 
         # ── Library loading ───────────────────────────────────────────────────
         # find_library() only searches the system PATH and (on Windows)
@@ -264,6 +583,21 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._setup_lib_signatures()
 
         self.open_connection()
+
+        # Log diagnostic identification info. These are NOT used to make
+        # any automatic configuration decision (see module docstring,
+        # "BOARD IDENTIFICATION") -- they are logged purely so that, if you
+        # ever want to help build a verified ID-to-model mapping, the raw
+        # values are available for reference.
+        try:
+            self.log.info(
+                'PulseBlaster diagnostic info -- SpinAPI version: {0}, '
+                'firmware ID: {1}'.format(
+                    self.get_version(), self.get_firmware_id()
+                )
+            )
+        except Exception:
+            self.log.debug('Could not query SpinAPI version/firmware ID.')
 
     def _setup_lib_signatures(self):
         """
@@ -371,7 +705,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                     'Instruction length is shorter than the minimum allowed length! '
                     'Depending on your device this must be at least 5-7 clock cycles. '
                     'Check the board manual for the exact value and update min_instr_len '
-                    'in the config accordingly.'
+                    '(or board_model) in the config accordingly.'
                 )
 
             self.log.error(
@@ -428,7 +762,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def get_version(self):
         """ Get the SpinAPI library version string.
 
-        @return str: Version in the form 'YYYYMMDD_architecture'.
+        @return str: Version in the form 'YYYYMMDD_architecture'. This is a
+                     driver/library version, NOT a board model identifier.
         """
         return self._lib.pb_get_version().decode('utf-8')
 
@@ -436,6 +771,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """ Get the firmware version ID stored on the board.
 
         @return int: Firmware ID value, or 0 if this board does not support it.
+                     This is logged for diagnostic reference only -- its
+                     mapping to board model is not used anywhere in this
+                     module. See module docstring, "BOARD IDENTIFICATION".
         """
         firmware_id = self._lib.pb_get_firmware_id()
         if firmware_id == 0:
@@ -527,10 +865,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         IMPORTANT: This does NOT change the physical clock. It only tells the
         driver what frequency to use when converting nanosecond durations into
         clock cycle counts. The actual frequency is determined by the crystal
-        oscillator soldered to the board (printed on the board label). If this
-        value does not match the board's real oscillator, every timed
-        instruction on every channel will be uniformly stretched or
-        compressed by the mismatch ratio.
+        oscillator soldered to the board (printed on the board label, or found
+        in the board's datasheet). If this value does not match the board's
+        real oscillator, every timed instruction on every channel will be
+        uniformly stretched or compressed by the mismatch ratio -- this fails
+        silently, with no error, so it is worth double-checking against the
+        actual hardware model (or using the board_model profile) rather than
+        assuming a value.
 
         pb_core_clock() expects the frequency in MHz, so Hz is divided by 1e6.
         """
@@ -540,11 +881,11 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def _write_pulse(self, flags, inst, inst_data, length):
         """ Write one instruction line to the PulseBlaster pulse program.
 
-        @param int flags:     Bitmask of active TTL output channels PLUS the
-                              short-pulse control bits (21-23). For instructions
-                              longer than 10 ns, bits 21-23 must be set via the
-                              ON constant (0xE00000). Bit N controls channel N
-                              (0-indexed). Valid range: 0x0 – 0xFFFFFF.
+        @param int flags:     Bitmask of active TTL output channels, plus
+                              (only if use_output_control_bits=True) the
+                              reserved short-pulse control bits 21-23. Bit N
+                              controls channel N (0-indexed). Valid range:
+                              0x0 – 0xFFFFFF.
         @param int inst:      Instruction opcode. One of the class constants:
                               CONTINUE, STOP, LOOP, END_LOOP, JSR, RTS,
                               BRANCH, LONG_DELAY, WAIT, RTI.
@@ -628,22 +969,26 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         instruction would otherwise always loop indefinitely regardless of
         the loop flag) and so that no nested lock acquisition is possible —
         activate_channels() holds self.threadlock, and this method does not.
+
+        Every entry's 'length' must already be >= LEN_MIN. Any entry shorter
+        than LEN_MIN that reaches this method will fail at the hardware level
+        with SpinAPI error -91 -- see module docstring, "MINIMUM PULSE WIDTH",
+        for why this is surfaced as an error here rather than silently
+        corrected.
         """
 
         # Pre-check instruction count before writing anything. Writing
         # partial instructions to the board when we already know we'll
         # exceed the limit would leave the board in an inconsistent state.
-        MAX_PB_INSTRUCTIONS = 4094
-
-        if len(sequence_list) > MAX_PB_INSTRUCTIONS:
+        if len(sequence_list) > self._max_instructions:
             self.log.error(
                 'PulseBlaster write_pulse_form ABORTED.\n'
                 'Sequence requires {0} instructions after RLE compression, '
-                'exceeding the hardware maximum of {1}.\n'
+                'exceeding the configured maximum of {1}.\n'
                 'Reduce the number of channel transitions, shorten the '
                 'sequence, or enable use_smart_pulse_creation in the '
                 'PulseBlaster config to compress long constant segments '
-                'further.'.format(len(sequence_list), MAX_PB_INSTRUCTIONS)
+                'further.'.format(len(sequence_list), self._max_instructions)
             )
             return -1
 
@@ -662,7 +1007,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 # Infinite loop: single BRANCH-to-self instruction holds
                 # the channel pattern indefinitely
                 retval = self._write_pulse(
-                    flags=self.ON | bitmask,
+                    flags=self._output_flag_base | bitmask,
                     inst=self.BRANCH,
                     inst_data=0,   # address 0: branch to this same instruction
                     length=length
@@ -670,7 +1015,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             else:
                 # Run-once: write STOP instead of BRANCH
                 retval = self._write_pulse(
-                    flags=self.ON | bitmask,
+                    flags=self._output_flag_base | bitmask,
                     inst=self.STOP,
                     inst_data=0,
                     length=length
@@ -695,11 +1040,11 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 pulse['active_channels'],
                 pulse['length']
             )
-            if num > MAX_PB_INSTRUCTIONS - 2:  # reserve room for final + branch
+            if num > self._max_instructions - 2:  # reserve room for final + branch
                 self.log.error(
                     'Instruction count {0} exceeds board maximum ({1}) '
                     'mid-sequence. Aborting write.'
-                    ''.format(num, MAX_PB_INSTRUCTIONS)
+                    ''.format(num, self._max_instructions)
                 )
                 write_failed = True
                 break
@@ -726,7 +1071,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         if loop:
             # Infinite loop: branch back to the first instruction
             num = self._write_pulse(
-                flags=self.ON | bitmask,
+                flags=self._output_flag_base | bitmask,
                 inst=self.BRANCH,
                 inst_data=start_pulse,  # address of the first instruction
                 length=length
@@ -734,18 +1079,18 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         else:
             # Run-once: halt after this instruction
             num = self._write_pulse(
-                flags=self.ON | bitmask,
+                flags=self._output_flag_base | bitmask,
                 inst=self.STOP,
                 inst_data=0,
                 length=length
             )
 
-        if num > MAX_PB_INSTRUCTIONS:
+        if num > self._max_instructions:
             self.log.error(
                 'Final instruction count {0} exceeds board maximum ({1}). '
                 'Sequence write FAILED — board state may be inconsistent. '
                 'Call reset_device() before retrying.'
-                ''.format(num, MAX_PB_INSTRUCTIONS)
+                ''.format(num, self._max_instructions)
             )
             self.stop_programming()
             return -1
@@ -790,7 +1135,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             if length <= 256 * self.GRAN_MIN:
                 # Short pulse: fits in a single CONTINUE instruction
                 num = self._write_pulse(
-                    flags=self.ON | channel_bitmask,
+                    flags=self._output_flag_base | channel_bitmask,
                     inst=self.CONTINUE,
                     inst_data=0,
                     length=length
@@ -811,7 +1156,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                             # Number is prime or has no factor ≤ 256;
                             # write as a plain CONTINUE
                             num = self._write_pulse(
-                                flags=self.ON | channel_bitmask,
+                                flags=self._output_flag_base | channel_bitmask,
                                 inst=self.CONTINUE,
                                 inst_data=0,
                                 length=value * self.GRAN_MIN
@@ -820,7 +1165,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                             # Use LONG_DELAY: execute for (value * factor) clock cycles
                             # using only one instruction slot
                             num = self._write_pulse(
-                                flags=self.ON | channel_bitmask,
+                                flags=self._output_flag_base | channel_bitmask,
                                 inst=self.LONG_DELAY,
                                 inst_data=int(factor),   # repeat count
                                 length=value * self.GRAN_MIN
@@ -836,7 +1181,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                         # remainder factorisable, write those cycles now
                         if i > 4:
                             self._write_pulse(
-                                flags=self.ON | channel_bitmask,
+                                flags=self._output_flag_base | channel_bitmask,
                                 inst=self.CONTINUE,
                                 inst_data=0,
                                 length=i * self.GRAN_MIN
@@ -851,7 +1196,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         else:
             # Standard mode: every pulse is a single CONTINUE instruction
             num = self._write_pulse(
-                flags=self.ON | channel_bitmask,
+                flags=self._output_flag_base | channel_bitmask,
                 inst=self.CONTINUE,
                 inst_data=0,
                 length=length
@@ -916,13 +1261,24 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         shifting each event earlier by its channel's configured delay
         (wrapping around the sequence period), and then reconstructing the
         RLE sequence from the shifted, re-sorted events.
+
+        If no channel_delays are configured, the sequence is returned
+        unmodified -- including any entries shorter than LEN_MIN, which will
+        then surface as a clear -91 error from the hardware rather than
+        being silently rounded here. See module docstring, "MINIMUM PULSE
+        WIDTH". The round/drop cleanup below only exists to clean up
+        sub-minimum fragments that the delay-shifting math itself can
+        introduce as a side effect -- it is not a general-purpose waveform
+        sanitizer.
         """
         # Nothing to correct if no delays are configured
         if len(self._channel_delays) == 0:
             return sequence
 
-        # Build per-channel delay array (index = channel number, values in seconds)
-        delays = np.zeros(21)
+        # Build per-channel delay array (index = channel number, values in
+        # seconds), sized to match the configured number of channels for
+        # this board rather than a hardcoded value.
+        delays = np.zeros(self._num_channels)
         for entry in self._channel_delays:
             delays[int(entry)] = self._channel_delays[entry]
 
@@ -1000,6 +1356,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         # Iterates over corrected_sequence and builds a new list
         # (cleaned_sequence) rather than removing elements from the list
         # being iterated over, since that would silently skip entries.
+        #
+        # This cleanup exists because the delay-shift math above can itself
+        # produce new, artificially short fragments near event boundaries
+        # (e.g. two nearby edges on different channels shifting to land
+        # very close together) -- it is specific to this delay-correction
+        # transform, not a general substitute for respecting LEN_MIN
+        # elsewhere in the sequence.
         delta_time    = 0.0
         cleaned_sequence = []
 
@@ -1070,6 +1433,12 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         only — it does NOT limit how long the output stays high. Any value
         >= LEN_MIN is functionally equivalent; LEN_MIN minimises latency.
 
+        This board holds only one program in memory at a time, so calling
+        this overwrites whatever waveform was previously loaded. Callers that
+        need to resume a previously loaded waveform afterward (see
+        pulser_on()/pulser_off() below) are responsible for tracking that and
+        re-writing it.
+
         This is the one method here that acquires self.threadlock, since it
         is the entry point most likely to be called directly from another
         thread (e.g. the GUI switch panel via SwitchInterface). It is never
@@ -1084,7 +1453,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
             self.start_programming()
             retval = self._write_pulse(
-                flags=self.ON | bitmask,
+                flags=self._output_flag_base | bitmask,
                 inst=self.BRANCH,
                 inst_data=0,     # branch to address 0: self-loop
                 length=length
@@ -1106,7 +1475,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def getNumberOfSwitches(self):
         """ Return the total number of available digital output channels.
 
-        @return int: 21 (the number of TTL outputs on the ESR-Pro).
+        @return int: The number of TTL outputs on this board, as resolved
+                     via board_model / individual config options.
         """
         return len(self._switch_states)
 
@@ -1183,7 +1553,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """ Return the estimated time to change this switch state.
 
         @param int switch_num: Channel number (unused; same for all channels).
-        @return float: ~1 ms (limited by PCI communication latency).
+        @return float: ~1 ms (limited by PCI/USB communication latency).
         """
         return 0.001
 
@@ -1219,18 +1589,22 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         # Waveform length is measured in clock cycles.
         # Minimum: min_instr_len cycles (hardware constraint, typically 5-7).
-        # Maximum: 2^12 - 2 = 4094 instructions in hardware memory.
+        # Maximum: nominally unbounded at the sample level; the real ceiling
+        # is the number of RLE instructions the board can hold
+        # (self._max_instructions), not the raw sample count.
         constraints.waveform_length.min     = self._min_instr_len
         constraints.waveform_length.max     = 2 ** 20 - 1
         constraints.waveform_length.step    = 1
         constraints.waveform_length.default = 128
 
         # Channel activation configurations available to the sequencer logic.
-        # '4_ch' is used during initialization; 'all' exposes all 21 outputs.
+        # 'all' exposes every configured output channel for this board model.
         activation_config = dict()
-        activation_config['4_ch'] = frozenset({'d_ch0', 'd_ch1', 'd_ch2', 'd_ch3'})
+        activation_config['4_ch'] = frozenset(
+            {'d_ch{0}'.format(i) for i in range(min(4, self._num_channels))}
+        )
         activation_config['all']  = frozenset(
-            {'d_ch{0}'.format(i) for i in range(21)}  # d_ch0 … d_ch20
+            {'d_ch{0}'.format(i) for i in range(self._num_channels)}
         )
         constraints.activation_config = activation_config
 
@@ -1239,15 +1613,55 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def pulser_on(self):
         """ Start the pulse program.
 
+        On boards where zero_output_on_stop_workaround is enabled (see
+        module docstring, "OUTPUT LEVEL AFTER STOP"), pulser_off() may have
+        overwritten the board's single program memory slot with a trivial
+        all-zero pattern in order to force a real 0V output. If that has
+        happened (tracked via self._board_holds_real_waveform) and a real
+        waveform was previously loaded, that waveform is transparently
+        re-written to the board here before starting, so that playback
+        resumes the intended sequence rather than the zero-filler pattern.
+        reset_device() is required in that case to guarantee playback
+        begins at instruction 0 of the freshly-written program.
+
+        On boards where the workaround is disabled (the default, and the
+        confirmed-correct behavior for the ESR-PRO series), this is simply
+        the plain start().
+
         @return int: 0 on success, negative on failure.
         """
+        if self._zero_output_on_stop_workaround:
+            if not self._board_holds_real_waveform and self._current_pb_waveform_name:
+                self.write_pulse_form(self._current_pb_waveform)
+                self._board_holds_real_waveform = True
+                self.reset_device()
+
         return self.start()
 
     def pulser_off(self):
         """ Stop the pulse program.
 
+        On boards where zero_output_on_stop_workaround is enabled (see
+        module docstring, "OUTPUT LEVEL AFTER STOP"), this additionally
+        forces a real 0V output by reprogramming the board with a trivial
+        all-channels-LOW self-looping instruction via activate_channels()
+        and briefly starting it, since plain stop() alone leaves outputs
+        frozen at whatever pattern was last active -- confirmed on
+        oscilloscope for the PBUSB-TTL-24-100-4K. Since this board holds
+        only one program at a time, this overwrites the loaded waveform in
+        board memory; pulser_on() transparently restores it before
+        resuming playback.
+
+        On boards where the workaround is disabled (the default, and the
+        confirmed-correct behavior for the ESR-PRO series), this is simply
+        the plain stop().
+
         @return int: 0 on success, negative on failure.
         """
+        if self._zero_output_on_stop_workaround:
+            self.activate_channels(ch_list=[])
+            self._board_holds_real_waveform = False
+
         return self.stop()
 
     def load_waveform(self, load_dict):
@@ -1285,6 +1699,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         self.write_pulse_form(self._current_pb_waveform)
         self._currently_loaded_waveform = waveform
+        # The board's memory now holds the real waveform (as opposed to the
+        # all-zero filler pattern that pulser_off() may write on boards
+        # where zero_output_on_stop_workaround is enabled).
+        self._board_holds_real_waveform = True
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
@@ -1318,6 +1736,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         self._current_pb_waveform_name         = ''
         self._current_pb_waveform              = [{'active_channels': [], 'length': self.LEN_MIN}]
         self._current_pb_waveform_theoretical  = [{'active_channels': [], 'length': self.LEN_MIN}]
+        self._board_holds_real_waveform        = False
         return 0
 
     def get_status(self):
@@ -1378,12 +1797,12 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         if low:
             low_dict = {chnl: 0.0 for chnl in low}
         else:
-            low_dict = {'d_ch{0:d}'.format(chnl): 0.0 for chnl in range(21)}
+            low_dict = {'d_ch{0:d}'.format(chnl): 0.0 for chnl in range(self._num_channels)}
 
         if high:
             high_dict = {chnl: 3.3 for chnl in high}
         else:
-            high_dict = {'d_ch{0:d}'.format(chnl): 3.3 for chnl in range(21)}
+            high_dict = {'d_ch{0:d}'.format(chnl): 3.3 for chnl in range(self._num_channels)}
 
         return low_dict, high_dict
 
@@ -1520,6 +1939,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                 self._current_pb_waveform_theoretical
             )
             self.write_pulse_form(self._current_pb_waveform)
+            self._board_holds_real_waveform = True
             self.log.debug(
                 'Waveform "{0}" programmed: {1} instruction entries.'.format(
                     self._current_pb_waveform_name,
@@ -1563,7 +1983,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
             for ch_name in ch_list:
                 if digital_samples[ch_name][index]:
-                    # Convert 'd_ch0' → 0, 'd_ch1' → 1, …, 'd_ch20' → 20
+                    # Convert 'd_ch0' → 0, 'd_ch1' → 1, …
                     temp_sequence_dict['active_channels'].append(
                         int(ch_name.replace('d_ch', ''))
                     )
@@ -1687,7 +2107,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     def available_states(self):
         """ Describe the available states for each switch (channel).
 
-        @return dict: {channel_name: (False, True)} for all 21 channels.
+        @return dict: {channel_name: (False, True)} for all configured channels.
                       False = OFF, True = ON.
         """
         return {ch: (False, True) for ch in self._switch_states.keys()}
