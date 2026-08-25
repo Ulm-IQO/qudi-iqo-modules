@@ -20,11 +20,22 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields
 import numpy as np
 
-from qudi.logic.qdyne.tools.dataclass_tools import get_subclasses, get_subclass_qualifier
-from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
+from qudi.logic.qdyne.tools.dataclass_tools import (
+    MethodRegistry,
+    get_subclass_qualifier,
+    get_subclasses,
+)
+from qudi.logic.qdyne.qdyne_data.estimator_settings import (
+    StateEstimatorSettings,
+    TimeTagStateEstimatorSettings,
+)
 from logging import getLogger
 
 logger = getLogger(__name__)
+
+#: Every selectable estimator method, each registered with BOTH its implementation and its settings
+#: class. Registering the pair is what stops the two drifting apart - see MethodRegistry.
+ESTIMATORS = MethodRegistry('state estimator')
 
 
 class StateEstimator(ABC):
@@ -39,13 +50,6 @@ class StateEstimator(ABC):
     @abstractmethod
     def get_pulse(self, data, settings):
         pass
-
-
-@dataclass
-class StateEstimatorSettings(CustomDataclass):
-    sequence_length: float = 1e-9
-    record_length: float = 1e-9
-    bin_width: float = 1e-9
 
 
 # NOTE: TimeSeriesStateEstimatorSettings used to be declared here, but the matching
@@ -90,32 +94,10 @@ class StateEstimatorSettings(CustomDataclass):
 #         return pulse_array
 
 
-@dataclass
-class TimeTagStateEstimatorSettings(StateEstimatorSettings):
-    name: str = 'default'
-    count_mode: str = 'Average'
-    sig_start: float = 0
-    sig_end: float = 0
-    weight: list = field(default_factory=list, metadata={"exclude": True})
-
-    @property
-    def sig_start_int(self):
-        return int(self.sig_start / self.bin_width)
-
-    @property
-    def sig_end_int(self):
-        return int(self.sig_end / self.bin_width)
-
-    @property
-    def max_bins(self):
-        return int(self.record_length / self.bin_width)
-
-
 class TimeTagStateEstimator(StateEstimator):
     def __init__(self, log, *args):
         super().__init__()
         self.log = log
-        self.stg = None
 
     def extract(self, raw_data, settings=None):
         return raw_data
@@ -140,33 +122,60 @@ class TimeTagStateEstimator(StateEstimator):
             raise ValueError(f"Encountered unsupported count_mode '{settings.count_mode}'.")
         return counts_time_trace
 
-    def _photon_count(self, time_tag, start_count, stop_count):
-        counts_time_trace = []
-        counts_time_trace_append = counts_time_trace.append
-        photon_counts = 0
-        for i in range(1, len(time_tag)):  # count and filter the photons here
-            if time_tag[i] != 0:
-                if start_count <= time_tag[i] < stop_count:
-                    photon_counts = photon_counts + 1
-            else:
-                counts_time_trace_append(photon_counts)
-                photon_counts = 0
-        return np.array(counts_time_trace)
+    @staticmethod
+    def _sweep_sums(time_tag, start_count, stop_count, weight=None):
+        """Sum the photons of each sweep that fall inside [start_count, stop_count).
 
-    def _weighted_photon_count(
-        self, time_tag, weight, start_count, stop_count
-    ):
-        counts_time_trace = []
-        counts_time_trace_append = counts_time_trace.append
-        photon_counts = 0
-        for i in range(len(time_tag)):  # count and filter the photons here
-            if time_tag[i] != 0:
-                if start_count < time_tag[i] < stop_count:
-                    photon_counts = photon_counts + weight[i]
-            else:
-                counts_time_trace_append(photon_counts)
-                photon_counts = 0
-        return np.array(counts_time_trace)
+        A zero in the time-tag stream marks the start of a new sweep (see
+        QdyneCounterInterface.get_data), so the result has one entry per zero encountered.
+
+        Vectorised with numpy rather than looping in Python: a Qdyne run accumulates millions of
+        time tags and this is called on every analysis tick.
+
+        The two count modes used to be separate loops that disagreed with each other - one started
+        at index 1 and used `start <= tag`, the other started at index 0 and used `start < tag`, so
+        the same data gave different answers depending on the mode. They share this one
+        implementation now; `weight` is the only difference.
+        """
+        tags = np.asarray(time_tag)
+        if tags.size == 0:
+            return np.array([], dtype=float if weight is not None else int)
+
+        # Sweep index of every sample: starts at -1 and increments on each zero, so the samples
+        # before the first zero belong to sweep -1 and are discarded along with it.
+        is_new_sweep = tags == 0
+        sweep_index = np.cumsum(is_new_sweep) - 1
+
+        in_window = (~is_new_sweep) & (tags >= start_count) & (tags < stop_count)
+        if weight is None:
+            contributions = in_window.astype(np.int64)
+        else:
+            weights = np.zeros(tags.shape, dtype=float)
+            usable = min(len(weight), tags.size)
+            weights[:usable] = np.asarray(weight[:usable], dtype=float)
+            contributions = np.where(in_window, weights, 0.0)
+
+        number_of_sweeps = int(is_new_sweep.sum())
+        if number_of_sweeps == 0:
+            return np.array([], dtype=contributions.dtype)
+
+        # A sweep's counts are the samples AFTER its zero, so a sample belongs to the sweep opened
+        # by the most recent zero. The final sweep is dropped: it has no closing zero, so it is
+        # still being filled and would report a partial count.
+        valid = sweep_index >= 0
+        sums = np.bincount(
+            sweep_index[valid], weights=contributions[valid], minlength=number_of_sweeps
+        )
+        sums = sums[:-1]
+        # bincount(weights=...) always returns float64. Unweighted counts are whole photons and
+        # were an integer array before, and downstream code appends them to an integer time trace.
+        return sums if weight is not None else sums.astype(np.int64)
+
+    def _photon_count(self, time_tag, start_count, stop_count):
+        return self._sweep_sums(time_tag, start_count, stop_count)
+
+    def _weighted_photon_count(self, time_tag, weight, start_count, stop_count):
+        return self._sweep_sums(time_tag, start_count, stop_count, weight=weight)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
         self.log.debug(f"TimeTageStateEstimator get_pulse, {time_tag_data=}, {settings=}")
@@ -180,17 +189,18 @@ class TimeTagStateEstimator(StateEstimator):
         return pulse_array
 
 
+ESTIMATORS.register('TimeTag', TimeTagStateEstimator, TimeTagStateEstimatorSettings)
+
+
 class StateEstimatorMain:
     def __init__(self, log):
         self.log = log
-        self.method_list = []
         self._method = None
         self.estimator = None
-        self.generate_method_list()
 
-    def generate_method_list(self):
-        estimator_subclasses = get_subclasses(__name__, StateEstimator)
-        self.method_list = [get_subclass_qualifier(subclass, StateEstimator) for subclass in estimator_subclasses]
+    @property
+    def method_list(self):
+        return ESTIMATORS.names
 
     @property
     def method(self):
@@ -209,13 +219,10 @@ class StateEstimatorMain:
         self.configure_method(method)
 
     def configure_method(self, method):
-        estimator_cls = globals().get(method + "StateEstimator")
-        if estimator_cls is None:
-            raise ValueError(
-                f"No state estimator implementation for method '{method}'. "
-                f"Available: {sorted(self.method_list)}."
-            )
-        self.estimator = estimator_cls(self.log)
+        # Looked up in the registry rather than by building a class name and fishing it out of
+        # globals(): the registry cannot hold a settings class without its implementation, and it
+        # raises with the available names instead of a bare KeyError.
+        self.estimator = ESTIMATORS.implementation(method)(self.log)
 
     def get_pulse(self, raw_data, settings):
         self.log.debug("StateEstimatorMain: get_pulse: estimator.get_pulse")

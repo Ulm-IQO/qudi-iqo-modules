@@ -32,6 +32,7 @@ from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.connector import Connector
 
+from qudi.gui.qdyne.tools.mediator_bridge import MediatorBridge
 from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 import qudi.logic.qdyne.qdyne_logic
 
@@ -47,7 +48,9 @@ class TimeTraceAnalysisTab(QWidget):
 
     def _instantiate_widgets(self, logic: "qudi.logic.qdyne.qdyne_logic.QdyneLogic"):
         self._tta_layout = QVBoxLayout(self)
-        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg, logic().settings.analyzer_stg.current_data)
+        # See StateEstimationWidget._instantiate_widgets() for why the mediator is wrapped.
+        self._analyzer_bridge = MediatorBridge(logic().settings.analyzer_stg, parent=self)
+        self._sw = MultiSettingsWidget(self._analyzer_bridge, self._analyzer_bridge.current_data)
         self._dw = TimeTraceAnalysisDataWidget(logic(), logic().fit)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)

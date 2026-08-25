@@ -89,6 +89,70 @@ def test_unknown_spectrum_type_raises_instead_of_unbound_local():
         FourierAnalyzer().get_freq_domain_signal(_Data(), FourierAnalyzerSettings(spectrum_type='typo'))
 
 
+def _reference_photon_count(time_tag, start, stop):
+    """The pre-refactor Average implementation, kept verbatim as the behavioural reference.
+
+    The vectorised replacement must agree with this exactly on a well-formed stream - changing how
+    photons are counted is a change to measured physics, not a refactor.
+    """
+    out, count = [], 0
+    for i in range(1, len(time_tag)):
+        if time_tag[i] != 0:
+            if start <= time_tag[i] < stop:
+                count += 1
+        else:
+            out.append(count)
+            count = 0
+    return np.array(out)
+
+
+@pytest.mark.parametrize(
+    'tags',
+    [
+        [0, 5, 7, 0, 9, 0],
+        [0, 5, 7, 0, 9],
+        [0, 0, 0],
+        [0, 5, 5, 5, 0],
+        [0, 4, 10, 0],          # both outside the [start, stop) window
+    ],
+)
+def test_average_counting_is_unchanged_by_the_vectorisation(tags):
+    estimator = se.TimeTagStateEstimator(logging.getLogger(__name__))
+
+    result = estimator._photon_count(np.array(tags), 5, 10)
+
+    assert result.tolist() == _reference_photon_count(np.array(tags), 5, 10).tolist()
+    assert result.dtype == np.int64, 'unweighted counts must stay integers'
+
+
+def test_both_count_modes_now_agree():
+    """They used to disagree on the same data: one loop started at index 1 with `start <= tag`, the
+    other at index 0 with `start < tag`, so Average and WeightedAverage gave different answers for
+    identical input and unit weights."""
+    estimator = se.TimeTagStateEstimator(logging.getLogger(__name__))
+    tags = np.array([0, 5, 7, 0, 9, 0])
+
+    plain = estimator._photon_count(tags, 5, 10)
+    weighted = estimator._weighted_photon_count(tags, [1] * len(tags), 5, 10)
+
+    assert plain.tolist() == weighted.tolist()
+
+
+def test_weights_are_applied_per_photon():
+    estimator = se.TimeTagStateEstimator(logging.getLogger(__name__))
+    tags = np.array([0, 5, 7, 0, 9, 0])
+    weights = [0, 10, 100, 0, 1000, 0]   # index-aligned with tags
+
+    weighted = estimator._weighted_photon_count(tags, weights, 5, 10)
+
+    assert weighted.tolist() == [110.0, 1000.0]
+
+
+def test_empty_time_trace_does_not_crash_the_padding_calculation():
+    """np.log2(0) is -inf and int(-inf) raises OverflowError."""
+    assert FourierAnalyzer()._get_padded_time_trace_length(np.array([]), 1) == 0
+
+
 @pytest.mark.parametrize('spectrum_type', ['amp', 'power'])
 def test_known_spectrum_types_still_work(spectrum_type):
     class _Data:

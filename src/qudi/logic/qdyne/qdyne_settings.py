@@ -14,28 +14,34 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide6 import QtCore
-
-from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
-from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
+from qudi.logic.qdyne.qdyne_state_estimator import ESTIMATORS
+from qudi.logic.qdyne.qdyne_time_trace_analyzer import ANALYZERS
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
-from qudi.logic.qdyne.tools.dataclass_tools import get_subclass_dict
-from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
+from qudi.logic.qdyne.tools.settings_mediator import SettingsMediator
 
 
-class QdyneSettings(QtCore.QObject):
+class QdyneSettings:
+    """Every settings container QdyneLogic owns, in one place.
+
+    No longer a QObject: the mediators it holds are plain Python now, so there is no signal for this
+    to parent. Change notification belongs to QdyneLogic (which is a QObject already) and, for the
+    widgets, to the MediatorBridge in the GUI layer.
+
+    The estimator and analyzer settings classes come from the method registries rather than from a
+    scan of whichever module happened to define them. That is what guarantees every method offered
+    here has an implementation behind it.
+    """
+
     def __init__(self, default_data_dir: str):
-        super().__init__()
-        self.estimator_stg: MultiSettingsMediator = None
-        self.analyzer_stg: MultiSettingsMediator = None
-        self._generate_estimator_settings()
-        self._generate_analyzer_settings()
+        self.estimator_stg = SettingsMediator(ESTIMATORS.settings_classes)
+        self.analyzer_stg = SettingsMediator(ANALYZERS.settings_classes)
         self.data_manager_stg = DataManagerSettings(default_data_dir)
 
-    def _generate_estimator_settings(self):
-        self.estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
-        self.estimator_stg = MultiSettingsMediator(self)
+    @property
+    def estimator_cls_dict(self) -> dict:
+        """{method: settings class}. Kept for callers that still ask for it by this name."""
+        return ESTIMATORS.settings_classes
 
-    def _generate_analyzer_settings(self):
-        self.analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
-        self.analyzer_stg = MultiSettingsMediator(self)
+    @property
+    def analyzer_cls_dict(self) -> dict:
+        return ANALYZERS.settings_classes

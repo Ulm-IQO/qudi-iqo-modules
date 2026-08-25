@@ -20,11 +20,26 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
-from qudi.logic.qdyne.tools.dataclass_tools import get_subclasses, get_subclass_qualifier
-from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
+from qudi.logic.qdyne.tools.dataclass_tools import MethodRegistry
+from qudi.logic.qdyne.qdyne_data.analyzer_settings import (
+    AnalyzerSettings,
+    FourierAnalyzerSettings,
+)
+
+#: Every selectable analyzer method, registered with BOTH its implementation and its settings class.
+ANALYZERS = MethodRegistry('time trace analyzer')
 
 
 class Analyzer(ABC):
+    """Base for time trace analyzers.
+
+    These are real @abstractmethods now. They used to be plain `pass` bodies on an ABC with no
+    abstract markers, so a subclass implementing none of them instantiated happily and returned
+    None from every call - a silent wrong answer rather than an error. Its sibling StateEstimator
+    always enforced its interface; the two are meant to behave the same way.
+    """
+
+    @abstractmethod
     def analyze(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
@@ -33,8 +48,7 @@ class Analyzer(ABC):
         @return signal
         """
 
-        pass
-
+    @abstractmethod
     def get_freq_domain_signal(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
@@ -43,27 +57,13 @@ class Analyzer(ABC):
         @return freq_domain_data
         """
 
-        pass
-
     def get_time_domain_signal(self, data, settings):
+        """Optional - not every analyzer has a meaningful time-domain view.
+
+        Left concrete on purpose: making it abstract would force every analyzer to implement
+        something it may not have. Returns None unless a subclass overrides it.
         """
-        @param MainDataClass data: qdyne dataclass
-        @param AnalyzerSettings settings: corresponding analyzer settings
-
-        @return time_domain_data
-        """
-        pass
-
-
-@dataclass
-class AnalyzerSettings(CustomDataclass):
-    sequence_length: float = 1
-
-@dataclass
-class FourierAnalyzerSettings(AnalyzerSettings):
-    name: str = "default"
-    padding_parameter: int = 1
-    spectrum_type: str = "amp"
+        return None
 
 
 class FourierAnalyzer(Analyzer):
@@ -106,6 +106,10 @@ class FourierAnalyzer(Analyzer):
         The method returns the length of the padded_timetrace
         """
         m = len(time_trace)
+        if m == 0:
+            # np.log2(0) is -inf and int(-inf) raises OverflowError, so an empty time trace used to
+            # crash here rather than simply producing an empty spectrum.
+            return 0
         if padding_param == 0:
             return m
         # as fft works fastest for a number of datapoints following 2^n pad (if padding_param != 0)  to the next power of 2
@@ -142,16 +146,17 @@ class FourierAnalyzer(Analyzer):
         return 1 / (sequence_length * len(ft)) * np.arange(len(ft) / 2)
 
 
+ANALYZERS.register('Fourier', FourierAnalyzer, FourierAnalyzerSettings)
+
+
 class TimeTraceAnalyzerMain:
     def __init__(self):
-        self.method_list = []
         self.analyzer = None
         self._method = "Fourier"
-        self.generate_method_list()
 
-    def generate_method_list(self):
-        analyzer_subclasses = get_subclasses(__name__, Analyzer)
-        self.method_list = [get_subclass_qualifier(subclass, Analyzer) for subclass in analyzer_subclasses]
+    @property
+    def method_list(self):
+        return ANALYZERS.names
 
     @property
     def method(self):
@@ -163,7 +168,8 @@ class TimeTraceAnalyzerMain:
         self._configure_method(method)
 
     def _configure_method(self, method):
-        self.analyzer = globals()[method + "Analyzer"]()
+        # Registry lookup rather than globals() - see StateEstimatorMain.configure_method().
+        self.analyzer = ANALYZERS.implementation(method)()
 
     def analyze(self, data, settings):
         signal = self.analyzer.analyze(data, settings)

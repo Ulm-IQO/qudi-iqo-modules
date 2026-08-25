@@ -373,33 +373,51 @@ class QdyneLogic(LogicBase):
         #            self.fitting = QdyneFittingMain()
 
 
-        def initialize_estimator_settings():
-            if self._estimator_stg_dict:
-                self.settings.estimator_stg.load_from_dict(
-                    self.settings.estimator_cls_dict, self._estimator_stg_dict)
+        def initialize_settings(mediator, saved, method, mode, apply_method, what):
+            """Restore one mediator from its StatusVar, then select the saved method and mode.
 
+            The mediator constructor already builds defaults for every registered method, and
+            load_from_dict() tolerates a method that is missing from the saved dict - so there is no
+            longer a default-or-load fork here, just a load when there is something to load.
+            """
+            if saved:
+                mediator.load_from_dict(saved)
             else:
-                self.settings.estimator_stg.create_default(self.settings.estimator_cls_dict)
-                self.log.info("Default estimator settings created.")
+                self.log.info(f"No saved {what} settings. Using defaults.")
 
-            self.settings.estimator_stg.set_method(self._current_estimator_method)
-            self.settings.estimator_stg.set_mode(self._current_estimator_mode)
+            if method in mediator.method_list:
+                mediator.set_method(method)
+            elif mediator.method_list:
+                self.log.warning(
+                    f"Saved {what} method '{method}' is not available. "
+                    f"Using '{mediator.method_list[0]}'."
+                )
+                mediator.set_method(mediator.method_list[0])
 
-            self.input_estimator_method()
+            if mode in mediator.mode_list:
+                mediator.set_mode(mode)
+
+            apply_method()
+
+        def initialize_estimator_settings():
+            initialize_settings(
+                self.settings.estimator_stg,
+                self._estimator_stg_dict,
+                self._current_estimator_method,
+                self._current_estimator_mode,
+                self.input_estimator_method,
+                'estimator',
+            )
 
         def initialize_analyzer_settings():
-            if self._analyzer_stg_dict:
-                self.settings.analyzer_stg.load_from_dict(
-                    self.settings.analyzer_cls_dict, self._analyzer_stg_dict)
-
-            else:
-                self.settings.analyzer_stg.create_default(self.settings.analyzer_cls_dict)
-                self.log.info("Default settings created")
-
-            self.settings.analyzer_stg.set_method(self._current_analyzer_method)
-            self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
-
-            self.input_analyzer_method()
+            initialize_settings(
+                self.settings.analyzer_stg,
+                self._analyzer_stg_dict,
+                self._current_analyzer_method,
+                self._current_analyzer_mode,
+                self.input_analyzer_method,
+                'analyzer',
+            )
 
         activate_classes()
         initialize_estimator_settings()
@@ -488,16 +506,43 @@ class QdyneLogic(LogicBase):
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
-        self.settings.estimator_stg.update_method(self.data.metadata.state_estimation_method)
-        try:
-            self.settings.estimator_stg.add_mode("loaded", True, self.settings.estimator_cls_dict[self.data.metadata.state_estimation_method](**self.data.metadata.state_estimation_settings))
-        except Exception as e:
-            self.log.exception(e)
-        self.settings.analyzer_stg.update_method(self.data.metadata.analysis_method)
-        self.settings.analyzer_stg.add_mode("loaded", True, self.settings.analyzer_cls_dict[self.data.metadata.analysis_method](**self.data.metadata.analysis_settings))
+        metadata = self.data.metadata
+        self._restore_loaded_mode(
+            self.settings.estimator_stg,
+            metadata.state_estimation_method,
+            metadata.state_estimation_settings,
+            'state estimation',
+        )
+        self._restore_loaded_mode(
+            self.settings.analyzer_stg,
+            metadata.analysis_method,
+            metadata.analysis_settings,
+            'analysis',
+        )
         self.measure.pull_data_and_estimate()
         # TODO: Fix what to do when it is not raw_data
         self.log.info(f"Loaded {data_type} data from {file_path}")
+
+    def _restore_loaded_mode(self, mediator, method, settings_dict, what):
+        """Put the settings that produced a saved measurement into that mediator's 'loaded' mode.
+
+        Built through the settings class's tolerant from_dict() rather than cls(**settings_dict):
+        a file written before a field was added or removed used to raise TypeError here. The
+        estimator half was wrapped in a try/except that logged and continued, and the analyzer half
+        was not wrapped at all - so the same bad file either silently skipped the estimator settings
+        or took the whole load down, depending on which container drifted.
+        """
+        if not method:
+            self.log.warning(f'Saved data carries no {what} method. Keeping current settings.')
+            return
+        if method not in mediator.method_list:
+            self.log.warning(
+                f"Saved {what} method '{method}' is not available. Keeping current settings."
+            )
+            return
+        mediator.update_method(method)
+        settings_cls = mediator.settings_classes[method]
+        mediator.add_mode('loaded', True, settings_cls.from_dict(settings_dict))
 
     @property
     def data_source(self):

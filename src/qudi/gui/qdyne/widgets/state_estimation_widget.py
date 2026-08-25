@@ -32,6 +32,7 @@ from qudi.core.logger import get_logger
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
+from qudi.gui.qdyne.tools.mediator_bridge import MediatorBridge
 from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
@@ -47,9 +48,13 @@ class StateEstimationTab(QWidget):
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
+        # The mediator is plain Python with no Qt; MediatorBridge turns its change callbacks into
+        # the signals the settings widgets connect to. Held on self so it outlives this call - a
+        # bridge that is garbage collected stops delivering updates.
+        self._estimator_bridge = MediatorBridge(logic().settings.estimator_stg, parent=self)
         self._settings_widget = StateEstimationSettingsWidget(
-            logic().settings.estimator_stg,
-            logic().settings.estimator_stg.current_data)
+            self._estimator_bridge,
+            self._estimator_bridge.current_data)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 

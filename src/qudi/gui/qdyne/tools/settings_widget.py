@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 
@@ -22,7 +22,7 @@ from PySide6.QtCore import Signal, Slot
 from PySide6.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
-from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
+from qudi.logic.qdyne.qdyne_data.settings_base import QdyneSettingsBase
 
 
 class SettingsWidget(DataclassWidget):
@@ -32,7 +32,7 @@ class SettingsWidget(DataclassWidget):
     Modes are variants of a dataclass.
     """
     mode_widget_updated_sig = Signal()
-    add_mode_pushed_sig = Signal(str, bool, CustomDataclass)
+    add_mode_pushed_sig = Signal(str, bool, QdyneSettingsBase)
     delete_mode_pushed_sig = Signal(str)
 
     def __init__(self, mediator, dataclass_obj=None) -> None:
@@ -40,7 +40,7 @@ class SettingsWidget(DataclassWidget):
 
         Parameters
         ----------
-        mediator : SettingsMediator
+        mediator : MediatorBridge
             mediator class object to communicate with a set of variants for a single dataclass.
         dataclass_obj : dataclass
             dataclass object for creation of initial widgets.

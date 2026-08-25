@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
@@ -35,7 +35,7 @@ class MultiSettingsWidget(SettingsWidget):
 
         Parameters
         ----------
-        mediator : MultiSettingsMediator
+        mediator : MediatorBridge
             mediator class object to communicate with several methods and modes.
         dataclass_obj : dataclass
             dataclass object for creation of initial widgets.

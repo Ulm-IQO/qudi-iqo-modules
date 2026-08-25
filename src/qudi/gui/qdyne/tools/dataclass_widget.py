@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 
 """
 This file contains the GUI for qdyne measurements.
@@ -36,7 +36,7 @@ class DataclassWidget(QtWidgets.QWidget):
 
         Parameters
         ----------
-        mediator : DataclassMediator
+        mediator : MediatorBridge
             mediator class object to communicate with a dataclass.
         dataclass_obj : dataclass
             dataclass object for creation of initial widgets.
