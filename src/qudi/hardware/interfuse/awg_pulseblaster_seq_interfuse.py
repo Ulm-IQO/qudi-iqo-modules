@@ -147,6 +147,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     # ── Config options ──────────────────────────────────────────────────────────
     _trigger_master    = ConfigOption('trigger_master',    default='pulseblaster', missing='warn')
     _awg_trigger_delay = ConfigOption('awg_trigger_delay', default=0.0,            missing='nothing')
+    _awg_trigger_pb_channel = ConfigOption('awg_trigger_pb_channel', default=None, missing='nothing')
     _pb_channels       = ConfigOption('pb_channels',       default=[0, 1, 2, 3],   missing='warn')
 
     # FIX: this attribute name MUST match what _is_pb_d_ch(), _d_ch_to_pb_hw()
@@ -465,6 +466,55 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             ''.format(d_ch_name, high_count, len(samples),
                       high_duration_us, self._awg_sample_rate)
         )
+
+    def _get_trigger_pb_key(self):
+        if not self._awg_trigger_pb_channel:
+            if self._delay_pb_samples > 0:
+                self.log.warning(
+                    'awg_trigger_delay is set ({0:.3e} s -> {1} PB samples) but '
+                    'awg_trigger_pb_channel is NOT configured. The trigger-delay '
+                    'compensation will be applied uniformly to ALL PB channels '
+                    '(including whichever one drives the AWG trigger), which has '
+                    'NO observable effect since the whole periodic loop is just '
+                    'phase-shifted together. Set awg_trigger_pb_channel in the '
+                    'yaml config to the d_ch name that fires the AWG trigger BNC.'
+                    ''.format(self._awg_trigger_delay, self._delay_pb_samples)
+                )
+            return None
+        hw_ch = self._d_ch_to_pb_hw(self._awg_trigger_pb_channel)
+        if hw_ch is None:
+            self.log.warning(
+                'awg_trigger_pb_channel "{0}" does not resolve to a configured '
+                'PB channel; trigger-delay compensation will be applied '
+                'uniformly to all channels, which has NO effect.'
+                ''.format(self._awg_trigger_pb_channel)
+            )
+            return None
+        return 'd_ch{0:d}'.format(hw_ch)
+
+    def _apply_trigger_delay_roll(self, pb_digital_dict):
+        """
+        Return a COPY of pb_digital_dict with the trigger-delay circular
+        shift applied to every channel except the configured AWG-trigger
+        channel (which stays fixed as the time reference).
+
+        Shared by write_waveform() (applied once, right before the initial
+        hardware write) and load_waveform() (re-applied every time PB is
+        re-written from the RAW cache -- _pb_waveform_store intentionally
+        holds un-shifted data for write_sequence()'s tiling logic, so the
+        shift must be (re-)applied here at load time too, or it is silently
+        lost on every load_waveform() call).
+        """
+        trigger_key = self._get_trigger_pb_key()
+        shifted = {k: v.copy() for k, v in pb_digital_dict.items()}
+
+        if self._delay_pb_samples > 0:
+            for d_key in shifted:
+                if d_key == trigger_key:
+                    continue
+                shifted[d_key] = np.roll(shifted[d_key], self._delay_pb_samples)
+
+        return shifted
 
     # =========================================================================
     # Private helpers — rate parameters
@@ -976,11 +1026,15 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 # waveform mode (TRIG/GAT), where this single waveform
                 # genuinely loops on itself and the roll correctly
                 # represents that periodicity.
-                pb_digital_shifted = {k: v.copy() for k, v in pb_digital_raw_full.items()}
+                pb_digital_shifted = self._apply_trigger_delay_roll(pb_digital_raw_full)
+                trigger_key = self._get_trigger_pb_key()
+
                 if self._delay_pb_samples > 0:
                     for d_key in pb_digital_shifted:
+                        if d_key == trigger_key:
+                            continue   # trigger is the fixed time reference — do not shift it
                         pb_digital_shifted[d_key] = np.roll(
-                            pb_digital_shifted[d_key], -self._delay_pb_samples
+                            pb_digital_shifted[d_key], self._delay_pb_samples
                         )
 
                 pb_name  = self._pb_current_wfm_name
@@ -1166,10 +1220,13 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 self._written_sequence_names.append(name)
             return result
 
+        trigger_key = self._get_trigger_pb_key()
         if self._delay_pb_samples > 0:
             for d_ch in pb_combined:
+                if d_ch == trigger_key:
+                    continue
                 pb_combined[d_ch] = np.roll(
-                    pb_combined[d_ch], -self._delay_pb_samples
+                    pb_combined[d_ch], self._delay_pb_samples
                 )
 
         pb_seq_name = 'pb_seq_' + name
@@ -1282,9 +1339,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         pb_load_ok = True
 
         if pb_name in self._pb_waveform_store:
+            pb_digital_shifted = self._apply_trigger_delay_roll(self._pb_waveform_store[pb_name])
+
             pb_written, _ = self.pulseblaster().write_waveform(
                 pb_name, {},
-                self._pb_waveform_store[pb_name],
+                pb_digital_shifted,          # ← now shifted, not raw
                 True, True,
                 self._pb_waveform_store_sizes[pb_name]
             )
