@@ -91,8 +91,6 @@ class AWG7k(PulserInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        print(test)
-
         self._rm = visa.ResourceManager()
         self.awg = None
         self.ftp_working_dir = 'waves'
