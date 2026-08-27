@@ -32,6 +32,19 @@ Channel naming
   so the GUI creates voltage widgets, laser/gate dropdowns work, and
   activation-config validation works correctly for all of them.
 
+  INTERNAL REPRESENTATION: everywhere INSIDE this interfuse (sample
+  buffers, delay-shift logic, gap validation, caches), PB channel data is
+  keyed using qudi's own d_ch naming -- the SAME names visible in the
+  pulse block editor -- consistently with every other part of qudi. The
+  PulseBlaster hardware module, however, expects its own zero-based hw
+  channel index in its 'd_ch<N>' keys (it parses them via
+  int(ch_name.replace('d_ch', ''))) -- a completely different numbering
+  that happens to reuse the same string format. This mismatch is resolved
+  in exactly ONE place, _to_pb_hw_keys(), called only immediately before
+  each call to pulseblaster().write_waveform(). This means log/error
+  messages anywhere else in this interfuse always show real, recognisable
+  qudi d_ch names -- never the PB module's internal indexing.
+
 Waveform naming
   write_waveform('rabi', ...) creates 'awg_rabi_ch1'/'awg_rabi_ch2' on the
   AWG and 'pb_rabi' on the PB. get_waveform_names()/get_loaded_assets()
@@ -54,10 +67,9 @@ Granularity
   IMPORTANT: AWG_per_PB is computed from the PulseBlaster's REPORTED clock
   rate. If that doesn't match the board's actual oscillator, every PB
   timed interval will be uniformly stretched/compressed by the mismatch
-  ratio, with no error anywhere in this interfuse's math (it is entirely
-  self-consistent with the rate it's given). Verify the PB module's own
-  clock-rate config against the board's real oscillator before suspecting
-  a bug here.
+  ratio, with no error anywhere in this interfuse's math. Verify the PB
+  module's own clock-rate config against the board's real oscillator
+  before suspecting a bug here.
 
 Trigger delay compensation
   awg_trigger_delay = measured time from the PB trigger edge to the
@@ -75,10 +87,11 @@ Trigger delay compensation
   measures the ACTUAL shifted result directly -- see
   _validate_min_gap_after_shift() -- and refuses to upload if any gap
   anywhere is shorter than the PB minimum instruction length, naming the
-  exact channels and location responsible. It never silently pads,
-  merges, or otherwise rewrites channel data to work around this -- the
-  fix is always for the user to adjust awg_trigger_delay, the trigger
-  pulse width, or the sequence's idle/wait time, and re-sample.
+  exact (qudi-named) channels and location responsible. It never
+  silently pads, merges, or otherwise rewrites channel data to work
+  around this -- the fix is always for the user to adjust
+  awg_trigger_delay, the trigger pulse width, or the sequence's idle/wait
+  time, and re-sample.
 
 Waveform mode (TRIG/GAT)
   PB loops: [trigger][waveform content]. AWG: one waveform per trigger.
@@ -175,9 +188,14 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         # load_waveform()/load_sequence() transparently re-write a
         # previously-uploaded asset if something else has since overwritten
         # it on the actual hardware.
-        self._pb_waveform_store       = {}   # pb_name     -> {d_chN: np.ndarray}  (UN-shifted)
+        #
+        # All PB channel data cached/buffered here is keyed using qudi's
+        # OWN d_ch naming -- see module docstring, "Channel naming",
+        # "INTERNAL REPRESENTATION". Only _to_pb_hw_keys() translates to
+        # the PB module's own indexing, right before each hardware call.
+        self._pb_waveform_store       = {}   # pb_name     -> {qudi d_ch: np.ndarray} (UN-shifted)
         self._pb_waveform_store_sizes = {}   # pb_name     -> int
-        self._pb_seq_store            = {}   # pb_seq_name -> {d_chN: np.ndarray}  (already shifted)
+        self._pb_seq_store            = {}   # pb_seq_name -> {qudi d_ch: np.ndarray} (already shifted)
         self._pb_seq_store_sizes      = {}   # pb_seq_name -> int
         self._awg_seq_param_store     = {}   # logical seq name -> sequence_parameter_list
 
@@ -219,16 +237,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def _is_pb_d_ch(self, d_ch_name):
         """
-        True if d_ch_name belongs to the PulseBlaster: d_ch{offset} and
-        above. AWG channels occupy d_ch1 .. d_ch{offset-1}.
+        True if d_ch_name (a QUDI-facing name) belongs to the
+        PulseBlaster: d_ch{offset} and above. AWG channels occupy
+        d_ch1 .. d_ch{offset-1}.
         """
         ch_num = self._extract_d_ch_number(d_ch_name)
         return ch_num is not None and ch_num >= self._pb_channel_d_offset
 
     def _d_ch_to_pb_hw(self, d_ch_name):
         """
-        Convert 'd_ch{offset+i}' to the PB's own zero-based hw index i.
-        Returns None if out of range or not a PB channel.
+        Convert a QUDI-facing 'd_ch{offset+i}' name to the PB module's
+        own zero-based hw index i. Returns None if out of range or not a
+        PB channel. Used ONLY for validation and for the final
+        translation step in _to_pb_hw_keys() -- see module docstring.
         """
         ch_num = self._extract_d_ch_number(d_ch_name)
         if ch_num is None or ch_num < self._pb_channel_d_offset:
@@ -243,12 +264,38 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         return hw_ch
 
     def _pb_index_to_d_ch(self, list_index):
-        """Inverse of _d_ch_to_pb_hw: PB hw index i -> 'd_ch{offset+i}'."""
+        """Inverse of _d_ch_to_pb_hw: PB hw index i -> QUDI 'd_ch{offset+i}'."""
         return 'd_ch{0:d}'.format(self._pb_channel_d_offset + list_index)
 
     def _all_pb_d_ch_names(self):
-        """All configured PB channels, as d_ch* names."""
+        """All configured PB channels, as QUDI-facing d_ch* names."""
         return [self._pb_index_to_d_ch(i) for i in range(len(self._pb_channels))]
+
+    def _to_pb_hw_keys(self, qudi_keyed_dict):
+        """
+        Translate a dict keyed by QUDI-facing d_ch names (e.g. 'd_ch7')
+        into a dict keyed by the PulseBlaster module's OWN zero-based hw
+        channel index format (e.g. 'd_ch2'), as required by that module's
+        write_waveform()/_convert_sample_to_pb_sequence() parsing
+        (int(ch_name.replace('d_ch', ''))).
+
+        This is the ONLY place this translation happens in the entire
+        interfuse -- every dict everywhere else (buffers, caches, shift
+        results, validation input) is keyed with qudi's own d_ch naming.
+        Call this immediately before, and only before, each call to
+        pulseblaster().write_waveform().
+        """
+        out = {}
+        for qudi_name, samples in qudi_keyed_dict.items():
+            hw_ch = self._d_ch_to_pb_hw(qudi_name)
+            if hw_ch is None:
+                self.log.error(
+                    'Internal error: "{0}" does not resolve to a PB hw '
+                    'channel at upload time. Skipped.'.format(qudi_name)
+                )
+                continue
+            out['d_ch{0:d}'.format(hw_ch)] = samples
+        return out
 
     @staticmethod
     def _lcm(a, b):
@@ -328,12 +375,13 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def _get_trigger_pb_key(self):
         """
-        Resolve awg_trigger_pb_channel to its internal 'd_ch<hw>' key.
-        Returns None (with a warning) if not configured or not resolvable
-        -- in that case the shift below would apply uniformly to ALL
-        channels including the trigger, which is a no-op (the whole
-        periodic pattern just phase-shifts together with no relative
-        effect).
+        Resolve and validate awg_trigger_pb_channel. Returns the QUDI-
+        facing d_ch name itself (e.g. 'd_ch9') for use as a key in the
+        qudi-named PB sample dicts used throughout this interfuse, or
+        None if not configured or not resolvable -- in that case the
+        shift below would apply uniformly to ALL channels including the
+        trigger, which is a no-op (the whole periodic pattern just
+        phase-shifts together with no relative effect).
         """
         if not self._awg_trigger_pb_channel:
             if self._delay_pb_samples > 0:
@@ -345,7 +393,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     ''.format(self._awg_trigger_delay)
                 )
             return None
-        hw_ch = self._d_ch_to_pb_hw(self._awg_trigger_pb_channel)
+        hw_ch = self._d_ch_to_pb_hw(self._awg_trigger_pb_channel)  # validation only
         if hw_ch is None:
             self.log.warning(
                 'awg_trigger_pb_channel "{0}" does not resolve to a configured PB '
@@ -353,7 +401,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 ''.format(self._awg_trigger_pb_channel)
             )
             return None
-        return 'd_ch{0:d}'.format(hw_ch)
+        return self._awg_trigger_pb_channel
 
     def _find_min_run_length(self, combined_2d):
         """
@@ -385,7 +433,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         rolled_change = np.any(rolled != np.roll(rolled, -1, axis=1), axis=0)
         rolled_idx = np.nonzero(rolled_change)[0]
 
-        starts = np.concatenate(([0], rolled_idx + 1))[:-1] if len(rolled_idx) else np.array([0])
         starts = np.concatenate(([0], rolled_idx + 1))
         starts = starts[starts < n]
         ends = np.concatenate((rolled_idx + 1, [n]))[:len(starts)]
@@ -404,6 +451,10 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         shifted, circularly-looping PB waveform across ALL channels at
         once, and reject if it's shorter than the PB minimum instruction
         length.
+
+        pb_digital_shifted is keyed with QUDI-facing d_ch names, so any
+        error message below names real, recognisable channels (as seen
+        in the pulse block editor) directly -- no translation needed.
 
         This measures the actual result rather than reasoning about where
         edges "should" land -- it uniformly catches trigger-to-content,
@@ -455,11 +506,12 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def _apply_trigger_delay_roll(self, pb_digital_dict):
         """
-        Return a COPY of pb_digital_dict with the trigger-delay circular
-        shift applied to every channel except the trigger channel itself
-        (which stays fixed as the time reference), or None if the
-        resulting waveform fails _validate_min_gap_after_shift() -- ALL
-        callers must check for None and abort rather than upload.
+        Return a COPY of pb_digital_dict (keyed with QUDI-facing d_ch
+        names) with the trigger-delay circular shift applied to every
+        channel except the trigger channel itself (which stays fixed as
+        the time reference), or None if the resulting waveform fails
+        _validate_min_gap_after_shift() -- ALL callers must check for
+        None and abort rather than upload.
 
         Shared by write_waveform(), write_sequence(), and
         load_waveform()'s cache re-write path, so validation and shifting
@@ -800,8 +852,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Upload waveform to AWG ('awg_{name}') and PB ('pb_{name}').
         AWG channels go straight to the AWG; PB channels are downsampled,
-        buffered across chunks, delay-shifted (validated), and uploaded to
-        PB as a single block on the last chunk.
+        buffered across chunks (keyed with qudi d_ch names throughout),
+        delay-shifted (validated), translated to PB hw indices, and
+        uploaded to PB as a single block on the last chunk.
 
         @return (int, list): samples written and list of AWG waveform names.
         """
@@ -820,9 +873,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     self._log_watch_channel_duration(d_ch_name, samples)
 
             if is_pb:
-                hw_ch = self._d_ch_to_pb_hw(d_ch_name)
-                if hw_ch is not None:
-                    pb_digital_raw['d_ch{0:d}'.format(hw_ch)] = samples
+                if self._d_ch_to_pb_hw(d_ch_name) is not None:   # validation only
+                    pb_digital_raw[d_ch_name] = samples          # keyed with QUDI name
                 else:
                     self.log.warning('write_waveform: "{0}" has no PB hardware mapping. Skipped.'.format(d_ch_name))
 
@@ -847,8 +899,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         if is_last_chunk:
             if self._pb_sample_buffer:
-                # RAW (un-shifted) full period -- cached for write_sequence()
-                # to tile later; the shift must not be baked into this copy.
+                # RAW (un-shifted) full period, qudi-keyed -- cached for
+                # write_sequence() to tile later; the shift must not be
+                # baked into this copy.
                 pb_digital_raw_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
 
                 pb_digital_shifted = self._apply_trigger_delay_roll(pb_digital_raw_full)
@@ -860,7 +913,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 pb_name  = self._pb_current_wfm_name
                 pb_total = len(next(iter(pb_digital_shifted.values())))
 
-                pb_written, _ = self.pulseblaster().write_waveform(pb_name, {}, pb_digital_shifted, True, True, pb_total)
+                # Translate to PB's own hw-index keys ONLY at this final
+                # boundary -- see module docstring, "INTERNAL REPRESENTATION".
+                pb_written, _ = self.pulseblaster().write_waveform(
+                    pb_name, {}, self._to_pb_hw_keys(pb_digital_shifted), True, True, pb_total
+                )
                 self._pb_sample_buffer, self._pb_current_wfm_name = {}, ''
 
                 if pb_written < 0:
@@ -887,8 +944,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Write AWG sequence ('awg_{name}') and build a combined PB waveform
         ('pb_seq_{name}') covering one full sequence cycle, by tiling each
-        step's cached (raw, un-shifted) PB content, then applying the
-        trigger-delay shift exactly once to the combined result.
+        step's cached (raw, un-shifted, qudi-keyed) PB content, then
+        applying the trigger-delay shift exactly once to the combined
+        result before translating to PB hw indices for upload.
 
         @return int: number of sequence steps written, or -1 on failure.
         """
@@ -921,7 +979,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         else:
             self.awg().sequence_set_wait_trigger(1, 'OFF')
 
-        # Build combined PB waveform by tiling each step's cached content.
+        # Build combined PB waveform by tiling each step's cached content
+        # (still qudi-keyed at this point).
         pb_combined, total_pb_len = {}, 0
 
         for wfm_tuple, seq_params in sequence_parameter_list:
@@ -971,11 +1030,15 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             return -1
 
         pb_seq_name = 'pb_seq_' + name
-        pb_written, _ = self.pulseblaster().write_waveform(pb_seq_name, {}, pb_combined_shifted, True, True, total_pb_len)
+        pb_written, _ = self.pulseblaster().write_waveform(
+            pb_seq_name, {}, self._to_pb_hw_keys(pb_combined_shifted), True, True, total_pb_len
+        )
         if pb_written < 0:
             self.log.error('Failed to upload combined PB waveform "{0}".'.format(pb_seq_name))
             return -1
 
+        # Cached qudi-keyed and ALREADY shifted -- load_sequence() re-writes
+        # this as-is, no need to shift again there.
         self._pb_seq_store[pb_seq_name]       = {k: v.copy() for k, v in pb_combined_shifted.items()}
         self._pb_seq_store_sizes[pb_seq_name] = total_pb_len
         self._awg_seq_param_store[name]       = sequence_parameter_list
@@ -1044,7 +1107,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 )
             else:
                 pb_written, _ = self.pulseblaster().write_waveform(
-                    pb_name, {}, pb_digital_shifted, True, True, self._pb_waveform_store_sizes[pb_name]
+                    pb_name, {}, self._to_pb_hw_keys(pb_digital_shifted),
+                    True, True, self._pb_waveform_store_sizes[pb_name]
                 )
                 if pb_written < 0:
                     pb_load_ok = False
@@ -1104,13 +1168,15 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             self.log.error('load_sequence: AWG load verification failed for "{0}".'.format(sequence_name))
             return self.get_loaded_assets()[0]
 
-        # pb_seq_store already holds the SHIFTED, validated data from
-        # write_sequence() -- re-write as-is, no need to shift again.
+        # _pb_seq_store already holds SHIFTED, validated, qudi-keyed data
+        # from write_sequence() -- translate to PB hw indices and re-write
+        # as-is, no need to shift again.
         pb_seq_name, pb_load_ok = 'pb_seq_' + sequence_name, True
 
         if pb_seq_name in self._pb_seq_store:
             pb_written, _ = self.pulseblaster().write_waveform(
-                pb_seq_name, {}, self._pb_seq_store[pb_seq_name], True, True, self._pb_seq_store_sizes[pb_seq_name]
+                pb_seq_name, {}, self._to_pb_hw_keys(self._pb_seq_store[pb_seq_name]),
+                True, True, self._pb_seq_store_sizes[pb_seq_name]
             )
             if pb_written < 0:
                 pb_load_ok = False
