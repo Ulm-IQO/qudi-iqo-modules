@@ -419,6 +419,25 @@ class NICounterStackInterfuse(NIXSeriesCounter):
             raise
 
     def stop_measure(self):
+        """ Stops every connected counter's fast-counter role, logging a
+        one-line summary comparing each counter's final elapsed_sweeps
+        BEFORE stopping any of them (stopping a counter resets its own
+        internal state, so the comparison must happen first, or every
+        value would already read back as zero).
+        """
+        final_sweeps = {}
+        for prefix, counter in zip(self._counter_prefixes, self._counters):
+            try:
+                _, info = counter.get_data_trace()
+                final_sweeps[prefix] = info['elapsed_sweeps']
+            except Exception as exc:
+                final_sweeps[prefix] = f'<error: {exc}>'
+
+        self.log.info(
+            'NICounterStackInterfuse: measurement stopped. Final '
+            'elapsed_sweeps per counter: {0}.'.format(final_sweeps)
+        )
+
         for i, counter in enumerate(self._counters):
             try:
                 counter.stop_measure()
@@ -485,9 +504,40 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         return first
 
     def get_data_trace(self):
-        traces = [c.get_data_trace() for c in self._counters]
-        arrays = [t[0] for t in traces]
-        infos  = [t[1] for t in traces]
+        """ Combines every connected counter's histogram into one, aligned
+        to the SLOWEST connected counter's actual completed-cycle count.
+
+        Any counter that is currently ahead has its excess, not-yet-matched
+        cycles held back (via get_data_trace_up_to()) rather than summed
+        in immediately -- see module docstring, "STRICT CROSS-COUNTER
+        CYCLE SYNCHRONIZATION". This makes the combined result always
+        internally consistent: every contribution corresponds to the same
+        (or, due to checkpoint rounding, a slightly smaller) number of
+        completed cycles, never a mix of "5165 cycles from counter A" and
+        "5162 cycles from counter B" summed together as if they matched.
+        """
+        # First pass: full, untruncated reads, to discover each counter's
+        # true current elapsed_sweeps. For any counter already at (or
+        # below) the group minimum, this result is used as-is -- no
+        # second call needed.
+        traces      = [c.get_data_trace() for c in self._counters]
+        sweeps_list = [info['elapsed_sweeps'] for _, info in traces]
+        min_sweeps  = min(sweeps_list)
+
+        arrays       = []
+        served_list  = []
+        for (arr, info), counter in zip(traces, self._counters):
+            if info['elapsed_sweeps'] <= min_sweeps:
+                arrays.append(arr)
+                served_list.append(info['elapsed_sweeps'])
+            else:
+                # This counter is ahead of the group -- request a view
+                # truncated to the slowest counter's actual progress,
+                # holding its extra cycles back rather than including
+                # them now.
+                truncated_arr, truncated_info = counter.get_data_trace_up_to(min_sweeps)
+                arrays.append(truncated_arr)
+                served_list.append(truncated_info['elapsed_sweeps'])
 
         first_shape = arrays[0].shape
         for i, arr in enumerate(arrays[1:], start=1):
@@ -495,26 +545,42 @@ class NICounterStackInterfuse(NIXSeriesCounter):
                 raise RuntimeError(
                     'NICounterStackInterfuse: counter index {0} returned '
                     'a histogram of shape {1}, expected {2} to match '
-                    'counter index 0.'.format(i, arr.shape, first_shape)
+                    'counter index 0. This should not be possible if '
+                    'configure() succeeded earlier -- check for a '
+                    'reconfiguration on one counter only.'.format(
+                        i, arr.shape, first_shape
+                    )
                 )
 
         combined = arrays[0].copy()
         for arr in arrays[1:]:
             combined += arr
 
-        sweeps_list = [info['elapsed_sweeps'] for info in infos]
-        time_list   = [info['elapsed_time']   for info in infos]
+        time_list = [info['elapsed_time'] for _, info in traces]
 
-        if len(set(sweeps_list)) != 1:
-            self.log.warning(
-                'NICounterStackInterfuse: connected counters report '
-                'differing elapsed_sweeps: {0} (prefixes: {1}).'.format(
-                    sweeps_list, self._counter_prefixes
-                )
+        # served_list should already all equal min_sweeps exactly, except
+        # for any counter whose get_data_trace_up_to() had to round down
+        # to a checkpoint slightly below min_sweeps (see that method's
+        # docstring) -- taking the min here guarantees the reported
+        # combined cycle count never overstates what was actually summed.
+        combined_sweeps = min(served_list)
+
+        spread = max(sweeps_list) - min(sweeps_list)
+        if spread > 0:
+            # Routine, expected behavior of the sync mechanism -- logged
+            # at debug level, not warning, since holding back a small,
+            # bounded number of cycles from independently-clocked
+            # counters is exactly what this is designed to do, not a
+            # fault condition.
+            self.log.debug(
+                'NICounterStackInterfuse: holding back up to {0} cycle(s) '
+                'from the lead counter(s) pending the slowest counter '
+                'catching up (raw elapsed_sweeps: {1}, prefixes: {2}).'
+                ''.format(spread, sweeps_list, self._counter_prefixes)
             )
 
         return combined, {
-            'elapsed_sweeps': max(sweeps_list),
+            'elapsed_sweeps': combined_sweeps,
             'elapsed_time':   max(time_list),
         }
 
