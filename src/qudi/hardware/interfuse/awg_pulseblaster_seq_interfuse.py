@@ -68,7 +68,7 @@ Granularity
   rate. If that doesn't match the board's actual oscillator, every PB
   timed interval will be uniformly stretched/compressed by the mismatch
   ratio, with no error anywhere in this interfuse's math. Verify the PB
-  module's own clock-rate config against the board's real oscillator
+  module's own clock-rate config against the board's actual oscillator
   before suspecting a bug here.
 
 Trigger delay compensation
@@ -93,16 +93,46 @@ Trigger delay compensation
   awg_trigger_delay, the trigger pulse width, or the sequence's idle/wait
   time, and re-sample.
 
+EXPERIMENTAL: pb_extra_wait_time
+  Extra idle time appended to the END of every PB loop cycle, making
+  PB's total loop period LONGER than the AWG's actual playback duration
+  by this fixed margin. The AWG's own uploaded waveform is completely
+  UNCHANGED -- only the PB-side loop grows. This gives the AWG extra
+  time to fully re-arm/settle after finishing one triggered playback
+  before PB fires the next trigger edge.
+
+  This was added while investigating a reproducible every-other-trigger
+  drop observed across multiple different AWG7000-series units (ruling
+  out AWG-hardware- and PulseBlaster-clock-specific causes). Set to 0.0
+  (default) to disable -- this is a no-op at 0.0, verified by code path,
+  not just by value.
+
+  The padding is applied BEFORE the trigger-delay roll and minimum-gap
+  validation, on every write/re-write path, so the roll and validation
+  always see the true, final loop content -- never the un-padded content
+  with padding bolted on afterward (which could reintroduce exactly the
+  too-short-gap problems _validate_min_gap_after_shift() exists to catch).
+
+  IMPORTANT: _pb_waveform_store / _pb_waveform_store_sizes cache the RAW,
+  UN-padded, UN-shifted content (its size is the true one-cycle content
+  length, used as-is by write_sequence()'s per-step tiling math). Padding
+  is re-applied FRESH from this raw cache every time it's used (in
+  write_waveform, write_sequence, and load_waveform's re-write path) --
+  it is never baked into that cache, so changing pb_extra_wait_time and
+  reloading (without re-sampling) picks up the new value correctly.
+
 Waveform mode (TRIG/GAT)
-  PB loops: [trigger][waveform content]. AWG: one waveform per trigger.
+  PB loops: [trigger][waveform content][extra wait, if configured].
+  AWG: one waveform per trigger.
 
 Sequence mode
   User draws AWG trigger in the first element of their sequence (same
   channel as waveform mode). AWG step 1 has TWAIT=ON forced by
   write_sequence(). PB loops the tiled content of all steps (trigger
-  naturally falls in the first step). AWG runs all steps once per
-  trigger, then waits for the next one. Identical workflow to waveform
-  mode from the user's perspective.
+  naturally falls in the first step), plus the extra wait tail if
+  configured. AWG runs all steps once per trigger, then waits for the
+  next one. Identical workflow to waveform mode from the user's
+  perspective.
 
 Re-write-on-load
   Both PulseBlaster instruction memory and the AWG's SEQ list are
@@ -135,6 +165,7 @@ awg_pb_interfuse:
         awg_trigger_pb_channel: 'd_ch9'
         pb_channels: [0, 1, 2, 3, 4, 5, 6, 7, 8]
         pb_channel_d_offset: 5
+        pb_extra_wait_time: 5e-6   # EXPERIMENTAL -- see module docstring
         default_activation_config: 'A2_M3_M4_pb9'
         debug_channel_routing: False
         debug_watch_channel: 'd_ch10'
@@ -171,6 +202,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     _debug_channel_routing   = ConfigOption('debug_channel_routing', default=False, missing='nothing')
     _debug_watch_channel     = ConfigOption('debug_watch_channel', default=None, missing='nothing')
 
+    # EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
+    _pb_extra_wait_time = ConfigOption('pb_extra_wait_time', default=0.0, missing='nothing')
+
     # =========================================================================
     # Module lifecycle
     # =========================================================================
@@ -193,10 +227,14 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         # OWN d_ch naming -- see module docstring, "Channel naming",
         # "INTERNAL REPRESENTATION". Only _to_pb_hw_keys() translates to
         # the PB module's own indexing, right before each hardware call.
-        self._pb_waveform_store       = {}   # pb_name     -> {qudi d_ch: np.ndarray} (UN-shifted)
-        self._pb_waveform_store_sizes = {}   # pb_name     -> int
-        self._pb_seq_store            = {}   # pb_seq_name -> {qudi d_ch: np.ndarray} (already shifted)
-        self._pb_seq_store_sizes      = {}   # pb_seq_name -> int
+        #
+        # _pb_waveform_store holds RAW content: no padding, no shift.
+        # _pb_seq_store holds the FULLY-PROCESSED combined sequence
+        # waveform: padded AND shifted, ready to re-write as-is.
+        self._pb_waveform_store       = {}   # pb_name     -> {qudi d_ch: np.ndarray} (RAW)
+        self._pb_waveform_store_sizes = {}   # pb_name     -> int (RAW length, no padding)
+        self._pb_seq_store            = {}   # pb_seq_name -> {qudi d_ch: np.ndarray} (padded + shifted)
+        self._pb_seq_store_sizes      = {}   # pb_seq_name -> int (padded length)
         self._awg_seq_param_store     = {}   # logical seq name -> sequence_parameter_list
 
         self._pb_sample_buffer    = {}
@@ -370,7 +408,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         )
 
     # =========================================================================
-    # Private helpers — trigger delay compensation
+    # Private helpers — trigger delay compensation / extra wait padding
     # =========================================================================
 
     def _get_trigger_pb_key(self):
@@ -402,6 +440,32 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             )
             return None
         return self._awg_trigger_pb_channel
+
+    def _append_extra_wait_tail(self, pb_digital_dict):
+        """
+        EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
+
+        Return a COPY of pb_digital_dict with self._pb_extra_wait_samples
+        additional all-LOW samples appended to the END of EVERY channel
+        (including the trigger channel, so every channel in the returned
+        dict stays the same length as each other).
+
+        MUST be called BEFORE _apply_trigger_delay_roll(), so the
+        trigger-delay shift and minimum-gap validation operate on the
+        final, true loop length including this padding.
+
+        No-op (returns an unmodified copy) if _pb_extra_wait_samples <= 0
+        -- this is a real code-path no-op, not just a zero-valued
+        parameter, so pb_extra_wait_time: 0.0 provably changes nothing.
+        """
+        if self._pb_extra_wait_samples <= 0:
+            return {k: v.copy() for k, v in pb_digital_dict.items()}
+
+        padded = {}
+        for d_key, samples in pb_digital_dict.items():
+            tail = np.zeros(self._pb_extra_wait_samples, dtype=bool)
+            padded[d_key] = np.concatenate([samples, tail])
+        return padded
 
     def _find_min_run_length(self, combined_2d):
         """
@@ -513,6 +577,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         _validate_min_gap_after_shift() -- ALL callers must check for
         None and abort rather than upload.
 
+        Callers are expected to have already applied
+        _append_extra_wait_tail() (if configured) to pb_digital_dict
+        BEFORE calling this, so the shift and validation both see the
+        true, final loop content.
+
         Shared by write_waveform(), write_sequence(), and
         load_waveform()'s cache re-write path, so validation and shifting
         happen identically everywhere PB data is actually rolled.
@@ -574,6 +643,9 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         self._delay_pb_samples = int(round(self._awg_trigger_delay * self._pb_sample_rate))
 
+        # EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
+        self._pb_extra_wait_samples = int(round(self._pb_extra_wait_time * self._pb_sample_rate))
+
         self.log.info(
             'Interfuse rate params updated:\n'
             '  AWG sample rate : {0:.4e} Hz\n'
@@ -581,7 +653,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             '  AWG/PB ratio    : {2:d} AWG samples per PB cycle\n'
             '  PB min instr.   : {3:d} PB cycles  =  {4:.2f} ns\n'
             '  LCM granularity : {5:d} AWG samples =  {6:.2f} ns\n'
-            '  Trigger delay   : {7:d} PB samples  =  {8:.2f} ns'
+            '  Trigger delay   : {7:d} PB samples  =  {8:.2f} ns\n'
+            '  PB extra wait   : {9:d} PB samples  =  {10:.2f} ns  [EXPERIMENTAL]'
             ''.format(
                 self._awg_sample_rate, self._pb_sample_rate, self._awg_per_pb,
                 self._pb_min_instr_cycles,
@@ -589,6 +662,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 self._lcm_gran, self._lcm_gran / self._awg_sample_rate * 1e9,
                 self._delay_pb_samples,
                 self._delay_pb_samples / self._pb_sample_rate * 1e9,
+                self._pb_extra_wait_samples,
+                self._pb_extra_wait_samples / self._pb_sample_rate * 1e9,
             )
         )
 
@@ -851,10 +926,15 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                        is_first_chunk, is_last_chunk, total_number_of_samples):
         """
         Upload waveform to AWG ('awg_{name}') and PB ('pb_{name}').
-        AWG channels go straight to the AWG; PB channels are downsampled,
-        buffered across chunks (keyed with qudi d_ch names throughout),
-        delay-shifted (validated), translated to PB hw indices, and
-        uploaded to PB as a single block on the last chunk.
+        AWG channels go straight to the AWG UNCHANGED (its uploaded
+        length is exactly total_number_of_samples, regardless of
+        pb_extra_wait_time). PB channels are downsampled, buffered
+        across chunks (keyed with qudi d_ch names throughout), padded
+        with the EXPERIMENTAL extra wait tail, delay-shifted (validated),
+        translated to PB hw indices, and uploaded to PB as a single block
+        on the last chunk -- meaning PB's uploaded loop is
+        pb_extra_wait_time LONGER than the AWG's playback whenever that
+        option is nonzero.
 
         @return (int, list): samples written and list of AWG waveform names.
         """
@@ -878,6 +958,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 else:
                     self.log.warning('write_waveform: "{0}" has no PB hardware mapping. Skipped.'.format(d_ch_name))
 
+        # AWG upload is untouched by pb_extra_wait_time -- total_number_of_samples
+        # is passed through exactly as received.
         awg_name = 'awg_' + name
         awg_written, awg_waveforms = self.awg().write_waveform(
             awg_name, analog_samples, awg_digital, is_first_chunk, is_last_chunk, total_number_of_samples
@@ -899,24 +981,28 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         if is_last_chunk:
             if self._pb_sample_buffer:
-                # RAW (un-shifted) full period, qudi-keyed -- cached for
-                # write_sequence() to tile later; the shift must not be
-                # baked into this copy.
+                # RAW (un-padded, un-shifted) full period, qudi-keyed --
+                # cached for write_sequence()'s tiling and for
+                # load_waveform()'s re-write path. Padding/shift are
+                # applied fresh from this cache every time it's used, so
+                # they always reflect the CURRENT config values.
                 pb_digital_raw_full = {k: v.copy() for k, v in self._pb_sample_buffer.items()}
+                pb_raw_total = len(next(iter(pb_digital_raw_full.values())))
 
-                pb_digital_shifted = self._apply_trigger_delay_roll(pb_digital_raw_full)
+                pb_digital_padded  = self._append_extra_wait_tail(pb_digital_raw_full)
+                pb_digital_shifted = self._apply_trigger_delay_roll(pb_digital_padded)
                 if pb_digital_shifted is None:
                     self.log.error('write_waveform: ABORTED for "{0}" -- see validation error above.'.format(name))
                     self._pb_sample_buffer, self._pb_current_wfm_name = {}, ''
                     return -1, []
 
-                pb_name  = self._pb_current_wfm_name
-                pb_total = len(next(iter(pb_digital_shifted.values())))
+                pb_name = self._pb_current_wfm_name
+                pb_padded_total = len(next(iter(pb_digital_shifted.values())))
 
                 # Translate to PB's own hw-index keys ONLY at this final
                 # boundary -- see module docstring, "INTERNAL REPRESENTATION".
                 pb_written, _ = self.pulseblaster().write_waveform(
-                    pb_name, {}, self._to_pb_hw_keys(pb_digital_shifted), True, True, pb_total
+                    pb_name, {}, self._to_pb_hw_keys(pb_digital_shifted), True, True, pb_padded_total
                 )
                 self._pb_sample_buffer, self._pb_current_wfm_name = {}, ''
 
@@ -924,9 +1010,12 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     self.log.error('PulseBlaster write_waveform failed for "{0}".'.format(pb_name))
                     return -1, []
 
+                # Cache size is the RAW (un-padded) length -- write_sequence()'s
+                # per-step tiling math depends on this being the true
+                # one-cycle content length, not the padded upload length.
                 self._pb_waveform_store[pb_name]       = {k: v.copy() for k, v in pb_digital_raw_full.items()}
-                self._pb_waveform_store_sizes[pb_name] = pb_total
-                self._log_pb_instruction_diagnostics(pb_name, pb_total)
+                self._pb_waveform_store_sizes[pb_name] = pb_raw_total
+                self._log_pb_instruction_diagnostics(pb_name, pb_padded_total)
             else:
                 self.log.debug('write_waveform: "{0}" has no PB channel content; skipping PB upload.'.format(name))
                 self._pb_current_wfm_name = ''
@@ -944,9 +1033,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Write AWG sequence ('awg_{name}') and build a combined PB waveform
         ('pb_seq_{name}') covering one full sequence cycle, by tiling each
-        step's cached (raw, un-shifted, qudi-keyed) PB content, then
-        applying the trigger-delay shift exactly once to the combined
-        result before translating to PB hw indices for upload.
+        step's cached (RAW, un-padded, un-shifted, qudi-keyed) PB content,
+        then applying the EXPERIMENTAL extra wait tail and the
+        trigger-delay shift exactly once to the combined result before
+        translating to PB hw indices for upload. The AWG's own sequence
+        is completely unaffected by pb_extra_wait_time.
 
         @return int: number of sequence steps written, or -1 on failure.
         """
@@ -980,7 +1071,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             self.awg().sequence_set_wait_trigger(1, 'OFF')
 
         # Build combined PB waveform by tiling each step's cached content
-        # (still qudi-keyed at this point).
+        # (still RAW/un-padded/un-shifted, qudi-keyed, at this point).
         pb_combined, total_pb_len = {}, 0
 
         for wfm_tuple, seq_params in sequence_parameter_list:
@@ -1024,26 +1115,31 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                 self._written_sequence_names.append(name)
             return result
 
-        pb_combined_shifted = self._apply_trigger_delay_roll(pb_combined)
+        # EXPERIMENTAL extra wait tail applied to the fully-tiled combined
+        # waveform, BEFORE the trigger-delay roll -- see module docstring.
+        pb_combined_padded  = self._append_extra_wait_tail(pb_combined)
+        pb_combined_shifted = self._apply_trigger_delay_roll(pb_combined_padded)
         if pb_combined_shifted is None:
             self.log.error('write_sequence: ABORTED for "{0}" -- see validation error above.'.format(name))
             return -1
 
         pb_seq_name = 'pb_seq_' + name
+        total_pb_padded_len = len(next(iter(pb_combined_shifted.values())))
+
         pb_written, _ = self.pulseblaster().write_waveform(
-            pb_seq_name, {}, self._to_pb_hw_keys(pb_combined_shifted), True, True, total_pb_len
+            pb_seq_name, {}, self._to_pb_hw_keys(pb_combined_shifted), True, True, total_pb_padded_len
         )
         if pb_written < 0:
             self.log.error('Failed to upload combined PB waveform "{0}".'.format(pb_seq_name))
             return -1
 
-        # Cached qudi-keyed and ALREADY shifted -- load_sequence() re-writes
-        # this as-is, no need to shift again there.
+        # Cached data is FULLY PROCESSED (padded AND shifted) -- load_sequence()
+        # re-writes this as-is, no need to re-pad or re-shift there.
         self._pb_seq_store[pb_seq_name]       = {k: v.copy() for k, v in pb_combined_shifted.items()}
-        self._pb_seq_store_sizes[pb_seq_name] = total_pb_len
+        self._pb_seq_store_sizes[pb_seq_name] = total_pb_padded_len
         self._awg_seq_param_store[name]       = sequence_parameter_list
 
-        self._log_pb_instruction_diagnostics(pb_seq_name, total_pb_len)
+        self._log_pb_instruction_diagnostics(pb_seq_name, total_pb_padded_len)
 
         if name not in self._written_sequence_names:
             self._written_sequence_names.append(name)
@@ -1057,7 +1153,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     def load_waveform(self, load_dict):
         """
         Load a waveform on the AWG and (re-write + load) on the PB, since
-        PB only ever holds the most recently written waveform.
+        PB only ever holds the most recently written waveform. The PB
+        re-write re-applies the EXPERIMENTAL extra wait tail and the
+        trigger-delay shift FRESH from the RAW cache every time, so
+        changing pb_extra_wait_time or awg_trigger_delay and reloading
+        (without re-sampling) picks up the new value correctly.
 
         @return dict: loaded assets per channel (logical names).
         """
@@ -1097,7 +1197,8 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         pb_name, pb_load_ok = 'pb_{0}'.format(logical_name), True
 
         if pb_name in self._pb_waveform_store:
-            pb_digital_shifted = self._apply_trigger_delay_roll(self._pb_waveform_store[pb_name])
+            pb_digital_padded  = self._append_extra_wait_tail(self._pb_waveform_store[pb_name])
+            pb_digital_shifted = self._apply_trigger_delay_roll(pb_digital_padded)
 
             if pb_digital_shifted is None:
                 pb_load_ok = False
@@ -1106,9 +1207,10 @@ class AwgPulseBlasterInterfuse(PulserInterface):
                     '"{0}" from cache. Asset will NOT be marked as loaded.'.format(pb_name)
                 )
             else:
+                pb_padded_total = len(next(iter(pb_digital_shifted.values())))
                 pb_written, _ = self.pulseblaster().write_waveform(
                     pb_name, {}, self._to_pb_hw_keys(pb_digital_shifted),
-                    True, True, self._pb_waveform_store_sizes[pb_name]
+                    True, True, pb_padded_total
                 )
                 if pb_written < 0:
                     pb_load_ok = False
@@ -1137,6 +1239,14 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         """
         Load the AWG sequence and matching combined PB waveform, re-writing
         either from cache first if hardware currently holds something else.
+
+        _pb_seq_store already holds FULLY PROCESSED (padded + shifted)
+        data from write_sequence() -- this re-writes it as-is. If
+        pb_extra_wait_time or awg_trigger_delay has changed since the
+        sequence was last written, re-sample (via write_sequence()) to
+        pick up the new value -- this load path intentionally does NOT
+        re-derive padding/shift here, matching write_sequence()'s own
+        "already shifted" cache contract.
 
         @return dict: loaded assets per channel, using logical names.
         """
@@ -1168,9 +1278,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             self.log.error('load_sequence: AWG load verification failed for "{0}".'.format(sequence_name))
             return self.get_loaded_assets()[0]
 
-        # _pb_seq_store already holds SHIFTED, validated, qudi-keyed data
-        # from write_sequence() -- translate to PB hw indices and re-write
-        # as-is, no need to shift again.
         pb_seq_name, pb_load_ok = 'pb_seq_' + sequence_name, True
 
         if pb_seq_name in self._pb_seq_store:
