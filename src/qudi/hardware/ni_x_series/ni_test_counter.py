@@ -1977,7 +1977,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         co_output = f'/{dev}/Ctr{clock_num}InternalOutput'
 
         # CO task: finite 5 kHz pulse train, triggered by PI gate
-        self._scan_co_task = ni.Task('ScanClock')
+        self._scan_co_task = ni.Task(f'ScanClock_{id(self):d}')
         self._scan_co_task.co_channels.add_co_pulse_chan_freq(
             counter       = f'/{dev}/{self._scan_clock_ctr}',
             freq          = _PI_SAMP_RATE,
@@ -1996,7 +1996,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         )
 
         # CI task: count photons, clocked by CO internal output
-        self._scan_task = ni.Task('APDScanCounter')
+        self._scan_task = ni.Task(f'APDScanCounter_{id(self):d}')
         self._scan_task.ci_channels.add_ci_count_edges_chan(
             f'/{dev}/{self._scan_counter_ch}',
             edge=ni.constants.Edge.RISING,
