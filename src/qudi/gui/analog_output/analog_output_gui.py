@@ -17,6 +17,17 @@ See the GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
+
+------------------------------------------------------------------------
+
+OVERVIEW
+
+Displays one section per connected analog output device (as reported by
+AnalogOutputLogic.device_names), stacked vertically in the same window. Each
+section has a bold headline showing that device's qudi module name (its
+config section key, e.g. 'daq_1'), followed by one row per channel of that
+device -- exactly matching the single-device layout used previously, just
+repeated per device with a labeled divider between them.
 """
 
 from PySide6 import QtWidgets, QtCore, QtGui
@@ -93,8 +104,9 @@ class AnalogOutputMainWindow(QtWidgets.QMainWindow):
 
 class AnalogOutputGui(GuiBase):
     """
-    A graphical interface to set voltage and output (activity) state for a set of
-    analog output channels (e.g. ao0-ao3).
+    A graphical interface to set voltage and output (activity) state for one or
+    more analog output devices, each with a set of channels (e.g. ao0-ao3),
+    stacked vertically with a headline per device.
 
     Example config for copy-paste:
 
@@ -106,18 +118,24 @@ class AnalogOutputGui(GuiBase):
 
     analog_output_logic = Connector(interface=AnalogOutputLogic)
 
-    sigSetpointSet = QtCore.Signal(str, float)
-    sigActivitySet = QtCore.Signal(str, bool)
+    sigSetpointSet = QtCore.Signal(str, str, float)
+    sigActivitySet = QtCore.Signal(str, str, bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mw = None
+        # {(device_name, channel): {'label': ..., 'voltage': ..., 'output': ...}}
         self._widgets = dict()
+        # Every non-channel-row widget (headlines, dividers, column headers),
+        # tracked separately purely so _delete_channels() can clean them up
+        # too -- they carry no signals to disconnect.
+        self._section_widgets = []
 
     def on_activate(self):
         """ Create all UI objects and show the window. """
         self._mw = AnalogOutputMainWindow()
         self._widgets = dict()
+        self._section_widgets = []
 
         self._populate_channels()
 
@@ -169,8 +187,10 @@ class AnalogOutputGui(GuiBase):
         return fallback if value is None else value
 
     def _populate_channels(self):
-        """ Dynamically build one row per channel: label, voltage spinbox,
-        output toggle switch.
+        """ Dynamically build one section per connected device (headline row
+        with that device's qudi module name, followed by a column-header
+        row, followed by one row per channel: label, voltage spinbox,
+        output toggle switch), stacked vertically in the same grid.
 
         Voltage spinboxes use InstantStepDoubleSpinBox (see class above)
         rather than a plain QDoubleSpinBox, connected via its
@@ -193,54 +213,74 @@ class AnalogOutputGui(GuiBase):
         """
         logic = self.analog_output_logic()
         self._widgets = dict()
+        self._section_widgets = []
 
         header_font = QtGui.QFont()
         header_font.setBold(True)
 
-        headers = ['Channel', 'Voltage (V)', 'Output']
-        for col, text in enumerate(headers):
-            label = QtWidgets.QLabel(text)
-            label.setFont(header_font)
-            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
-            self._mw.main_layout.addWidget(label, 0, col)
+        headline_font = QtGui.QFont()
+        headline_font.setBold(True)
+        headline_font.setPointSize(14)
 
-        for row, channel in enumerate(logic.channels, start=1):
-            channel_label = QtWidgets.QLabel(channel.upper())
-            font = channel_label.font()
-            font.setBold(True)
-            font.setPointSize(12)
-            channel_label.setFont(font)
-            channel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        row = 0
+        for device_index, device_name in enumerate(logic.device_names):
+            headline = QtWidgets.QLabel(device_name)
+            headline.setFont(headline_font)
+            headline.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
+            # Extra top margin before every headline except the first one,
+            # so each device's section is visually separated from the
+            # previous device's last channel row, rather than sitting flush
+            # against it. (left, top, right, bottom)
+            top_margin = 0 if device_index == 0 else 20
+            headline.setContentsMargins(0, top_margin, 0, 0)
+            self._mw.main_layout.addWidget(headline, row, 0, 1, 3)
+            self._section_widgets.append(headline)
+            row += 1
 
-            voltage_min, voltage_max = logic.get_limits(channel)
-            voltage_spinbox = InstantStepDoubleSpinBox()
-            voltage_spinbox.setRange(voltage_min, voltage_max)
-            voltage_spinbox.setDecimals(3)
-            voltage_spinbox.setSingleStep(0.1)
-            voltage_spinbox.setSuffix(' V')
-            voltage_spinbox.setValue(self._safe(logic.get_setpoint(channel)))
-            voltage_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
-                                          QtWidgets.QSizePolicy.Policy.Preferred)
-            voltage_spinbox.sigValueCommitted.connect(
-                self.__get_setpoint_update_func(channel)
-            )
+            for channel in logic.channels_for_device(device_name):
+                key = (device_name, channel)
 
-            output_switch = ToggleSwitchWidget(switch_states=('Off', 'On'),
-                                               thumb_track_ratio=0.9,
-                                               scale_text_in_switch=True,
-                                               text_inside_switch=True)
-            output_switch.set_state('On' if self._safe(logic.get_activity_state(channel), False) else 'Off')
-            output_switch.sigStateChanged.connect(self.__get_activity_update_func(channel))
+                channel_label = QtWidgets.QLabel(channel.upper())
+                font = channel_label.font()
+                font.setBold(True)
+                font.setPointSize(12)
+                channel_label.setFont(font)
+                channel_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
-            self._widgets[channel] = {
-                'label': channel_label,
-                'voltage': voltage_spinbox,
-                'output': output_switch,
-            }
+                voltage_min, voltage_max = logic.get_limits(device_name, channel)
+                voltage_spinbox = InstantStepDoubleSpinBox()
+                voltage_spinbox.setRange(voltage_min, voltage_max)
+                voltage_spinbox.setDecimals(3)
+                voltage_spinbox.setSingleStep(0.1)
+                voltage_spinbox.setSuffix(' V')
+                voltage_spinbox.setValue(self._safe(logic.get_setpoint(device_name, channel)))
+                voltage_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                              QtWidgets.QSizePolicy.Policy.Preferred)
+                voltage_spinbox.sigValueCommitted.connect(
+                    self.__get_setpoint_update_func(device_name, channel)
+                )
 
-            self._mw.main_layout.addWidget(channel_label, row, 0)
-            self._mw.main_layout.addWidget(voltage_spinbox, row, 1)
-            self._mw.main_layout.addWidget(output_switch, row, 2)
+                output_switch = ToggleSwitchWidget(switch_states=('Off', 'On'),
+                                                   thumb_track_ratio=0.9,
+                                                   scale_text_in_switch=True,
+                                                   text_inside_switch=True)
+                output_switch.set_state(
+                    'On' if self._safe(logic.get_activity_state(device_name, channel), False) else 'Off'
+                )
+                output_switch.sigStateChanged.connect(
+                    self.__get_activity_update_func(device_name, channel)
+                )
+
+                self._widgets[key] = {
+                    'label': channel_label,
+                    'voltage': voltage_spinbox,
+                    'output': output_switch,
+                }
+
+                self._mw.main_layout.addWidget(channel_label, row, 0)
+                self._mw.main_layout.addWidget(voltage_spinbox, row, 1)
+                self._mw.main_layout.addWidget(output_switch, row, 2)
+                row += 1
 
         # Column stretch: label column stays fixed-width, voltage and output
         # columns grow to absorb extra horizontal space on window resize.
@@ -248,15 +288,16 @@ class AnalogOutputGui(GuiBase):
         self._mw.main_layout.setColumnStretch(1, 1)
         self._mw.main_layout.setColumnStretch(2, 1)
 
-        # Row stretch: header row stays fixed-height, each channel row gets
-        # equal stretch so vertical resizing distributes evenly across rows.
-        self._mw.main_layout.setRowStretch(0, 0)
-        for row in range(1, len(logic.channels) + 1):
-            self._mw.main_layout.setRowStretch(row, 1)
+        # Row stretch: every row (headlines, column headers, and channel
+        # rows alike) gets equal stretch so vertical resizing distributes
+        # evenly across the whole stacked layout.
+        for r in range(row):
+            self._mw.main_layout.setRowStretch(r, 1)
 
     def _delete_channels(self):
-        """ Delete all row widgets from the main layout. """
+        """ Delete all row and section widgets from the main layout. """
         self._widgets.clear()
+        self._section_widgets.clear()
         while True:
             item = self._mw.main_layout.takeAt(0)
             if item is None:
@@ -274,10 +315,10 @@ class AnalogOutputGui(GuiBase):
                 widget.setParent(None)
                 widget.deleteLater()
 
-    @QtCore.Slot(str, float)
-    def _setpoint_updated(self, channel, value):
+    @QtCore.Slot(str, str, float)
+    def _setpoint_updated(self, device_name, channel, value):
         """ Reflect a voltage change (from hardware or watchdog) in the spinbox. """
-        widget = self._widgets.get(channel)
+        widget = self._widgets.get((device_name, channel))
         if widget is None:
             return
         spinbox = widget['voltage']
@@ -285,12 +326,12 @@ class AnalogOutputGui(GuiBase):
         spinbox.setValue(value)
         spinbox.blockSignals(False)
 
-    @QtCore.Slot(str, bool)
-    def _activity_updated(self, channel, state):
+    @QtCore.Slot(str, str, bool)
+    def _activity_updated(self, device_name, channel, state):
         """ Reflect an activity/output state change (from hardware or watchdog)
         in the toggle switch.
         """
-        widget = self._widgets.get(channel)
+        widget = self._widgets.get((device_name, channel))
         if widget is None:
             return
         widget['output'].set_state('On' if state else 'Off')
@@ -303,12 +344,12 @@ class AnalogOutputGui(GuiBase):
             self._mw.action_periodic_state_check.setChecked(enabled)
             self._mw.action_periodic_state_check.blockSignals(False)
 
-    def __get_setpoint_update_func(self, channel):
+    def __get_setpoint_update_func(self, device_name, channel):
         def update_func(value):
-            self.sigSetpointSet.emit(channel, value)
+            self.sigSetpointSet.emit(device_name, channel, value)
         return update_func
 
-    def __get_activity_update_func(self, channel):
+    def __get_activity_update_func(self, device_name, channel):
         def update_func(state):
-            self.sigActivitySet.emit(channel, state == 'On')
+            self.sigActivitySet.emit(device_name, channel, state == 'On')
         return update_func
