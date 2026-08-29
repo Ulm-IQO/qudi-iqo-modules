@@ -205,6 +205,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     # EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
     _pb_extra_wait_time = ConfigOption('pb_extra_wait_time', default=0.0, missing='nothing')
 
+    # Arming verification (trigger_master='pulseblaster' path). After
+    # arming the AWG, pulser_on() polls the AWG's own SCPI status register
+    # (AWGControl:RSTATE?) until it reports "armed/waiting for trigger",
+    # instead of assuming a fixed delay is always long enough. This
+    # module's own get_status() wrapper does not distinguish "armed and
+    # waiting" from "actively running" for this hardware (both report the
+    # same qudi status code), so the AWG's native register is queried
+    # directly. Confirmed on hardware: RSTATE? returns 0 = stopped,
+    # 1 = armed/waiting for trigger, 2 = running.
+    _awg_rstate_armed_value  = ConfigOption('awg_rstate_armed_value', default=1, missing='nothing')
+    _awg_arm_timeout         = ConfigOption('awg_arm_timeout', default=5.0, missing='nothing')
+    _awg_arm_poll_interval   = ConfigOption('awg_arm_poll_interval', default=0.01, missing='nothing')
+
     # =========================================================================
     # Module lifecycle
     # =========================================================================
@@ -760,6 +773,40 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     # PulserInterface — start / stop
     # =========================================================================
 
+    def _wait_for_awg_armed(self, timeout, poll_interval):
+        """
+        Poll the AWG's own SCPI status register (AWGControl:RSTATE?)
+        until it reports the armed/waiting-for-trigger value, or until
+        timeout elapses.
+
+        Queried directly rather than through get_status(), because this
+        AWG module's qudi-level status code does not distinguish "armed
+        and waiting for a trigger edge" from "actively running" -- both
+        report the same code. RSTATE? has genuine hardware resolution:
+        confirmed on hardware as 0=stopped, 1=armed/waiting, 2=running.
+
+        @return (bool armed, int last_rstate_value)
+        """
+        elapsed = 0.0
+        last_rstate = None
+        while elapsed < timeout:
+            try:
+                last_rstate = int(self.awg().query('AWGControl:RSTATE?'))
+            except Exception as exc:
+                self.log.error(
+                    'pulser_on: failed to query AWG RSTATE?: {0}'.format(exc)
+                )
+                return False, last_rstate
+            if last_rstate == self._awg_rstate_armed_value:
+                self.log.debug(
+                    'AWG reached RSTATE={0} (armed) after {1:.3f}s.'
+                    ''.format(last_rstate, elapsed)
+                )
+                return True, last_rstate
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+        return False, last_rstate
+
     def pulser_on(self):
         """
         Start combined output. Waits for the AWG to report a loaded
@@ -789,7 +836,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
         if master == 'pulseblaster':
             self.awg().pulser_on()
-            time.sleep(0.1)
+            armed, final_rstate = self._wait_for_awg_armed(
+                self._awg_arm_timeout, self._awg_arm_poll_interval
+            )
+            if not armed:
+                self.log.error(
+                    'pulser_on: AWG did not reach armed RSTATE={0} within '
+                    '{1:.2f}s (last observed RSTATE={2}). PulseBlaster was '
+                    'NOT started, to avoid firing a trigger edge before the '
+                    'AWG is ready to catch it.'
+                    ''.format(self._awg_rstate_armed_value,
+                              self._awg_arm_timeout, final_rstate)
+                )
+                return -1
             self.pulseblaster().pulser_on()
         else:
             self.pulseblaster().pulser_on()
