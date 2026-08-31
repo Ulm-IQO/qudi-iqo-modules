@@ -559,6 +559,37 @@ class SG384(MicrowaveInterface):
 
         self._check_errors()
 
+    def iq_modulator_active(self):
+        """ Live hardware check: True only if the instrument currently
+        reports TYPE=6 (IQ), QFNC=5 (External I/Q source), and MODL=1
+        (modulation enabled) -- i.e. genuinely configured and enabled for
+        external IQ modulation right now, on the real hardware, not just
+        what assert_iq_external is configured to enforce on the next
+        set_cw() call. assert_iq_external is only ever pushed to hardware
+        from inside set_cw() -- at any other time (e.g. right after
+        on_activate(), before set_cw() has been called this session) the
+        instrument's actual modulation state may still reflect whatever
+        was left over from a previous session or the front panel.
+
+        Public, non-interface method -- intended for other modules (e.g.
+        AlwaysOnMicrowaveInterfuse) that need to verify this live state
+        before deciding whether it's safe to auto-enable continuous
+        output. Uses the same query-and-compare-string pattern already
+        used for readback verification in set_cw().
+
+        @return bool: True if TYPE/QFNC/MODL are all confirmed as above.
+        """
+        try:
+            type_ok = self._query('TYPE?') == '6'
+            qfnc_ok = self._query('QFNC?') == '5'
+            modl_ok = self._query('MODL?') == '1'
+            return type_ok and qfnc_ok and modl_ok
+        except Exception as exc:
+            self.log.warning(
+                'SG384: iq_modulator_active() check failed: {0}'.format(exc)
+            )
+            return False
+
     # =========================================================================
     # MicrowaveInterface -- scanning (not implemented)
     # =========================================================================
