@@ -1,6 +1,6 @@
 from __future__ import annotations
 import numpy as np
-from hook import Hook
+from qudi.util.hook import Hook
 
 # Sample hook class for numpy ndarray to pass it as is
 class NdarrayHook(Hook):
