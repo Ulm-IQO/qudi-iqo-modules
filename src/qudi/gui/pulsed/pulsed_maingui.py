@@ -40,6 +40,41 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
+from qudi.logic.pulsed.pulsed_fsm.generator_state import GeneratorState
+from qudi.logic.pulsed.pulsed_fsm.measurement_state import MeasurementState
+from qudi.logic.pulsed.pulsed_fsm.master_state import SampLoadState
+
+#: Status bar text per state. Only the idle members are absent - see _state_text() for what happens
+#: to a state nobody has given a caption, which deliberately is not "Ready".
+_STATE_TEXT = {
+    GeneratorState.GENERATING: 'Generating…',
+    GeneratorState.SAMPLING_ENSEMBLE: 'Sampling ensemble…',
+    GeneratorState.SAMPLING_SEQUENCE: 'Sampling sequence…',
+    GeneratorState.BENCHMARKING: 'Benchmarking pulse generator…',
+    MeasurementState.RUNNING: 'Measurement running',
+    MeasurementState.PAUSED: 'Measurement paused',
+    # The generator does not lock itself while uploading, so its own machine reads IDLE for the
+    # whole of this step. Without this entry the label says "Ready" through a multi-minute upload,
+    # while the run/stop action sits greyed out - the label and the buttons contradicting each other.
+    SampLoadState.LOADING: 'Loading…',
+}
+
+#: Shown when all three machines are idle.
+_IDLE_TEXT = 'Ready'
+
+#: Between two activities that are genuinely running at once.
+_STATE_JOIN = ' · '
+
+
+def _state_text(state):
+    """Caption for one state, falling back to the state's own name.
+
+    Never "Ready" for an unrecognised state: a member added to one of the enums without a caption
+    here is busy by definition, and reporting it as idle would be the exact fault this display was
+    extended to fix. The bare enum name is ugly, which is the point - it is visible.
+    """
+    return _STATE_TEXT.get(state) or getattr(state, 'name', str(state))
 
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
@@ -300,6 +335,7 @@ class PulsedMeasurementGui(GuiBase):
             self.show_predefined_methods_config)
         self._mw.pulser_on_off_PushButton.clicked.connect(self.pulser_on_off_clicked)
         self._mw.clear_device_PushButton.clicked.connect(self.clear_pulser_clicked)
+        self._mw.reset_toolchain_PushButton.clicked.connect(self.reset_toolchain_clicked)
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
         self._mw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
         self._mw.action_pull_data.triggered.connect(self.pull_data_clicked)
@@ -459,6 +495,17 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+
+        self.pulsedmasterlogic().sigGeneratorStateChanged.connect(self.state_display_updated)
+        self.pulsedmasterlogic().sigMeasurementStateChanged.connect(self.state_display_updated)
+        self.pulsedmasterlogic().sigSampLoadStateChanged.connect(self.state_display_updated)
+        # Queued: reset_toolchain() stops the measurement through a queued emit of its own, so the
+        # measurement_running flag this reads may still be stale for another hop. Harmless - the
+        # resync is about re-enabling controls, and sigMeasurementStatusUpdated corrects the rest a
+        # moment later.
+        self.pulsedmasterlogic().sigToolchainReset.connect(
+            self._resync_from_logic, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.state_display_updated()
         return
 
     def _disconnect_main_window_signals(self):
@@ -466,6 +513,7 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.action_Predefined_Methods_Config.triggered.disconnect()
         self._mw.pulser_on_off_PushButton.clicked.disconnect()
         self._mw.clear_device_PushButton.clicked.disconnect()
+        self._mw.reset_toolchain_PushButton.clicked.disconnect()
         self._mw.action_run_stop.triggered.disconnect()
         self._mw.action_continue_pause.triggered.disconnect()
         self._mw.action_pull_data.triggered.disconnect()
@@ -622,7 +670,49 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.pulsedmasterlogic().sigGeneratorStateChanged.disconnect()
+        self.pulsedmasterlogic().sigMeasurementStateChanged.disconnect()
+        self.pulsedmasterlogic().sigSampLoadStateChanged.disconnect()
+        self.pulsedmasterlogic().sigToolchainReset.disconnect()
         return
+
+    @QtCore.Slot()
+    @QtCore.Slot(object, object)
+    def state_display_updated(self, _old_state=None, _new_state=None):
+        """Refresh the toolbar state label and the busy spinner from all three state machines.
+
+        Reads the current states rather than the signal arguments, since any of the three may have
+        sent this and the label describes all of them together.
+
+        The three are not alternatives - more than one can be running at once. A measurement does
+        not stop the generator being driven, which is exactly how the pulse generator ends up
+        rewritten mid-acquisition, so every active one is listed rather than only the first. Showing
+        just the measurement there would hide the cause of the very failure most likely to follow.
+        """
+        master = self.pulsedmasterlogic()
+        generator = master.generator_state
+
+        # Most-significant first, so the compound reads "Measurement running · Sampling ensemble…".
+        active = []
+        if master.measurement_state is not MeasurementState.IDLE:
+            active.append(_state_text(master.measurement_state))
+        if generator is not GeneratorState.IDLE:
+            active.append(_state_text(generator))
+        elif master.sampload_state is SampLoadState.LOADING:
+            # Only when the generator is not already speaking for itself. LOADING is the one step of
+            # the chain it does not cover: it does not lock while uploading. The chain's other two
+            # states are always accompanied by a generator state that describes them better.
+            active.append(_state_text(SampLoadState.LOADING))
+
+        busy = bool(active)
+        self._mw.state_Label.setText(
+            '  {0}'.format(_STATE_JOIN.join(active) if busy else _IDLE_TEXT)
+        )
+        self._mw.state_Label.setStyleSheet(
+            'color: {0};'.format((palette.orange if busy else palette.green).name())
+        )
+        # The spinner follows every busy state, not just sampload/benchmark as before.
+        self._mw.loading_indicator_action.setVisible(busy)
 
     ###########################################################################
     #                    Main window related methods                          #
@@ -650,6 +740,16 @@ class PulsedMeasurementGui(GuiBase):
                                                     'from all loaded files.')
         self._mw.control_ToolBar.addWidget(self._mw.clear_device_PushButton)
 
+        # Never disabled anywhere: it is the way out when everything else has been greyed out, and
+        # a disabled escape hatch is the failure it exists to undo.
+        self._mw.reset_toolchain_PushButton = QtWidgets.QPushButton(self._mw)
+        self._mw.reset_toolchain_PushButton.setText('Reset')
+        self._mw.reset_toolchain_PushButton.setToolTip(
+            'Return the pulsed toolchain to idle after an error.\n'
+            'Stops any running measurement and clears a stuck generate/sample/load chain.\n'
+            'Does not change settings, delete assets, or clear the pulse generator memory.')
+        self._mw.control_ToolBar.addWidget(self._mw.reset_toolchain_PushButton)
+
         self._mw.current_loaded_asset_Label = QtWidgets.QLabel(self._mw)
         sizepolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
                                            QtWidgets.QSizePolicy.Policy.Fixed)
@@ -661,6 +761,15 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.current_loaded_asset_Label.setText('  No Asset Loaded')
         self._mw.current_loaded_asset_Label.setToolTip('Display the currently loaded asset.')
         self._mw.control_ToolBar.addWidget(self._mw.current_loaded_asset_Label)
+
+        # What the toolchain is doing right now, driven by the three state machines.
+        self._mw.state_Label = QtWidgets.QLabel(self._mw)
+        font = self._mw.state_Label.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 1)
+        self._mw.state_Label.setFont(font)
+        self._mw.state_Label.setToolTip('Current state of the pulsed toolchain.')
+        self._mw.control_ToolBar.addWidget(self._mw.state_Label)
 
         self._mw.loading_indicator = CircleLoadingIndicator(parent=self._mw)
         self._mw.loading_indicator_action = self._mw.control_ToolBar.addWidget(
@@ -686,9 +795,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(bool)
     def pulser_running_updated(self, is_running):
         """
-
-        @param is_running:
-        @return:
+        Parameters
+        ----------
+        is_running
         """
         # block signals
         self._mw.pulser_on_off_PushButton.blockSignals(True)
@@ -715,6 +824,62 @@ class PulsedMeasurementGui(GuiBase):
     def clear_pulser_clicked(self):
         """ Delete all loaded files in the device's current memory. """
         self.pulsedmasterlogic().clear_pulse_generator()
+        return
+
+    @QtCore.Slot()
+    def reset_toolchain_clicked(self):
+        """Ask first if it would end a measurement, then hand off to the logic.
+
+        The confirmation is only for the case that loses something: stopping a running measurement
+        discards whatever has been acquired and not saved. With nothing running there is nothing to
+        lose, so the reset just happens.
+        """
+        if self.pulsedmasterlogic().status_dict['measurement_running']:
+            answer = QtWidgets.QMessageBox.question(
+                self._mw,
+                'Reset pulsed toolchain',
+                'A measurement is currently running and will be stopped.\n'
+                'Unsaved measurement data will be lost.\n\nContinue?',
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+        self.pulsedmasterlogic().reset_toolchain()
+        return
+
+    @QtCore.Slot()
+    def _resync_from_logic(self):
+        """Re-derive every widget's enabled state from the logic.
+
+        The cure for a GUI left out of step by an update that never arrived. Rather than a second
+        copy of the widget lists, this calls the same slots that maintain them normally - they are
+        all idempotent, and keeping them as the only place a given widget is touched is what stops
+        the two drifting apart.
+
+        Order matters at the end: sampling_or_loading_finished() only re-enables the run/stop action
+        when the chain has actually been released, so it has to run after reset_toolchain() has done
+        that. It is also the only path that re-enables that action after a benchmark.
+        """
+        master = self.pulsedmasterlogic()
+        self.measurement_status_updated(
+            master.status_dict['measurement_running'],
+            master.measurement_state is MeasurementState.PAUSED,
+        )
+        self.pulser_running_updated(master.status_dict['pulser_running'])
+        # Reading the loaded asset goes to the pulse generator, which is quite possibly the thing
+        # that is unwell - this runs when something has already gone wrong. Showing it as empty is
+        # worse than showing it correctly but far better than an exception out of a queued slot,
+        # which would abandon the rest of the resync and leave the toolbar dead.
+        try:
+            asset_name, asset_type = master.loaded_asset
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator '
+                               'while resyncing the GUI. Showing it as empty:')
+            asset_name, asset_type = '', ''
+        self.loaded_asset_updated(asset_name, asset_type)
+        self.sampling_or_loading_finished()
+        self.state_display_updated()
         return
 
     @QtCore.Slot(str, str)
@@ -744,7 +909,10 @@ class PulsedMeasurementGui(GuiBase):
     def measurement_run_stop_clicked(self, isChecked):
         """ Manages what happens if pulsed measurement is started or stopped.
 
-        @param bool isChecked: start scan if that is possible
+        Parameters
+        ----------
+        isChecked : bool
+            Start scan if that is possible.
         """
         self.pulsedmasterlogic().toggle_pulsed_measurement(isChecked)
         return
@@ -758,10 +926,10 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(bool, bool)
     def measurement_status_updated(self, is_running, is_paused):
         """
-
-        @param is_running:
-        @param is_paused:
-        @return:
+        Parameters
+        ----------
+        is_running
+        is_paused
         """
         # block signals
         self._mw.action_run_stop.blockSignals(True)
@@ -909,10 +1077,11 @@ class PulsedMeasurementGui(GuiBase):
         """
         Refreshes the elapsed time and sweeps of the measurement.
 
-        @param float elapsed_time:
-        @param int elapsed_sweeps:
-        @param float timer_interval:
-        @return:
+        Parameters
+        ----------
+        elapsed_time : float
+        elapsed_sweeps : int
+        timer_interval : float
         """
         time_str = str(datetime.timedelta(seconds=elapsed_time)).rsplit('.', 1)[0]
         # block signals
@@ -1301,6 +1470,23 @@ class PulsedMeasurementGui(GuiBase):
                     widget.addItem(option.name, option)
                 widget.setCurrentText(value.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
+            elif issubclass(type(value), PulseEnvelope):
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(value.type.name)
+                widget.currentTextChanged.connect(self.generation_parameters_changed)
+            else:
+                # Without this branch `widget` would still be bound to the previous iteration's
+                # widget, which then gets silently re-registered under this parameter's name.
+                # Reachable for any generation parameter whose type is outside the set above -
+                # note the checks are `type(x) is`, not isinstance, so an int/float subclass
+                # (numpy scalar, IntEnum) lands here too.
+                self.log.error('The generation parameter "{0}" has an invalid type ({1}).\n'
+                               'Only str, int, float, bool, Enum and PulseEnvelope can be shown '
+                               'in the global parameters editor - skipping it.'
+                               ''.format(param, type(value).__name__))
+                continue
 
             widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
 
@@ -1446,9 +1632,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def pulse_generator_settings_updated(self, settings_dict):
         """
-
-        @param settings_dict
-        @return:
+        Parameters
+        ----------
+        settings_dict
         """
         # block signals
         self._pgs.gen_sample_freq_DSpinBox.blockSignals(True)
@@ -1603,8 +1789,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def generation_parameters_changed(self):
         """
-
-        @return:
         """
         settings_dict = dict()
         settings_dict['laser_channel'] = self._pg.gen_laserchannel_ComboBox.currentText()
@@ -1638,9 +1822,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def generation_parameters_updated(self, settings_dict):
         """
-
-        @param settings_dict:
-        @return:
+        Parameters
+        ----------
+        settings_dict
         """
         # block signals
         self._pg.gen_laserchannel_ComboBox.blockSignals(True)
@@ -1677,7 +1861,12 @@ class PulsedMeasurementGui(GuiBase):
                     elif hasattr(widget, 'setText'):
                         widget.setText(settings_dict[param_name])
                     elif hasattr(widget, 'currentText'):
-                        index = widget.findText(str(settings_dict[param_name].name))
+                        text = ""
+                        if issubclass(type(settings_dict[param_name]), Enum):
+                            text = settings_dict[param_name].name
+                        elif isinstance(settings_dict[param_name], PulseEnvelope):
+                            text = settings_dict[param_name].type.name
+                        index = widget.findText(str(text))
                         widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 
@@ -1690,8 +1879,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def block_add_last_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_editor.add_elements(1, self._pg.block_editor.rowCount())
         return
@@ -1699,8 +1886,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def block_del_last_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_editor.remove_elements(1, self._pg.block_editor.rowCount() - 1)
         return
@@ -1708,8 +1893,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def block_add_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._pg.block_editor.currentRow()
         self._pg.block_editor.add_elements(1, index + 1)
@@ -1718,8 +1901,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def block_del_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._pg.block_editor.currentRow()
         self._pg.block_editor.remove_elements(1, index)
@@ -1728,8 +1909,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def block_clear_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_editor.clear()
         return
@@ -1737,8 +1916,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def organizer_add_last_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_organizer.add_blocks(1, self._pg.block_organizer.rowCount())
         return
@@ -1746,8 +1923,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def organizer_del_last_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_organizer.remove_blocks(1, self._pg.block_organizer.rowCount() - 1)
         return
@@ -1755,8 +1930,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def organizer_add_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._pg.block_organizer.currentRow()
         self._pg.block_organizer.add_blocks(1, index + 1)
@@ -1765,8 +1938,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def organizer_del_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._pg.block_organizer.currentRow()
         self._pg.block_organizer.remove_blocks(1, index)
@@ -1775,8 +1946,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def organizer_clear_clicked(self):
         """
-
-        @return:
         """
         self._pg.block_organizer.clear()
         return
@@ -1883,9 +2052,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def update_block_dict(self, block_dict):
         """
-
-        @param block_dict:
-        @return:
+        Parameters
+        ----------
+        block_dict
         """
         block_names = natural_sort(block_dict)
         # Check if a block has been added. In that case set the current index to the new one.
@@ -1912,9 +2081,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def update_ensemble_dict(self, ensemble_dict):
         """
-
-        @param ensemble_dict:
-        @return:
+        Parameters
+        ----------
+        ensemble_dict
         """
         ensemble_names = natural_sort(ensemble_dict)
         # Check if an ensemble has been added. In that case set the current index to the new one.
@@ -2002,6 +2171,9 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().load_ensemble(ensemble_name)
         return
 
+    # The asset label and the spinner are no longer touched here: what the toolchain is doing now
+    # has its own widget, updated by state_display_updated() from the state machines. These three
+    # slots only enable/disable the run button, which is not derivable from those states.
     @QtCore.Slot()
     def sampling_or_loading_busy(self):
         # Queued emissions can still be in flight while the module is being torn down, at which
@@ -2012,10 +2184,6 @@ class PulsedMeasurementGui(GuiBase):
         if self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  loading...')
-            self._mw.loading_indicator_action.setVisible(True)
-
     @QtCore.Slot()
     def benchmark_busy(self):
         if not self.pulsedmasterlogic.is_connected:
@@ -2023,23 +2191,19 @@ class PulsedMeasurementGui(GuiBase):
         if self.pulsedmasterlogic().status_dict['benchmark_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  benchmarking...')
-            self._mw.loading_indicator_action.setVisible(True)
-
     @QtCore.Slot()
     def sampling_or_loading_finished(self):
         if not self.pulsedmasterlogic.is_connected:
             return
         if not self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
-            self._mw.loading_indicator_action.setVisible(False)
 
     def generate_predefined_clicked(self, method_name, sample_and_load=False):
         """
-
-        @param str method_name:
-        @param bool sample_and_load:
+        Parameters
+        ----------
+        method_name : str
+        sample_and_load : bool
         """
         # get parameters from input widgets
         # Store parameters together with the parameter names in a dictionary
@@ -2070,7 +2234,9 @@ class PulsedMeasurementGui(GuiBase):
         )
 
     @QtCore.Slot(object, bool)
-    def predefined_generated(self, asset_name, is_sequence):
+    def predefined_generated(self, asset_name, produced_sequence):
+        """`produced_sequence` reports whether the generate method returned any PulseSequence - a
+        different question from PulseSequence.is_sequence, which asks whether an object is one."""
         # Enable all "Generate" buttons in predefined methods tab
         for button in self._pm.gen_buttons.values():
             button.setEnabled(True)
@@ -2086,7 +2252,7 @@ class PulsedMeasurementGui(GuiBase):
             self._pg.sample_ensemble_PushButton.setEnabled(False)
             self._pg.samplo_ensemble_PushButton.setEnabled(False)
             self._pg.load_ensemble_PushButton.setEnabled(False)
-            if is_sequence:
+            if produced_sequence:
                 self._sg.load_sequence_PushButton.setEnabled(False)
                 self._sg.samplo_sequence_PushButton.setEnabled(False)
                 self._sg.sample_sequence_PushButton.setEnabled(False)
@@ -2095,8 +2261,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(list)
     def waveform_list_updated(self, waveform_list):
         """
-
-        @param list waveform_list:
+        Parameters
+        ----------
+        waveform_list : list
         """
         # TODO: This method will be needed later on to implement an upload center
         pass
@@ -2118,8 +2285,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def sequence_add_last_clicked(self):
         """
-
-        @return:
         """
         self._sg.sequence_editor.add_steps(1, self._sg.sequence_editor.rowCount())
         return
@@ -2127,8 +2292,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def sequence_del_last_clicked(self):
         """
-
-        @return:
         """
         self._sg.sequence_editor.remove_steps(1, self._sg.sequence_editor.rowCount() - 1)
         return
@@ -2136,8 +2299,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def sequence_add_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._sg.sequence_editor.currentRow()
         self._sg.sequence_editor.add_steps(1, index + 1)
@@ -2146,8 +2307,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def sequence_del_sel_clicked(self):
         """
-
-        @return:
         """
         index = self._sg.sequence_editor.currentRow()
         self._sg.sequence_editor.remove_steps(1, index)
@@ -2156,8 +2315,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def sequence_clear_clicked(self):
         """
-
-        @return:
         """
         self._sg.sequence_editor.clear()
         return
@@ -2216,9 +2373,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def update_sequence_dict(self, sequence_dict):
         """
-
-        @param sequence_dict:
-        @return:
+        Parameters
+        ----------
+        sequence_dict
         """
         sequence_names = natural_sort(sequence_dict)
         # Check if a sequence has been added. In that case set the current index to the new one.
@@ -2307,8 +2464,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(list)
     def sequence_list_updated(self, sequence_list):
         """
-
-        @param list sequence_list:
+        Parameters
+        ----------
+        sequence_list : list
         """
         # TODO: This method will be needed later on to implement an upload center
         pass
@@ -2374,8 +2532,8 @@ class PulsedMeasurementGui(GuiBase):
 
         # Fit settings dialog
         fit_containers = self.pulsedmasterlogic().fit_containers
-        self._pa.first_plot_fitwidget.link_fit_container(fit_containers[0])
-        self._pa.second_plot_fitwidget.link_fit_container(fit_containers[1])
+        self._pa.first_plot_fitwidget.link_fit_container(fit_containers.primary)
+        self._pa.second_plot_fitwidget.link_fit_container(fit_containers.alternative)
         self._pa.first_plot_fitwidget.sigDoFit.connect(
             lambda x: self.pulsedmasterlogic().do_fit(x, False)
         )
@@ -2402,6 +2560,20 @@ class PulsedMeasurementGui(GuiBase):
 
         # apply hardware constraints
         self._pa_apply_hardware_constraints()
+
+        # Dynamically populate the alternative (second) plot selection from the available methods
+        # discovered by the logic (AltPlotAnalyzer). 'None' is always offered to disable the plot.
+        self._pa.second_plot_ComboBox.blockSignals(True)
+        self._pa.second_plot_ComboBox.clear()
+        self._pa.second_plot_ComboBox.addItem('None')
+        for method_name in natural_sort(self.pulsedmasterlogic().alt_plot_methods):
+            self._pa.second_plot_ComboBox.addItem(method_name)
+        self._pa.second_plot_ComboBox.blockSignals(False)
+
+        self._pa.ana_param_errorbars_CheckBox.setToolTip(
+            'Controls whether the saved plot thumbnail shows error bars. The saved data file always '
+            'includes error data regardless of this setting.'
+        )
 
         # Recall StatusVars into widgets
         self._pa.ana_param_errorbars_CheckBox.blockSignals(True)
@@ -2459,8 +2631,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def measurement_data_updated(self):
         """
-
-        @return:
         """
         signal_data = self.pulsedmasterlogic().signal_data
         signal_alt_data = self.pulsedmasterlogic().signal_alt_data
@@ -2514,11 +2684,11 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(str, object, bool)
     def fit_data_updated(self, fit_config, result, use_alternative_data):
         """
-
-        @param str fit_config:
-        @param object result:
-        @param bool use_alternative_data:
-        @return:
+        Parameters
+        ----------
+        fit_config : str
+        result : object
+        use_alternative_data : bool
         """
 
         # Update plot.
@@ -2576,8 +2746,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def microwave_settings_updated(self, settings_dict):
         """
-
-        @param dict settings_dict:
+        Parameters
+        ----------
+        settings_dict : dict
         """
         # block signals
         self._pa.ext_control_mw_freq_DoubleSpinBox.blockSignals(True)
@@ -2602,9 +2773,9 @@ class PulsedMeasurementGui(GuiBase):
 
     def toggle_microwave_settings_editor(self, show_editor):
         """
-
-        @param show_editor:
-        @return:
+        Parameters
+        ----------
+        show_editor
         """
         if show_editor:
             self._pa.ext_control_mw_freq_Label.setVisible(True)
@@ -2625,16 +2796,12 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(bool)
     def microwave_running_updated(self, is_running):
         """
-
-        @return:
         """
         pass
 
     @QtCore.Slot()
     def fast_counter_settings_changed(self):
         """
-
-        @return:
         """
         if self._mw.action_run_stop.isChecked():
             return
@@ -2647,8 +2814,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def fast_counter_settings_updated(self, settings_dict):
         """
-
-        @param dict settings_dict:
+        Parameters
+        ----------
+        settings_dict : dict
         """
         # block signals
         self._pa.ana_param_record_length_DoubleSpinBox.blockSignals(True)
@@ -2674,8 +2842,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def measurement_settings_changed(self):
         """
-
-        @return:
         """
         # Do nothing if measurement is already running
         if self._mw.action_run_stop.isChecked():
@@ -2705,8 +2871,9 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def measurement_settings_updated(self, settings_dict):
         """
-
-        @param dict settings_dict:
+        Parameters
+        ----------
+        settings_dict : dict
         """
         # block signals
         self._pa.ana_param_ignore_first_CheckBox.blockSignals(True)
@@ -2794,9 +2961,9 @@ class PulsedMeasurementGui(GuiBase):
 
     def set_plot_dimensions(self):
         """
-
-        @param alternating:
-        @return:
+        Parameters
+        ----------
+        alternating
         """
         number_of_signals = self.pulsedmasterlogic().signal_data.shape[0] - 1
         number_of_alt_signals = self.pulsedmasterlogic().signal_alt_data.shape[0] - 1
@@ -2849,8 +3016,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(bool)
     def toggle_error_bars(self, show_bars):
         """
-
-        @return:
         """
         is_alternating = self.signal_image2 in self._pa.pulse_analysis_PlotWidget.items()
         if show_bars:
@@ -2880,11 +3045,15 @@ class PulsedMeasurementGui(GuiBase):
         if second_plot != self.pulsedmasterlogic().alternative_data_type:
             self.pulsedmasterlogic().set_alternative_data_type(second_plot)
 
-        if self.pulsedmasterlogic().alternative_data_type == 'Delta':
-            self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_x_axis_name_LineEdit.text()
-            self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_x_axis_unit_LineEdit.text()
-            self._ana_param_second_plot_y_axis_name_text = self._as.ana_param_y_axis_name_LineEdit.text()
-            self._ana_param_second_plot_y_axis_unit_text = self._as.ana_param_y_axis_unit_LineEdit.text()
+        # Axis labels for the selected method are provided by the logic (computed from the active
+        # measurement settings), 
+        current_type = self.pulsedmasterlogic().alternative_data_type
+        method_labels = self.pulsedmasterlogic().alt_plot_labels.get(current_type)
+        if method_labels:
+            self._ana_param_second_plot_x_axis_name_text = method_labels.get('x_label', '')
+            self._ana_param_second_plot_x_axis_unit_text = method_labels.get('x_unit', '')
+            self._ana_param_second_plot_y_axis_name_text = method_labels.get('y_label', '')
+            self._ana_param_second_plot_y_axis_unit_text = method_labels.get('y_unit', '')
         else:
             self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_second_plot_x_axis_name_LineEdit.text()
             self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_second_plot_x_axis_unit_LineEdit.text()
@@ -3002,9 +3171,10 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def extraction_settings_updated(self, settings_dict):
         """
-
-        @param dict settings_dict: dictionary with parameters to update
-        @return:
+        Parameters
+        ----------
+        settings_dict : dict
+            Dictionary with parameters to update.
         """
         # If no widgets have been generated yet, generate them now.
         if self._extraction_param_widgets is None:
@@ -3039,8 +3209,6 @@ class PulsedMeasurementGui(GuiBase):
 
     def _delete_extraction_param_widgets(self):
         """
-
-        @return:
         """
         for index in reversed(range(len(self._extraction_param_widgets))):
             label = self._extraction_param_widgets[index][0]
@@ -3062,9 +3230,9 @@ class PulsedMeasurementGui(GuiBase):
 
     def _create_extraction_param_widgets(self, extraction_settings):
         """
-
-        @param extraction_settings:
-        @return:
+        Parameters
+        ----------
+        extraction_settings
         """
         self._extraction_param_widgets = list()
         layout_row = 1
@@ -3111,8 +3279,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def analysis_settings_changed(self):
         """
-
-        @return:
         """
         settings_dict = dict()
 
@@ -3147,9 +3313,10 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot(dict)
     def analysis_settings_updated(self, settings_dict):
         """
-
-        @param dict settings_dict: dictionary with parameters to update
-        @return:
+        Parameters
+        ----------
+        settings_dict : dict
+            Dictionary with parameters to update.
         """
 
         # block signals
@@ -3199,8 +3366,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def update_laser_data(self):
         """
-
-        @return:
         """
         laser_index = self._pe.laserpulses_ComboBox.currentIndex()
         show_raw = self._pe.laserpulses_display_raw_CheckBox.isChecked()

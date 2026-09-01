@@ -60,6 +60,7 @@ class FastCounterDummy(FastCounterInterface):
         self.statusvar = 0
         self._binwidth = 1
         self._gate_length_bins = 8192
+        self._number_of_gates = 1
         return
 
     def on_deactivate(self):
@@ -127,6 +128,7 @@ class FastCounterDummy(FastCounterInterface):
         """
         self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
         self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
+        self._number_of_gates = number_of_gates
         actual_binwidth = self._binwidth * 1000 / 950e9
         actual_length = self._gate_length_bins * actual_binwidth
         self.statusvar = 1
@@ -153,7 +155,16 @@ class FastCounterDummy(FastCounterInterface):
             return -1
 
         if self._gated:
-            self._count_data = self._count_data.transpose()
+            # np.loadtxt returns a 1D array for this single-column demo trace, and .transpose()
+            # is a no-op on a 1D array - it will NOT turn this into the 2D (gates, bins) shape
+            # the rest of the pulsed logic expects when gated. Synthesize a proper 2D array
+            # instead, by tiling/truncating the loaded trace to the configured gate length and
+            # stacking it across the configured number of gates.
+            flat = self._count_data.ravel()
+            gate_len = self._gate_length_bins
+            reps = int(np.ceil(gate_len / flat.size)) if flat.size else 1
+            tiled = np.tile(flat, max(reps, 1))[:gate_len]
+            self._count_data = np.tile(tiled, (self._number_of_gates, 1))
         return 0
 
     def pause_measure(self):

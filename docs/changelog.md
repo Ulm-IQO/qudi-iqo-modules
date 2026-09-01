@@ -3,13 +3,28 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
+- `generation_parameters` is now a typed schema (`GenerationParameters`) rather than a free-form `dict`. Setting a name that is not part of it is rejected with a warning instead of silently added and persisted. Declare lab-specific parameters via `PredefinedGeneratorBase.generation_parameter_contributors` on the generator that needs them, or in `logic/pulsed/pulsed_data/generation_parameter_extensions.py` for the whole setup
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
+- Fix several `POIManagerGUI` `PySide6` bugs
+- Fix discovery of `AltPlotMethodBase` subclasses
+- Fixed generation parameters silently coming up empty on `Python 3.14`, which left the Predefined Methods tab without any parameter widgets and wrote an empty `generation_parameters` block to the status file
 
 ### New Features
+- Predefined generator classes can declare the global generation parameters they need via `generation_parameter_contributors`, including generators loaded through `additional_predefined_methods_path`
+- Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
+- Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
+- Added pulse shaping to the `pulsed` tool chain
+- supporting custom alternative plots in pulsed analysis
 
 ### Other
+- Displaying Qudi logs in the test workflow upon test failure
 
 ## Version 1.0.0
 
