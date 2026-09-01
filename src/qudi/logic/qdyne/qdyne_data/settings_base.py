@@ -89,6 +89,10 @@ class QdyneSettingsBase:
 
     name: str = ''
 
+    def __post_init__(self):
+        """Validation hook. A no-op here so every subclass can safely call super().__post_init__()
+        as the first line of its own, however deep the inheritance goes."""
+
     # ---------------------------------------------------------------- introspection helpers
 
     @classmethod

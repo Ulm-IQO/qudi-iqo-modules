@@ -75,6 +75,14 @@ class QdyneMainGui(GuiBase):
         self._sew.connect_signals()
         self._ttaw.connect_signals()
 
+        # Follow the measurement's REAL state. Nothing used to feed the logic's answer back, so a
+        # start the logic refused - no waveform loaded, a pulse generator that would not switch on,
+        # or the analysis loop giving up after MAX_CONSECUTIVE_FAILURES - left this button
+        # depressed with nothing running.
+        measure = self.logic().measure
+        measure.sigMeasurementStarted.connect(self._measurement_started)
+        measure.sigMeasurementStopped.connect(self._measurement_stopped)
+
     def on_deactivate(self):
         self._deactivate_ui()
         self._disconnect()
@@ -89,6 +97,14 @@ class QdyneMainGui(GuiBase):
         self._ttaw.deactivate()
 
     def _disconnect(self):
+        measure = self.logic().measure
+        for signal, slot in ((measure.sigMeasurementStarted, self._measurement_started),
+                             (measure.sigMeasurementStopped, self._measurement_stopped)):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+
         self._mainw.disconnect_signals()
         self._gw.disconnect_signals()
         self._gsw.disconnect_signals()
@@ -116,4 +132,34 @@ class QdyneMainGui(GuiBase):
 
         self.logic().toggle_qdyne_measurement(isChecked)
         return
+
+    @QtCore.Slot()
+    def _measurement_started(self):
+        self._show_measurement_running(True)
+
+    @QtCore.Slot()
+    def _measurement_stopped(self):
+        self._show_measurement_running(False)
+
+    def _show_measurement_running(self, running: bool) -> None:
+        """Put the toolbar button in the state the measurement is actually in.
+
+        blockSignals is belt and braces: setChecked() emits `toggled`, not `triggered`, and it is
+        `triggered` that measurement_run_stop_clicked() hangs off - but nothing should be able to
+        turn a state report back into a command.
+        """
+        action = self._mainw.action_run_stop
+        if action.isChecked() == running:
+            return
+        action.blockSignals(True)
+        try:
+            action.setChecked(running)
+        finally:
+            action.blockSignals(False)
+        # The spin boxes follow the run state; measurement_run_stop_clicked() normally does this,
+        # but it is not on the path when the logic starts or stops on its own.
+        self._gw.ana_param_invoke_settings_CheckBox.setEnabled(not running)
+        if not self._gw.ana_param_invoke_settings_CheckBox.isChecked():
+            self._gw.ana_param_record_length_DoubleSpinBox.setEnabled(not running)
+            self._gw.ana_param_sequence_length_DoubleSpinBox.setEnabled(not running)
 

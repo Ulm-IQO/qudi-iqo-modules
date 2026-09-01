@@ -77,7 +77,14 @@ class TimeTraceAnalysisTab(QWidget):
         self._logic().sigFitUpdated.connect(self._dw.fit_data_updated)
 
     def disconnect_signals(self):
+        # See StateEstimationTab.disconnect_signals() - the analyzer bridge is subscribed to a
+        # mediator owned by the logic, which outlives this GUI, so it must unsubscribe here.
+        self._analyzer_bridge.teardown()
         self._sw.disconnect_signals()
+        # connect_signals() calls self._dw.connect_signals(); this had no counterpart, so the data
+        # widget's own connections - the Analyze button and the three peak spin boxes - were never
+        # released at all and survived into the next GUI session against destroyed widgets.
+        self._dw.disconnect_signals()
         self._disconnect_signals_from_data_widget()
         self._disconnect_signals_from_logic()
 
@@ -177,13 +184,17 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self.peak_separation_spinBox.editingFinished.connect(self.update_spectrum)
 
     def disconnect_signals(self):
+        # Mirrors connect_signals() exactly. The three spin boxes used to disconnect `valueChanged`,
+        # which was never connected - so PySide warned about three phantom disconnects while the
+        # real `editingFinished` connections were left in place, surviving into the next GUI session
+        # against widgets that had already been destroyed.
         self.analyze_pushButton.clicked.disconnect()
         self.current_peak_comboBox.currentTextChanged.disconnect()
-        self.peak_range_spinBox.valueChanged.disconnect()
-        self.peak_threshold_spinBox.valueChanged.disconnect()
-        self.peak_separation_spinBox.valueChanged.disconnect()
-        self.plot1_fitwidget.sigDoFit.disconnect()
-        self.plot2_fitwidget.sigDoFit.disconnect()
+        self.peak_range_spinBox.editingFinished.disconnect()
+        self.peak_threshold_spinBox.editingFinished.disconnect()
+        self.peak_separation_spinBox.editingFinished.disconnect()
+        # plot1_fitwidget / plot2_fitwidget sigDoFit are connected by TimeTraceAnalysisTab and
+        # released there too, so disconnecting them here as well made it a double disconnect.
 
     def analyze_data(self):
         self._logic.measure.analyze_time_trace()
@@ -195,8 +206,6 @@ class TimeTraceAnalysisDataWidget(QWidget):
         # block signals to avoid emitting currentTextChanged() and redundant call of update_spectrum()
         self.current_peak_comboBox.blockSignals(True)
 
-        logger.warning(f"{self._logic.data.freq_data.y=}")
-        logger.warning(f"{self._logic.data.freq_data.y}")
         self._logic.data.freq_data.get_peaks()
         self.model.clear()
         for peak in self._logic.data.freq_data.peaks:
@@ -210,6 +219,13 @@ class TimeTraceAnalysisDataWidget(QWidget):
         model_float_list = [
             float(self.model.item(i, 0).text()) for i in range(self.model.rowCount()) if self.model.item(i, 0)
         ]
+        # FreqDomainData.get_peaks() yields an empty list whenever y is None or shorter than two
+        # points - i.e. before anything has been measured. argmin() on an empty array raises
+        # "attempt to get argmin of an empty sequence", so there is nothing to select here.
+        if not model_float_list:
+            self.current_peak_comboBox.setModel(self.model)
+            self.current_peak_comboBox.blockSignals(False)
+            return
         new_idx = (np.abs(np.array(model_float_list) - current_peak)).argmin()
         self.current_peak_comboBox.setModel(self.model)
         self.current_peak_comboBox.setCurrentIndex(new_idx)
@@ -233,8 +249,11 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self._logic.data.freq_data.peak_separation = self.peak_separation_spinBox.value()
         spectrum = self._logic.data.freq_data.data_around_peak
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
-        self.plot1_PlotWidget.clear()
-        self.plot1_PlotWidget.addItem(self.signal_image)
+        # setData already redraws. This used to call plot1_PlotWidget.clear() and re-add only
+        # signal_image - and clear() removes EVERY item, so the fit curve vanished the moment you
+        # touched the peak range, threshold or separation, and stayed gone until the next fit.
+        if self.signal_image not in self.plot1_PlotWidget.items():
+            self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
         self.peak_range_spinBox.setMaximum(int(1e9))

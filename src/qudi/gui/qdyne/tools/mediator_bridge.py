@@ -43,12 +43,35 @@ class MediatorBridge(QObject):
     def __init__(self, mediator, parent=None):
         super().__init__(parent)
         self._mediator = mediator
-        mediator.subscribe(
-            on_data=self.data_updated_sig.emit,
-            on_mode=self.mode_updated_sig.emit,
-            on_method=self.method_updated_sig.emit,
-            on_renewed=self.data_renewed_sig.emit,
-        )
+        # Kept so teardown() can hand back exactly the objects that were registered. Bound methods
+        # are created fresh on every attribute access, so `self.data_updated_sig.emit` here and
+        # `self.data_updated_sig.emit` later are different objects.
+        self._subscriptions = {
+            'on_data': self.data_updated_sig.emit,
+            'on_mode': self.mode_updated_sig.emit,
+            'on_method': self.method_updated_sig.emit,
+            'on_renewed': self.data_renewed_sig.emit,
+        }
+        mediator.subscribe(**self._subscriptions)
+
+    def teardown(self):
+        """Unsubscribe from the mediator. Call this when the owning widget goes away.
+
+        The mediator lives in the *logic*, which outlives the GUI - so a bridge that is destroyed
+        without unsubscribing leaves four bound signal emits registered against a QObject whose C++
+        half is gone. Every later settings change then raises
+        `RuntimeError: Signal source has been deleted` out of SettingsMediator._notify(), once per
+        orphaned bridge, for the rest of the session. Restarting the GUI added another one each
+        time.
+
+        Safe to call more than once.
+        """
+        for callback in self._subscriptions.values():
+            try:
+                self._mediator.unsubscribe(callback)
+            except Exception:
+                pass    # the mediator is already gone, or never had this callback
+        self._subscriptions = {}
 
     @property
     def mediator(self):

@@ -95,6 +95,73 @@ def test_full_pipeline_raw_data_to_spectrum(counter):
     assert np.all(np.isfinite(freq_domain[1]))
 
 
+def test_golden_signal_peak_lands_where_it_should(counter):
+    """The physics regression test: does the pipeline recover a modulation we know is there?
+
+    QdyneCounterDummy modulates its Poisson rate with `np.sin(2 * np.pi * t)` where t runs
+    linspace(0, 1) across one poll's sweeps - so one poll contains exactly **one full cycle**. An
+    N-point FFT of a single cycle puts all the signal power in bin 1, immediately above DC.
+
+    This is the test that covers the count window, the sweep splitting, the FFT normalisation and
+    the frequency axis *together*, in the terms a physicist cares about. It is the shape of test
+    that would have caught the two count modes disagreeing, and it is the only kind that can guard
+    the spectral normalisation without anyone re-deriving the maths.
+
+    (Note `sine_frequency_Hz`, which default.cfg passes to this dummy, appears only in a docstring -
+    it is not a declared ConfigOption and nothing reads it. The modulation is hardcoded to one cycle
+    per poll, which is what this test relies on.)
+    """
+    bin_width, record_length, _gm, _dt = counter.configure(100e-9, 1e-6, GateMode.UNGATED, np.int64)
+
+    estimator = StateEstimatorMain(logging.getLogger(__name__))
+    estimator.method = 'TimeTag'
+    analyzer = TimeTraceAnalyzerMain()
+    analyzer.method = 'Fourier'
+
+    est_settings = TimeTagStateEstimatorSettings(
+        bin_width=bin_width,
+        record_length=record_length,
+        sequence_length=record_length,
+        sig_start=0.0,
+        sig_end=record_length,
+        count_mode='Average',
+    )
+    # padding_parameter=0 keeps the transform length equal to the trace length, so "one cycle over
+    # the record" maps exactly onto bin 1 with no interpolation from zero padding.
+    ana_settings = FourierAnalyzerSettings(
+        sequence_length=record_length, spectrum_type='amp', padding_parameter=0
+    )
+
+    data = MainDataClass()
+    counter.start_measure()
+    try:
+        raw, _info = counter.get_data()
+    finally:
+        counter.stop_measure()
+
+    data.append_raw_data(raw)
+    data.append_time_trace(estimator.estimate(estimator.extract(raw, est_settings), est_settings))
+
+    assert data.time_trace.size > 8, 'need a few sweeps for a meaningful spectrum'
+
+    data.signal = analyzer.analyze(data, ana_settings)
+    frequencies, amplitudes = analyzer.get_freq_domain_signal(data, ana_settings)
+
+    # Ignore DC: the trace is mean-subtracted, so bin 0 carries only residual offset.
+    peak_bin = int(np.argmax(amplitudes[1:])) + 1
+
+    assert peak_bin == 1, (
+        f'expected the single modulation cycle at bin 1, found the peak at bin {peak_bin}. '
+        f'first few amplitudes: {np.round(amplitudes[:6], 3).tolist()}'
+    )
+    # And it should dominate, not merely edge ahead of the noise floor.
+    noise_floor = np.median(amplitudes[2:])
+    assert amplitudes[1] > 3 * noise_floor, (
+        f'modulation peak {amplitudes[1]:.3f} is not clearly above the noise floor {noise_floor:.3f}'
+    )
+    assert np.all(np.isfinite(frequencies))
+
+
 def test_both_count_modes_run(counter):
     """WeightedAverage is reachable at all - its `weight` field is excluded from to_dict(), so it
     cannot currently be configured through the GUI or persisted (tracked as C3)."""

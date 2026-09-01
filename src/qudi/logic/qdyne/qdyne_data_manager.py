@@ -20,44 +20,11 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, Optional
 
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase
-from qudi.logic.qdyne.qdyne_dataclass import MainDataClass, QDyneMetadata
+from qudi.logic.qdyne.qdyne_data.measurement_data import DATA_TYPES, MainDataClass, QDyneMetadata
+from qudi.logic.qdyne.qdyne_data.save_options import QdyneSaveOptions
 from qudi.util.conversions import convert_nested_numpy_to_list
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class QdyneSaveOptions:
-    data_dir: Optional[str] = None
-    use_default: bool = True
-    timestamp: Optional[datetime.datetime] = datetime.datetime.now()
-    metadata: dict = field(default_factory=dict)
-    notes: Optional[str] = None
-    nametag: Optional[str] = None
-    column_headers: Optional[str] = None
-    column_dtypes: Optional[list] = None
-    filename: Optional[str] = None
-
-    def get_default_timestamp(self):
-        self.timestamp = datetime.datetime.now()
-
-    def get_file_path(self, file_path: str):
-        self.data_dir, self.filename = os.path.split(file_path)
-
-    @staticmethod
-    def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
-        """ Helper method to return either a full file name or a nametag to be used as arguments in
-        storage objects save_data methods.
-        If a file_name is given, return a file_name with patched-in suffix_str and None as nametag.
-        If tag is given, append suffix_str to it and return None as file_name.
-        """
-        if file_name is None:
-            if nametag is None:
-                nametag = ''
-            return None, f'{nametag}{suffix_str}'
-        else:
-            file_name_stub, file_extension = file_name.rsplit('.', 1)
-            return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
 
 class DataStorage:
@@ -84,7 +51,12 @@ class DataStorage:
             return NpyDataStorage
         raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
-    def save_data(self, data, options: Optional[QdyneSaveOptions] = QdyneSaveOptions()) -> None:
+    def save_data(self, data, options: Optional[QdyneSaveOptions] = None) -> None:
+        # `options=QdyneSaveOptions()` as a default evaluated once at import, so every caller that
+        # omitted it shared one options object - including its mutable `metadata` dict, which then
+        # accumulated across unrelated saves.
+        if options is None:
+            options = QdyneSaveOptions()
         self.storage.save_data(
             data=data,
             nametag=options.nametag,
@@ -101,7 +73,9 @@ class DataStorage:
 
 
 class DataManagerSettings:
-    data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
+    #: Single definition, shared with QdyneDataManager and MainDataClass - this used to be declared
+    #: separately on two classes that had to agree.
+    data_types = DATA_TYPES
 
     def __init__(self, default_data_dir: str):
         self.default_data_dir = default_data_dir
@@ -109,18 +83,26 @@ class DataManagerSettings:
         self.set_options()
 
     def set_options(self, **kwargs):
-        if "data_dir" not in kwargs:
-            kwargs["data_dir"] = self.default_data_dir
+        """Apply `kwargs` to every data type's options, keeping whatever was set before.
+
+        This used to build a fresh QdyneSaveOptions per data type and throw the old ones away. It is
+        called from load_options(), so loading a file silently wiped every per-type nametag and any
+        accumulated metadata - the caller only meant to update the few fields the file described.
+        """
+        kwargs.setdefault('data_dir', self.default_data_dir)
 
         for data_type in self.data_types:
-            self.options[data_type] = QdyneSaveOptions(**kwargs)
+            existing = self.options.get(data_type)
+            if existing is None:
+                self.options[data_type] = QdyneSaveOptions(**kwargs)
+            else:
+                for key, value in kwargs.items():
+                    setattr(existing, key, value)
         self.set_columns()
 
     def set_columns(self):
-        self.options['raw_data'].column_headers = 'Signal (a.u.)'
-        self.options['time_trace'].column_headers = 'Signal (a.u.)'
-        self.options['freq_domain'].column_headers = 'Signal (a.u.)'
-        self.options['time_domain'].column_headers = 'Signal (a.u.)'
+        for data_type in self.data_types:
+            self.options[data_type].column_headers = 'Signal (a.u.)'
 
     def set_all(self, method, value):
         for data_type in self.data_types:
@@ -152,60 +134,75 @@ class DataManagerSettings:
 
 
 class QdyneDataManager:
-    data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
-    storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'freq_domain': 'npy', 'time_domain': 'npy'}
+    #: Shared with DataManagerSettings and MainDataClass - see DATA_TYPES.
+    data_types = DATA_TYPES
 
-    def __init__(self, data: MainDataClass, settings: DataManagerSettings):
+    def __init__(self, data: MainDataClass, settings: DataManagerSettings,
+                 storage_class: str = 'npy'):
+        """
+        Parameters
+        ----------
+        storage_class : str
+            One of DataStorage.data_storage_options. Comes from QdyneLogic's `data_storage_class`
+            ConfigOption, which previously had no effect at all - the storage type was hardcoded to
+            'npy' for every data type regardless of what the config said.
+        """
         self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.data: MainDataClass = data
         self.settings: DataManagerSettings = settings
+        self.storage_class = storage_class
         self.storages = dict()
         self.activate_storage()
 
     @property
     def save_data_types(self):
-        return ['all'] + self.data_types
+        return ['all'] + list(self.data_types)
 
     def activate_storage(self):
         for data_type in self.data_types:
             self.storages[data_type] = DataStorage(
-                self.settings.options[data_type].data_dir, self.storage_dict[data_type])
+                self.settings.options[data_type].data_dir, self.storage_class)
+
+    def _storage_for(self, data_type: str) -> DataStorage:
+        """Return the storage for `data_type`, rebuilding it if the target directory has moved.
+
+        The storages were built once in __init__ and never revisited, so changing the data directory
+        afterwards had no effect: the settings said one path and every save still went to the other.
+        """
+        storage = self.storages[data_type]
+        wanted_dir = self.settings.options[data_type].data_dir
+        if storage.data_dir != wanted_dir or storage.storage_class != self.storage_class:
+            self.log.debug(f'Rebuilding {data_type} storage for {wanted_dir}.')
+            storage = DataStorage(wanted_dir, self.storage_class)
+            self.storages[data_type] = storage
+        return storage
 
     def save_data(self, data_type, timestamp: Optional[datetime.datetime] = None):
         self.log.debug(f"saving data, {data_type=}, {timestamp=}")
-        data: MainDataClass = getattr(self.data, data_type)
+        data = getattr(self.data, data_type)
         options = self.settings.options[data_type]
         if timestamp:
             options.timestamp = timestamp
-        self.settings.set_metadata(data_type, asdict(self.data.metadata))
-        self.storages[data_type].save_data(data, options)
+        self.settings.set_metadata(data_type, self.data.metadata.to_dict())
+        self._storage_for(data_type).save_data(data, options)
 
     def load_data(self, data_type, file_path, index=None):
-        loaded_data, metadata, general= self.storages[data_type].load_data(file_path)
+        loaded_data, metadata, general = self._storage_for(data_type).load_data(file_path)
         if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
         self.data.metadata = self._metadata_from_dict(metadata)
         self.settings.load_options(general, metadata)
 
-    def _metadata_from_dict(self, metadata) -> QDyneMetadata:
+    @staticmethod
+    def _metadata_from_dict(metadata) -> QDyneMetadata:
         """Build QDyneMetadata from a saved file's metadata, tolerating schema drift.
 
-        A file written by an older (or newer) version carries keys that are not fields of the
-        current QDyneMetadata. Passing those straight to the constructor raised TypeError, which was
-        swallowed by a blanket `except` - so the metadata was silently left at its previous value and
-        callers went on to read stale settings out of it. Unknown keys are dropped with a warning
-        instead, and missing ones fall back to the field defaults.
+        Delegates to the container's own from_dict() rather than reimplementing the filtering here -
+        two copies of the same rule is how they drift apart. Kept as a method because the tests pin
+        the behaviour through this name.
         """
-        if not isinstance(metadata, dict):
-            return QDyneMetadata()
-        valid_fields = {f.name for f in fields(QDyneMetadata)}
-        unknown = set(metadata) - valid_fields
-        if unknown:
-            self.log.warning(
-                f"Ignoring saved metadata key(s) {sorted(unknown)} - not field(s) of QDyneMetadata."
-            )
-        return QDyneMetadata(**{k: v for k, v in metadata.items() if k in valid_fields})
+        return QDyneMetadata.from_dict(metadata)
 
     def set_metadata(self, metadata: dict, data_type: str = "") -> None:
         if not data_type:

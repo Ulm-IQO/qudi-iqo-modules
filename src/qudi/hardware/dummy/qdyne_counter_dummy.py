@@ -58,9 +58,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
     def on_activate(self):
         """Initialisation performed during activation of the module."""
         self.statusvar = 0
-        self._binwidth = 0.1
         self._block_size = 10
-        self._record_length = 10
         self._gate_mode = GateMode(0)
         self._number_of_gates = 0
         self._constraints = QdyneCounterConstraints(
@@ -75,6 +73,14 @@ class QdyneCounterDummy(QdyneCounterInterface):
             ),
             record_length=ScalarConstraint(default=1e-6, bounds=(100e-9, 100e-6)),
         )
+        # Seeded from the constraints this object itself declares, rather than hardcoded. They used
+        # to be 0.1 s and 10 s - five and seven orders of magnitude outside those very bounds - so
+        # the counter reported settings it would reject if you handed them back. Nothing noticed
+        # while the values were only ever read; the moment anything validated them (the settings
+        # restore in QdyneLogic, the generation widget) they were clipped, with an error logged on
+        # every activation.
+        self._binwidth = self._constraints.binwidth.default
+        self._record_length = self._constraints.record_length.default
         self._elapsed_sweeps = 0
         return
 

@@ -611,6 +611,14 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigSampleEnsembleComplete.disconnect()
         self.pulsedmasterlogic().sigSampleSequenceComplete.disconnect()
         self.pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
+        # These four were connected in _connect_logic_signals() and never disconnected here, so
+        # after deactivation they stayed wired to sampling_or_loading_busy() - whose first line
+        # dereferences the pulsedmasterlogic connector that has just been torn down. Any later
+        # emission then raised 'Connector "pulsedmasterlogic" is not connected'.
+        self.pulsedmasterlogic().sigSampleBlockEnsemble.disconnect()
+        self.pulsedmasterlogic().sigLoadBlockEnsemble.disconnect()
+        self.pulsedmasterlogic().sigLoadSequence.disconnect()
+        self.pulsedmasterlogic().sigSampleSequence.disconnect()
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
@@ -1996,6 +2004,11 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def sampling_or_loading_busy(self):
+        # Queued emissions can still be in flight while the module is being torn down, at which
+        # point the connector is gone and dereferencing it raises instead of being a harmless
+        # no-op. Cheap guard on the three slots that read through the connector.
+        if not self.pulsedmasterlogic.is_connected:
+            return
         if self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
@@ -2005,6 +2018,8 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def benchmark_busy(self):
+        if not self.pulsedmasterlogic.is_connected:
+            return
         if self.pulsedmasterlogic().status_dict['benchmark_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
@@ -2014,6 +2029,8 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def sampling_or_loading_finished(self):
+        if not self.pulsedmasterlogic.is_connected:
+            return
         if not self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
             self._mw.loading_indicator_action.setVisible(False)

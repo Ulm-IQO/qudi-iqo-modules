@@ -170,7 +170,12 @@ class DataclassWidget(QtWidgets.QWidget):
         self.data_labels = dict()
         self.data_widgets = dict()
         for field in fields(dataclass_obj):
-            if not field.name.startswith("_") or not field.metadata.get("exclude"):
+            # `and`, not `or`. The original read "include unless (private AND excluded)", so an
+            # excluded field was still offered an editor - `weight` (exclude=True) came through.
+            # It never showed up only because `list` has no widget type and _create_widget()
+            # returns None, but any excluded str/int/float/bool field would have appeared, and it
+            # disagreed with to_display_dict(), which honours the marker correctly.
+            if not field.name.startswith("_") and not field.metadata.get("exclude"):
                 label = self._create_label(field.name)
                 widget = self._create_widget(field)
                 if widget is None:
@@ -189,7 +194,13 @@ class DataclassWidget(QtWidgets.QWidget):
         widget = None
         value = getattr(self.dataclass_obj, field.name)
 
-        if field.type == int:
+        # A field that advertises a fixed set of values gets a drop-down. Rendering these as free
+        # text meant a typo reached a frozen dataclass that raises ValueError on an unknown value -
+        # out of __post_init__, through the mediator, and into the Qt event loop unguarded.
+        choices = field.metadata.get('choices')
+        if choices:
+            widget = self._choices_to_widget(value, choices)
+        elif field.type == int:
             widget = self._int_to_widget(value)
         elif field.type == float:
             widget = self._float_to_widget(value)
@@ -231,19 +242,30 @@ class DataclassWidget(QtWidgets.QWidget):
         widget.setChecked(value)
         return widget
 
+    def _choices_to_widget(self, value, choices):
+        widget = QtWidgets.QComboBox()
+        widget.addItems([str(choice) for choice in choices])
+        widget.setCurrentText(str(value))
+        return widget
+
     def _set_data_widget_value(self, param_name, value):
         """
         set the value of a widget.
         """
         if hasattr(self.dataclass_obj, param_name):
             param_type = self.dataclass_obj.__dataclass_fields__[param_name].type
+            widget = self.data_widgets[param_name]
 
-            if param_type == int or param_type == float:
-                self.data_widgets[param_name].setValue(value)
+            # Dispatched on the WIDGET first: a `choices` field is a str whose editor is a combo
+            # box, so going by field type alone would call setText() on something that has none.
+            if isinstance(widget, QtWidgets.QComboBox):
+                widget.setCurrentText(str(value))
+            elif param_type == int or param_type == float:
+                widget.setValue(value)
             elif param_type == str:
-                self.data_widgets[param_name].setText(value)
+                widget.setText(value)
             elif param_type == bool:
-                self.data_widgets[param_name].setChecked(value)
+                widget.setChecked(value)
             else:
                 self._log.debug(f"{param_type} type is not supported.")
         else:
@@ -255,13 +277,17 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         if hasattr(self.dataclass_obj, param_name):
             param_type = self.dataclass_obj.__dataclass_fields__[param_name].type
+            widget = self.data_widgets[param_name]
 
-            if param_type == int or param_type == float:
-                return self.data_widgets[param_name].value()
+            # Widget first - see _set_data_widget_value().
+            if isinstance(widget, QtWidgets.QComboBox):
+                return widget.currentText()
+            elif param_type == int or param_type == float:
+                return widget.value()
             elif param_type == str:
-                return self.data_widgets[param_name].text()
+                return widget.text()
             elif param_type == bool:
-                return self.data_widgets[param_name].isChecked()
+                return widget.isChecked()
             else:
                 self._log.debug(f"{param_type} type is not supported.")
                 return None
@@ -269,10 +295,20 @@ class DataclassWidget(QtWidgets.QWidget):
             self._log.error("name not found in data.")
 
     def connect_signals_from_widgets(self):
-        self.data_widget_refreshed_sig.connect(self.mediator.sync_values)
+        # set_values(), not sync_values(). The two differ deliberately: sync_values() stores without
+        # notifying, which is right when the MEDIATOR told the widget and the widget is echoing
+        # back, but wrong for a USER edit - observers have to hear about that. QdyneMeasurement
+        # subscribes to on_data precisely so it can drop the accumulated pulse histogram when the
+        # binning changes; with sync_values() that never fired for a GUI edit.
+        # (StateEstimationSettingsWidget used to work around this by overriding
+        # _emit_data_widget_refreshed_sig to call set_values directly - which silently stopped the
+        # signal being emitted at all and left two of its own connections dead.)
+        self.data_widget_refreshed_sig.connect(self.mediator.set_values)
 
         for field_name, widget in self.data_widgets.items():
-            if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
+            if isinstance(widget, QtWidgets.QComboBox):
+                widget.currentTextChanged.connect(self._emit_data_widget_refreshed_sig)
+            elif isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                 widget.editingFinished.connect(self._emit_data_widget_refreshed_sig)
             elif isinstance(widget, QtWidgets.QCheckBox):
                 widget.stateChanged.connect(self._emit_data_widget_refreshed_sig)
@@ -282,17 +318,21 @@ class DataclassWidget(QtWidgets.QWidget):
     def disconnect_signals_from_widgets(self):
         self.data_widget_refreshed_sig.disconnect()
 
+        # Mirrors connect_signals_from_widgets() branch for branch. It used to disconnect a
+        # different signal than it connected for some widget kinds, which is what made the blanket
+        # `except` below necessary - it was swallowing "failed to disconnect" for signals that had
+        # never been connected, while the real connections stayed live.
         for field_name, widget in self.data_widgets.items():
             try:
-                #self._log.warning(f"{field_name=}, {widget=}, {type(widget)}, {widget.text()=}")
-                # TODO: Fix this disconnection bug when data was loaded
-                if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
+                if isinstance(widget, QtWidgets.QComboBox):
+                    widget.currentTextChanged.disconnect()
+                elif isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                     widget.editingFinished.disconnect()
                 elif isinstance(widget, QtWidgets.QCheckBox):
                     widget.stateChanged.disconnect()
-                elif isinstance(widget, QtWidgets.QPushButton):
-                    widget.clicked.disconnect()
                 else:
                     widget.valueChanged.disconnect()
-            except Exception as e:
-                self._log.warning(f"Once data was loaded there is an error when disconnecting the editingFinished signal. Why?")
+            except RuntimeError:
+                # Qt raises this when there was nothing connected - harmless, and no longer the
+                # normal case. Narrowed from `except Exception` so a real fault is visible.
+                self._log.debug(f"Nothing was connected to the '{field_name}' widget.")

@@ -95,35 +95,81 @@ class StateEstimationTab(QWidget):
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
-        self._logic().measure.sigMeasurementStarted.connect(self._disable_settings)
-        self._logic().measure.sigMeasurementStopped.connect(self._enable_settings)
+        # _disable_settings / _enable_settings are wired in _connect_measurement_signals() with the
+        # rest, so that connect and disconnect stay in one place. They used to be connected here and
+        # released only by the bare disconnect() below, which meant they leaked the moment that
+        # disconnect became specific.
         self._pulse_widget.update_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
-        """additional signal connections to the settings widget.
+        """Additional signal connections to the settings widget."""
+        for signal, slot in self._settings_widget_connections():
+            signal.connect(slot)
 
-        Disconnections are done in settings widget.
+    def _disconnect_settings_widget_signals(self):
+        """Release them again.
+
+        The docstring here used to claim "disconnections are done in settings widget", but
+        DataclassWidget.disconnect_signals() only releases data_widget_refreshed_sig - and does it
+        with a bare disconnect() that also drops these. data_widget_synced_sig and the three control
+        widgets were never released at all, so they leaked into the next GUI session.
         """
-        self._settings_widget.data_widget_synced_sig.connect(self._pulse_widget.toggle_lines)
-        self._settings_widget.data_widget_synced_sig.connect(self._pulse_widget.update_lines)
-        self._settings_widget.data_widget_refreshed_sig.connect(self._pulse_widget.toggle_lines)
-        self._settings_widget.data_widget_refreshed_sig.connect(self._pulse_widget.update_lines)
-        self._settings_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
-        self._settings_widget.disable_histogram_checkBox.stateChanged.connect(self.disable_histogram)
-        self._settings_widget.hide_time_trace_checkBox.stateChanged.connect(self.hide_time_trace)
+        for signal, slot in self._settings_widget_connections():
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass
+
+    def _settings_widget_connections(self):
+        """One list, so connect and disconnect cannot drift apart."""
+        sw = self._settings_widget
+        return (
+            (sw.data_widget_synced_sig, self._pulse_widget.toggle_lines),
+            (sw.data_widget_synced_sig, self._pulse_widget.update_lines),
+            (sw.data_widget_refreshed_sig, self._pulse_widget.toggle_lines),
+            (sw.data_widget_refreshed_sig, self._pulse_widget.update_lines),
+            (sw.update_pushButton.clicked, self.pull_data_and_estimate),
+            (sw.disable_histogram_checkBox.stateChanged, self.disable_histogram),
+            (sw.hide_time_trace_checkBox.stateChanged, self.hide_time_trace),
+        )
 
     def _connect_pulse_widget_signals(self):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.refresh_data_widgets)
         self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.refresh_data_widgets)
 
     def _connect_measurement_signals(self, measurement_logic):
-        measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
-        measurement_logic.sigMeasurementStarted.connect(lambda: self._pulse_widget.set_lines_movable(False))
-        measurement_logic.sigMeasurementStopped.connect(lambda: self._pulse_widget.set_lines_movable(True))
-        measurement_logic.sigTimeTraceDataUpdated.connect(self._time_trace_widget.update_time_trace_image)
+        # Named methods rather than lambdas: a lambda cannot be handed back to disconnect(), which
+        # is why this used to be released with a bare disconnect() that dropped every other
+        # receiver too - including the main GUI's Run/Stop button feedback on the same two signals.
+        for signal, slot in self._measurement_connections(measurement_logic):
+            signal.connect(slot)
+
+    def _measurement_connections(self, measurement_logic):
+        """The (signal, slot) pairs this tab owns, so connect and disconnect cannot drift apart."""
+        return (
+            (measurement_logic.sigPulseDataUpdated, self._pulse_widget.pulse_updated),
+            (measurement_logic.sigMeasurementStarted, self._lock_pulse_lines),
+            (measurement_logic.sigMeasurementStopped, self._unlock_pulse_lines),
+            (measurement_logic.sigTimeTraceDataUpdated,
+             self._time_trace_widget.update_time_trace_image),
+            (measurement_logic.sigMeasurementStarted, self._disable_settings),
+            (measurement_logic.sigMeasurementStopped, self._enable_settings),
+        )
+
+    def _lock_pulse_lines(self):
+        self._pulse_widget.set_lines_movable(False)
+
+    def _unlock_pulse_lines(self):
+        self._pulse_widget.set_lines_movable(True)
 
     def disconnect_signals(self):
+        # The bridge is subscribed to a mediator that lives in the logic and outlives this GUI, so
+        # it has to hand its callbacks back. Otherwise its four bound signal emits stay registered
+        # against a destroyed QObject and every later settings change raises
+        # "RuntimeError: Signal source has been deleted" out of the mediator.
+        self._estimator_bridge.teardown()
         self._settings_widget.disconnect_signals()
+        self._disconnect_settings_widget_signals()
         self._disconnect_pulse_widget_signals()
         self._disconnect_measurement_signals(self._logic().measure)
 
@@ -136,10 +182,14 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.ref_line_changed_sig.disconnect()
 
     def _disconnect_measurement_signals(self, measurement_logic):
-        measurement_logic.sigPulseDataUpdated.disconnect()
-        measurement_logic.sigMeasurementStarted.disconnect()
-        measurement_logic.sigMeasurementStopped.disconnect()
-        measurement_logic.sigTimeTraceDataUpdated.disconnect()
+        # Only what this tab connected. A bare disconnect() drops EVERY receiver of these four
+        # signals, which is not this widget's to do - the main GUI listens to two of them for the
+        # Run/Stop button state.
+        for signal, slot in self._measurement_connections(measurement_logic):
+            try:
+                signal.disconnect(slot)
+            except (RuntimeError, TypeError):
+                pass    # never connected, or the receiver is already gone
 
     def activate_ui(self):
         self._pulse_widget.activate()
@@ -163,6 +213,10 @@ class StateEstimationTab(QWidget):
     def _enable_settings(self):
         for widget in self._settings_widget.findChildren(QWidget):
             widget.setEnabled(True)
+        # Blanket-enabling clobbers any widget whose enabled state is conditional. The mode Delete
+        # button is deliberately disabled while 'default' is selected, so it has to be put back -
+        # otherwise stopping a measurement silently makes it clickable again.
+        self._settings_widget.update_delete_button_enabled()
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
@@ -171,12 +225,11 @@ class StateEstimationTab(QWidget):
         self._logic().measure.pull_data_and_estimate()
 
     def disable_histogram(self):
-        if self._settings_widget.disable_histogram_checkBox.isChecked():
-            self._logic().measure._pulse_histogram_disabled = True
-            self._pulse_widget.setVisible(False)
-        else:
-            self._logic().measure._pulse_histogram_disabled = False
-            self._pulse_widget.setVisible(True)
+        # Through the public slot rather than writing measure._pulse_histogram_disabled directly -
+        # set_pulse_histogram_enabled() exists for this and also logs the change.
+        disabled = self._settings_widget.disable_histogram_checkBox.isChecked()
+        self._logic().measure.set_pulse_histogram_enabled(not disabled)
+        self._pulse_widget.setVisible(not disabled)
 
     def hide_time_trace(self):
         if self._settings_widget.hide_time_trace_checkBox.isChecked():
@@ -247,9 +300,11 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
             values_dict["ref_end"] = new_ref_end
         return values_dict
 
-    def _emit_data_widget_refreshed_sig(self):
-        new_values_dict = self.values_dict
-        self.mediator.set_values(new_values_dict)
+    # _emit_data_widget_refreshed_sig is deliberately NOT overridden. It used to be, to call
+    # mediator.set_values() directly - but that meant data_widget_refreshed_sig was never emitted,
+    # so the pulse-line toggle/update connections in StateEstimationTab hung off a signal that never
+    # fired. The base implementation emits self.values_dict, which resolves to the ordered property
+    # below, and DataclassWidget now routes that signal to set_values().
 
     def _emit_data_widget_synced_sig(self):
         new_values_dict = self.values_dict

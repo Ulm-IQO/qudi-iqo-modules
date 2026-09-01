@@ -83,6 +83,22 @@ class SettingsMediator:
             if callback is not None:
                 callbacks.append(callback)
 
+    def unsubscribe(self, callback) -> None:
+        """Remove one callback from every list it was registered in.
+
+        Needed because an observer that outlives its subscription keeps this mediator holding a
+        strong reference to a bound method - which pins the whole owning object graph in memory and,
+        worse, means a later settings change calls into an object that has already been torn down.
+        `unsubscribe_all()` is the wrong tool for that: one observer going away must not silently
+        cancel everyone else's notifications.
+
+        Removing a callback that was never registered is not an error - teardown paths should not
+        have to track what they managed to subscribe.
+        """
+        for callbacks in (self._on_data, self._on_mode, self._on_method, self._on_renewed):
+            while callback in callbacks:
+                callbacks.remove(callback)
+
     def unsubscribe_all(self) -> None:
         for callbacks in (self._on_data, self._on_mode, self._on_method, self._on_renewed):
             callbacks.clear()
@@ -92,8 +108,30 @@ class SettingsMediator:
         for callback in list(callbacks):
             try:
                 callback(payload)
+            except RuntimeError as err:
+                if 'deleted' in str(err):
+                    # A Qt observer whose C++ object has been destroyed - a widget or bridge torn
+                    # down without unsubscribing, while this mediator lives on in the logic. It can
+                    # never recover, so drop it rather than raise the same traceback on every
+                    # settings change for the rest of the session. One warning, then silence.
+                    self._drop(callback)
+                    self._log.warning(
+                        'Dropped a settings observer whose Qt object has been deleted - something '
+                        'subscribed without unsubscribing on teardown.'
+                    )
+                else:
+                    self._log.exception('Settings observer raised; continuing with the rest.')
             except Exception:
                 self._log.exception('Settings observer raised; continuing with the rest.')
+
+    def _drop(self, callback) -> None:
+        """Remove one callback by identity.
+
+        Identity, not equality: comparing a bound method of a deleted QObject can itself raise, and
+        `callbacks.remove()` would do exactly that comparison.
+        """
+        for callbacks in (self._on_data, self._on_mode, self._on_method, self._on_renewed):
+            callbacks[:] = [cb for cb in callbacks if cb is not callback]
 
     # ------------------------------------------------------------------ current selection
 
@@ -168,9 +206,20 @@ class SettingsMediator:
                 self._method_dict[method] = {DEFAULT_MODE: settings_cls(name=DEFAULT_MODE)}
                 self._log.info(f"No saved settings for method '{method}'. Created defaults.")
                 continue
-            modes = {
-                mode: settings_cls.from_dict(values) for mode, values in saved_modes.items()
-            }
+            modes = {}
+            for mode, values in saved_modes.items():
+                try:
+                    modes[mode] = settings_cls.from_dict(values)
+                except ValueError as err:
+                    # from_dict() tolerates an unknown *key*, but the settings classes reject an
+                    # impossible *value* (a zero bin width, an inverted signal window). One bad mode
+                    # in the status file must not stop the module activating, so fall back to
+                    # defaults for that mode and say so.
+                    self._log.error(
+                        f"Saved settings for '{method}/{mode}' are invalid ({err}). "
+                        f'Using defaults for that mode.'
+                    )
+                    modes[mode] = settings_cls(name=mode)
             modes.setdefault(DEFAULT_MODE, settings_cls(name=DEFAULT_MODE))
             self._method_dict[method] = modes
 
@@ -260,6 +309,21 @@ class SettingsMediator:
     def _store(self, updated) -> None:
         self.mode_dict[self._current_mode] = updated
 
+    def _updated(self, data, new_values: dict):
+        """`data` with `new_values` applied, or None if the result would be invalid.
+
+        The settings containers are frozen and validate in __post_init__, so an impossible value -
+        a zero bin width, an unknown count mode - raises rather than being stored. Both callers
+        below are reachable from Qt slots and from the settings restore at activation, where an
+        unguarded raise escapes into the event loop or stops the module starting.
+        load_from_dict() already takes exactly this line, for exactly this reason.
+        """
+        try:
+            return data.update_from_dict(new_values)
+        except ValueError as err:
+            self._log.error(f'Rejected settings update {new_values}: {err}')
+            return None
+
     def sync_values(self, new_values: dict) -> None:
         """Apply values coming FROM the settings widget.
 
@@ -269,14 +333,20 @@ class SettingsMediator:
         data = self.current_data
         if data is None:
             return
-        self._store(data.update_from_dict(new_values))
+        updated = self._updated(data, new_values)
+        if updated is not None:
+            self._store(updated)
 
     def set_values(self, new_values: dict) -> None:
         """Apply values from the logic side and tell observers, so the widget catches up."""
         data = self.current_data
         if data is None:
             return
-        self._store(data.update_from_dict(new_values))
+        updated = self._updated(data, new_values)
+        if updated is not None:
+            self._store(updated)
+        # Observers are told either way: on rejection this is what makes a widget still showing the
+        # refused value snap back to what is actually stored.
         self._notify(self._on_data, self._display_dict())
 
     def set_single_value(self, param_name: str, value) -> None:

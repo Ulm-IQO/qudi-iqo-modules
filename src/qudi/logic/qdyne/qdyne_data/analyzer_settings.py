@@ -17,7 +17,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from qudi.logic.qdyne.qdyne_data.settings_base import QdyneSettingsBase
 
@@ -36,14 +36,32 @@ class AnalyzerSettings(QdyneSettingsBase):
 
     sequence_length: float = 1e-9
 
+    def __post_init__(self):
+        super().__post_init__()
+        if self.sequence_length <= 0:
+            # Feeds np.fft.rfftfreq as the sample spacing, so a zero or negative value puts the
+            # whole frequency axis somewhere meaningless rather than failing outright.
+            raise ValueError(f'sequence_length must be > 0, got {self.sequence_length}.')
+
 
 @dataclass(frozen=True)
 class FourierAnalyzerSettings(AnalyzerSettings):
     """Settings for the Fourier analyzer."""
 
+    #: Spectrum types FourierAnalyzer implements, so the two cannot drift apart. Declared before the
+    #: fields so `spectrum_type` can advertise it as `choices` metadata.
+    SPECTRUM_TYPES = ('amp', 'power')
+
     name: str = 'default'
     padding_parameter: int = 1
-    spectrum_type: str = 'amp'
+    #: choices= makes the settings widget offer a drop-down - see TimeTagStateEstimatorSettings.
+    spectrum_type: str = field(default='amp', metadata={'choices': SPECTRUM_TYPES})
 
-    #: Spectrum types FourierAnalyzer implements, so the two cannot drift apart.
-    SPECTRUM_TYPES = ('amp', 'power')
+    def __post_init__(self):
+        super().__post_init__()
+        if self.spectrum_type not in self.SPECTRUM_TYPES:
+            # Caught here rather than deep inside get_freq_domain_signal(), which used to print to
+            # stdout and then fall through to an UnboundLocalError.
+            raise ValueError(
+                f'spectrum_type must be one of {self.SPECTRUM_TYPES}, got {self.spectrum_type!r}.'
+            )

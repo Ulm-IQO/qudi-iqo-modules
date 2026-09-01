@@ -78,15 +78,27 @@ def test_unknown_estimator_method_is_rejected_clearly():
         main.method = 'NotAMethod'
 
 
-def test_unknown_spectrum_type_raises_instead_of_unbound_local():
-    """The unknown branch printed to stdout and fell through, leaving `spectrum` unbound so the
-    return statement raised UnboundLocalError - an error that says nothing about the real cause."""
+def test_unknown_spectrum_type_is_rejected_at_construction():
+    """Originally the unknown branch printed to stdout and fell through, leaving `spectrum` unbound
+    so the return statement raised UnboundLocalError - an error that says nothing about the cause.
+    It is now caught earlier still, when the settings object is built, so a bad value cannot reach
+    the analyzer at all."""
+    with pytest.raises(ValueError, match='spectrum_type must be one of'):
+        FourierAnalyzerSettings(spectrum_type='typo')
+
+
+def test_unknown_spectrum_type_also_raises_if_it_somehow_reaches_the_analyzer():
+    """Defence in depth: the analyzer still refuses rather than falling through, in case a settings
+    object is constructed by some path that bypasses validation."""
 
     class _Data:
         signal = [np.array([1.0, 2.0]), np.array([1.0, 2.0])]
 
+    settings = FourierAnalyzerSettings()
+    object.__setattr__(settings, 'spectrum_type', 'typo')   # bypass frozen + validation
+
     with pytest.raises(ValueError, match='Unsupported spectrum_type'):
-        FourierAnalyzer().get_freq_domain_signal(_Data(), FourierAnalyzerSettings(spectrum_type='typo'))
+        FourierAnalyzer().get_freq_domain_signal(_Data(), settings)
 
 
 def _reference_photon_count(time_tag, start, stop):

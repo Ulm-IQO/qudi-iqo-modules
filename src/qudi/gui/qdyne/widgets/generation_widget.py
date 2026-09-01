@@ -308,7 +308,6 @@ class GenerationWidget(QtWidgets.QWidget):
             self._global_param_widgets.append(widget)
 
             # Add widget to GUI layout
-            print(f"param: {param}, col_count: {col_count}")
             if col_count > 6:
                 col_count = 0
                 row_count += 1
@@ -495,9 +494,19 @@ class GenerationWidget(QtWidgets.QWidget):
             self.loading_indicator.setVisible(False)
 
         if self.ana_param_invoke_settings_CheckBox.isChecked():
-            # This will set sequence and record length from generated ensemble length
-            self._gui.logic().measurement_generator.set_counter_settings()
-            self._gui.logic().measurement_generator.set_measurement_settings()
+            # This will set sequence and record length from generated ensemble length.
+            # Guarded, and guarded SEPARATELY: these used to be two bare calls, so a failure in the
+            # first one aborted this slot and the second never ran at all.
+            for what, apply in (
+                ('counter', self._gui.logic().measurement_generator.set_counter_settings),
+                ('measurement', self._gui.logic().measurement_generator.set_measurement_settings),
+            ):
+                try:
+                    apply()
+                except Exception:
+                    _logger.exception(
+                        f'Failed to invoke {what} settings from the generated asset.'
+                    )
         return
 
     def generation_parameters_changed(self):
@@ -596,7 +605,12 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         settings_dict["record_length"] = correct_length
         settings_dict["bin_width"] = correct_binwidth
-        self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
+        # Guarded: this is a Qt slot, so anything raising out of the logic aborts the callback here
+        # and leaves the widgets showing values that were never applied.
+        try:
+            self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
+        except Exception:
+            _logger.exception('Failed to apply the counter settings.')
         return
 
     @QtCore.Slot(dict)
@@ -665,7 +679,11 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict['bin_width'] = self.binwidth_spinbox.value()
         settings_dict['sequence_length'] = self.ana_param_sequence_length_DoubleSpinBox.value()
 
-        self._gui.logic().measurement_generator.set_measurement_settings(settings_dict)
+        # Guarded - see counter_settings_changed().
+        try:
+            self._gui.logic().measurement_generator.set_measurement_settings(settings_dict)
+        except Exception:
+            _logger.exception('Failed to apply the measurement settings.')
         return
 
     @QtCore.Slot(dict)
