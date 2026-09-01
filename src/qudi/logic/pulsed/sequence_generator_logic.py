@@ -44,13 +44,26 @@ from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElem
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
+from qudi.util.hook import CattrsConverter
 
-from qudi.util.yaml import SafeRepresenter, SafeConstructor
-from qudi.util.yaml_helpers import dataclass_representer, pulse_envelope_constructor
+_converter = CattrsConverter()._converter
 
-SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
-SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
+def _generation_parameters_representer(value):
+    """Unstructure the nested PulseEnvelope to a plain dict."""
+    out = dict(value)
+    envelope = out.get('pulse_envelope')
+    if isinstance(envelope, PulseEnvelope):
+        out['pulse_envelope'] = _converter.unstructure(envelope)
+    return out
 
+
+def _generation_parameters_constructor(value):
+    """Rebuild the nested PulseEnvelope from its plain-dict form after load."""
+    out = dict(value)
+    envelope = out.get('pulse_envelope')
+    if envelope is not None and not isinstance(envelope, PulseEnvelope):
+        out['pulse_envelope'] = _converter.structure(envelope, PulseEnvelope)
+    return out
 
 class SequenceGeneratorLogic(LogicBase):
     """
@@ -115,7 +128,9 @@ class SequenceGeneratorLogic(LogicBase):
             'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
             'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
             'pulse_envelope_order': 1,
-        }
+        },
+        constructor=_generation_parameters_constructor,
+        representer=_generation_parameters_representer,
     )
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
