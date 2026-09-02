@@ -72,6 +72,19 @@ class FourierAnalyzer(Analyzer):
         ft_signal = self.do_fft(time_trace, stg.padding_parameter, stg.sequence_length)
         return ft_signal
 
+    def get_time_domain_signal(self, data, stg: FourierAnalyzerSettings):
+        """The accumulated time trace against elapsed time - the counterpart to the spectrum.
+
+        One point per sequence repetition, so sequence_length is the spacing between readouts.
+        Returns None (not an empty array) when there is nothing to show, so callers can tell
+        "no data yet" apart from "analyzer has no time-domain view".
+        """
+        time_trace = np.asarray(data.time_trace)
+        if time_trace.size == 0:
+            return None
+        time_axis = np.arange(time_trace.size) * stg.sequence_length
+        return [time_axis, time_trace]
+
     def get_freq_domain_signal(self, data, stg: FourierAnalyzerSettings):
         ft_signal = data.signal
         if stg.spectrum_type == "amp":
@@ -181,4 +194,6 @@ class TimeTraceAnalyzerMain:
 
     def get_time_domain_signal(self, data, settings):
         time_domain = self.analyzer.get_time_domain_signal(data, settings)
-        return np.array(time_domain)
+        # np.array(None) is a 0-d object array, which nothing downstream can plot or save. An
+        # analyzer with no time-domain view returns None, and that stays None.
+        return None if time_domain is None else np.asarray(time_domain)

@@ -70,6 +70,35 @@ def _positive_float(value, name, log):
     return number
 
 
+class FitTarget:
+    """Which plot a fit belongs to.
+
+    Plain string constants rather than an Enum so they cross a Qt Signal(str) unchanged and stay
+    readable in logs.
+    """
+
+    FREQ = 'freq'
+    TIME = 'time'
+
+
+def _why_not_fittable_curve(curve, what):
+    """Why an [x, y] curve cannot be fitted, as a sentence - or None if it can.
+
+    The shape-independent half of _why_not_fittable(), used for the time-domain trace, which has
+    no peak selection to narrow it down.
+    """
+    curve = np.asarray(curve)
+    if curve.ndim < 2 or curve.shape[0] < 2 or curve.shape[1] == 0:
+        return f'No {what} to fit yet - run a measurement or load data first.'
+    y = np.asarray(curve[1])
+    if y.size < 3:
+        return f'Only {y.size} point(s) in the {what} - too few to fit.'
+    if float(np.ptp(y)) == 0.0:
+        return (f'The {what} is flat - there is nothing to fit. This usually means the '
+                f'measurement produced no signal.')
+    return None
+
+
 def _why_not_fittable(freq_data):
     """Why the current spectrum cannot be fitted, as a sentence - or None if it can.
 
@@ -487,7 +516,9 @@ class QdyneLogic(LogicBase):
     _fit_configs = StatusVar(name="fit_configs", default=None)
 
     # signals for connecting modules
-    sigFitUpdated = QtCore.Signal(str, object)
+    #: (fit_config, fit_result, FitTarget) - the third argument says which plot the result is for,
+    #: so the GUI can paint it into the right item.
+    sigFitUpdated = QtCore.Signal(str, object, str)
     sigToggleQdyneMeasurement = QtCore.Signal(bool)
     sigCounterSettingsUpdated = QtCore.Signal(dict)
     sigMeasurementSettingsUpdated = QtCore.Signal(dict)
@@ -756,7 +787,17 @@ class QdyneLogic(LogicBase):
         return
 
     @QtCore.Slot(str)
-    def do_fit(self, fit_config):
+    @QtCore.Slot(str, str)
+    def do_fit(self, fit_config, plot=FitTarget.FREQ):
+        """Fit either the spectrum or the time-domain trace.
+
+        `plot` says which plot asked. Without it both fit widgets fitted the spectrum and both
+        results were drawn on the frequency plot, so a fit requested from the Time domain tab
+        silently redrew the other one.
+        """
+        if plot == FitTarget.TIME:
+            return self._do_fit_time_domain(fit_config)
+
         # Refuse the fits that cannot work, with a reason - see _why_not_fittable(). Both cases it
         # covers used to surface as "Something went wrong while trying to perform data fit" plus a
         # traceback from inside lmfit.
@@ -764,7 +805,7 @@ class QdyneLogic(LogicBase):
         if reason:
             self.log.error(reason)
             self.data.fit_config, self.data.fit_result = "", None
-            self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result)
+            self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result, FitTarget.FREQ)
             return None
         try:
             self.data.fit_config, self.data.fit_result = self.fit.perform_fit(
@@ -775,8 +816,30 @@ class QdyneLogic(LogicBase):
             # and SystemExit, so Ctrl-C during a fit was reported as a fit failure.
             self.data.fit_config, self.data.fit_result = "", None
             self.log.exception("Something went wrong while trying to perform data fit.")
-        self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result)
+        self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result, FitTarget.FREQ)
         return self.data.fit_result
+
+    def _do_fit_time_domain(self, fit_config):
+        time_domain = np.asarray(self.data.time_domain)
+        reason = _why_not_fittable_curve(time_domain, "time trace")
+        if reason:
+            self.log.error(reason)
+            self.data.time_fit_config, self.data.time_fit_result = "", None
+            self.sigFitUpdated.emit(
+                self.data.time_fit_config, self.data.time_fit_result, FitTarget.TIME
+            )
+            return None
+        try:
+            self.data.time_fit_config, self.data.time_fit_result = self.fit.perform_fit(
+                time_domain, fit_config, container=self.fit.fit_container2
+            )
+        except Exception:
+            self.data.time_fit_config, self.data.time_fit_result = "", None
+            self.log.exception("Something went wrong while trying to perform data fit.")
+        self.sigFitUpdated.emit(
+            self.data.time_fit_config, self.data.time_fit_result, FitTarget.TIME
+        )
+        return self.data.time_fit_result
 
     @QtCore.Slot(str)
     def save_data(self, data_type: str):

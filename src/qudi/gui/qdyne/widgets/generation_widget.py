@@ -27,6 +27,7 @@ from PySide6 import QtCore, QtWidgets
 from qudi.util import uic
 from qudi.util.helpers import natural_sort
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 from logging import getLogger
 
 _logger = getLogger(__name__)
@@ -292,6 +293,25 @@ class GenerationWidget(QtWidgets.QWidget):
                     widget.addItem(option.name, option)
                 widget.setCurrentText(value.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
+            elif issubclass(type(value), PulseEnvelope):
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(value.type.name)
+                widget.currentTextChanged.connect(self.generation_parameters_changed)
+            else:
+                # Without this branch `widget` would still be bound to the previous iteration's
+                # widget, which then gets silently re-registered under this parameter's name.
+                # Reachable for any generation parameter whose type is outside the set above -
+                # note the checks are `type(x) is`, not isinstance, so an int/float subclass
+                # (numpy scalar, IntEnum) lands here too.
+                _logger.error(
+                    'The generation parameter "{0}" has an invalid type ({1}).\n'
+                    "Only str, int, float, bool, Enum and PulseEnvelope can be shown "
+                    "in the global parameters editor - skipping it."
+                    "".format(param, type(value).__name__)
+                )
+                continue
 
             widget.setSizePolicy(
                 QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum
@@ -564,7 +584,16 @@ class GenerationWidget(QtWidgets.QWidget):
                     elif hasattr(widget, "setText"):
                         widget.setText(settings_dict[param_name])
                     elif hasattr(widget, "currentText"):
-                        index = widget.findText(str(settings_dict[param_name].name))
+                        # A PulseEnvelope is a dataclass, not an Enum, so it has no `.name` -
+                        # its selectable identity is the type of its envelope.
+                        param_value = settings_dict[param_name]
+                        if issubclass(type(param_value), Enum):
+                            text = param_value.name
+                        elif isinstance(param_value, PulseEnvelope):
+                            text = param_value.type.name
+                        else:
+                            text = str(param_value)
+                        index = widget.findText(str(text))
                         widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 

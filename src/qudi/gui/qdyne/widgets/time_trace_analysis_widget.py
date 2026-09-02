@@ -35,6 +35,7 @@ from qudi.core.connector import Connector
 from qudi.gui.qdyne.tools.mediator_bridge import MediatorBridge
 from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 import qudi.logic.qdyne.qdyne_logic
+from qudi.logic.qdyne.qdyne_logic import FitTarget
 
 logger = getLogger(__name__)
 
@@ -66,8 +67,12 @@ class TimeTraceAnalysisTab(QWidget):
         self._connect_signals_from_logic()
 
     def _connect_signals_from_data_widget(self):
-        self._dw.plot1_fitwidget.sigDoFit.connect(lambda fit_config: self._logic().do_fit(fit_config))
-        self._dw.plot2_fitwidget.sigDoFit.connect(lambda fit_config: self._logic().do_fit(fit_config))
+        self._dw.plot1_fitwidget.sigDoFit.connect(
+            lambda fit_config: self._logic().do_fit(fit_config, FitTarget.FREQ)
+        )
+        self._dw.plot2_fitwidget.sigDoFit.connect(
+            lambda fit_config: self._logic().do_fit(fit_config, FitTarget.TIME)
+        )
 
         self._dw.analyze_pushButton.clicked.connect(self._logic().measure.analyze_time_trace)
         # self._dw.get_freq_domain_pushButton.clicked.connect(self._logic().measure.get_spectrum)
@@ -123,7 +128,7 @@ class TimeTraceAnalysisDataWidget(QWidget):
     def activate(self):
         self._form_layout()
         self._activate_plot1_widget()
-        # self._activate_plot2_widget()
+        self._activate_plot2_widget()
 
     def _form_layout(self):
         self.tta_gridGroupBox.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
@@ -171,6 +176,8 @@ class TimeTraceAnalysisDataWidget(QWidget):
         )
         self.plot2_PlotWidget.addItem(self.second_signal_image)
         self.plot2_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+        self.plot2_PlotWidget.setLabel(axis="bottom", text="time", units="s")
+        self.plot2_PlotWidget.setLabel(axis="left", text="signal", units="")
         # Configure the fit of the data in the secondary pulse analysis display:
         self.second_fit_image = pg.PlotDataItem(pen=palette.c3)
         self.plot2_PlotWidget.addItem(self.second_fit_image)
@@ -255,6 +262,16 @@ class TimeTraceAnalysisDataWidget(QWidget):
         if self.signal_image not in self.plot1_PlotWidget.items():
             self.plot1_PlotWidget.addItem(self.signal_image)
 
+    def update_time_domain(self):
+        time_domain = self._logic.data.time_domain
+        if time_domain is None or np.size(time_domain) == 0:
+            self.second_signal_image.setData(x=[], y=[])
+            return
+        self.second_signal_image.setData(x=time_domain[0], y=time_domain[1])
+        # Same reasoning as update_spectrum(): re-add only if something removed it.
+        if self.second_signal_image not in self.plot2_PlotWidget.items():
+            self.plot2_PlotWidget.addItem(self.second_signal_image)
+
     def data_updated(self):
         self.peak_range_spinBox.setMaximum(int(1e9))
         self.peak_range_spinBox.setMinimum(0)
@@ -264,27 +281,32 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self.peak_separation_spinBox.setMinimum(0)
         self.get_peaks()
         self.update_spectrum()
-        pass
+        self.update_time_domain()
 
-    @Slot(str, object)
-    def fit_data_updated(self, fit_config, fit_result):
+    @Slot(str, object, str)
+    def fit_data_updated(self, fit_config, fit_result, plot=FitTarget.FREQ):
         """
 
         @param str fit_config:
         @param object fit_result:
-        @param bool use_alternative_data:
+        @param str plot: which plot the result belongs to - see FitTarget.
         @return:
         """
-        if not fit_config or fit_config == "No Fit":
-            self._set_plot_removed()
+        if plot == FitTarget.TIME:
+            image, plot_widget = self.second_fit_image, self.plot2_PlotWidget
         else:
-            self._set_fit(fit_result)
+            image, plot_widget = self.fit_image, self.plot1_PlotWidget
 
-    def _set_plot_removed(self):
-        if self.fit_image in self.plot1_PlotWidget.items():
-            self.plot1_PlotWidget.removeItem(self.fit_image)
+        if not fit_config or fit_config == "No Fit":
+            self._set_plot_removed(image, plot_widget)
+        else:
+            self._set_fit(fit_result, image, plot_widget)
 
-    def _set_fit(self, fit_result):
-        self.fit_image.setData(x=fit_result.high_res_best_fit[0], y=fit_result.high_res_best_fit[1])
-        if self.fit_image not in self.plot1_PlotWidget.items():
-            self.plot1_PlotWidget.addItem(self.fit_image)
+    def _set_plot_removed(self, image, plot_widget):
+        if image in plot_widget.items():
+            plot_widget.removeItem(image)
+
+    def _set_fit(self, fit_result, image, plot_widget):
+        image.setData(x=fit_result.high_res_best_fit[0], y=fit_result.high_res_best_fit[1])
+        if image not in plot_widget.items():
+            plot_widget.addItem(image)

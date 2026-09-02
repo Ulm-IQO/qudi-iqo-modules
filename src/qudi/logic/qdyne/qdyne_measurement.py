@@ -670,6 +670,7 @@ class QdyneMeasurement(QtCore.QObject):
                     else:
                         self.analyze_time_trace()
                         self.get_spectrum()
+                        self.get_time_domain()
                         self.log.debug('staging sigQdyneDataUpdated')
                         self._queue_emit(self.sigQdyneDataUpdated)
                     self._consecutive_failures = 0
@@ -750,6 +751,7 @@ class QdyneMeasurement(QtCore.QObject):
             return
         self.analyze_time_trace()
         self.get_spectrum()
+        self.get_time_domain()
 
     # ------------------------------------------------------------------ pipeline
 
@@ -923,6 +925,27 @@ class QdyneMeasurement(QtCore.QObject):
         self.data.freq_domain = freq_domain
         self.data.freq_data.x = freq_domain[0]
         self.data.freq_data.y = freq_domain[1]
+
+    def get_time_domain(self, settings=None):
+        """Counterpart to get_spectrum() for the time-domain view.
+
+        Unlike the spectrum, a missing time-domain view is legitimate: an analyzer that does not
+        implement one returns None, and `time_domain` is then left as an empty array rather than
+        raising. Only a malformed (non-empty but wrongly shaped) result is an error.
+        """
+        settings = settings if self._is_settings(settings) else self._require_analyzer_settings()
+        time_domain = self.analyzer.get_time_domain_signal(self.data, settings)
+        if time_domain is None:
+            self.data.time_domain = np.array([])
+            return
+
+        time_domain = np.asarray(time_domain)
+        if time_domain.ndim < 1 or time_domain.shape[0] < 2:
+            raise ValueError(
+                f'Analyzer returned a time-domain array of shape {time_domain.shape}; '
+                f'expected [times, values].'
+            )
+        self.data.time_domain = time_domain
 
     # ------------------------------------------------------------------ analysis timer interval
 

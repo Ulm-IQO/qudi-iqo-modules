@@ -36,25 +36,30 @@ class QdyneFit(QtCore.QObject):
         self.fit_config_model = FitConfigurationsModel(parent=self)
         self.fit_config_model.load_configs(self._fit_configs)
         self.fit_container = FitContainer(parent=self, config_model=self.fit_config_model)
+        # Second container for the time-domain plot. It shares fit_config_model deliberately - both
+        # plots offer the same fit menu - but keeps its own result, so fitting one does not clobber
+        # the other. Its absence is why _activate_plot2_widget() was commented out.
+        self.fit_container2 = FitContainer(parent=self, config_model=self.fit_config_model)
 
     def activate(self):
         pass
         # Fitting
 
-    def perform_fit(self, data, fit_config):
+    def perform_fit(self, data, fit_config, container=None):
         """
         Performs the chosen fit on the measured data.
 
+        @param data: [x, y] to fit
         @param str fit_config: name of the fit configuration to use
-        @param bool use_alternative_data: Flag indicating if the signal data (False) or the
-                                          alternative signal data (True) should be fitted.
-                                          Ignored if data is given as parameter
+        @param container: which FitContainer to fit in. Defaults to fit_container (the spectrum);
+                          pass fit_container2 for the time-domain plot so the two keep separate
+                          results.
 
         @return result_object: the lmfit result object
         """
-
-        config, result = self.fit_container.fit_data(fit_config, data[0], data[1])
+        container = container if container is not None else self.fit_container
+        config, result = container.fit_data(fit_config, data[0], data[1])
         if result:
-            result.result_str = self.fit_container.formatted_result(result)
+            result.result_str = container.formatted_result(result)
         return config, result
 

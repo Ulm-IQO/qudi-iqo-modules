@@ -190,6 +190,11 @@ class MainDataClass:
         self.fit_config: str = ''
         self.fit_result = None
 
+        #: The time-domain plot fits independently of the spectrum, so it keeps its own result.
+        #: Sharing one pair meant a fit on either plot overwrote the other's curve.
+        self.time_fit_config: str = ''
+        self.time_fit_result = None
+
         #: Running pulse histogram, accumulated rather than recomputed - see add_pulse_counts().
         self._pulse_hist: Optional[np.ndarray] = None
 
@@ -293,3 +298,5 @@ class MainDataClass:
         self.metadata = QDyneMetadata()
         self.fit_config = ''
         self.fit_result = None
+        self.time_fit_config = ''
+        self.time_fit_result = None
