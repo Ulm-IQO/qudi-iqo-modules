@@ -82,6 +82,10 @@ from qudi.logic.pulsed.pulsed_data.settings_coercion import (
     coerce_settings,
 )
 
+# The measurement state machine. Sits alongside qudi-core's coarse module_state
+# (deactivated/idle/locked) and carries the finer distinction it cannot: running vs paused.
+from qudi.logic.pulsed.pulsed_fsm.state_machines import StateMachineError
+from qudi.logic.pulsed.pulsed_fsm.measurement_state import MeasurementState, MeasurementStateMachine
 
 
 def _data_storage_from_cfg_option(cfg_str):
@@ -269,6 +273,10 @@ class PulsedMeasurementLogic(LogicBase):
     sigMeasurementSettingsUpdated = QtCore.Signal(dict)
     sigAnalysisSettingsUpdated = QtCore.Signal(dict)
     sigExtractionSettingsUpdated = QtCore.Signal(dict)
+    #: (old_state, new_state) as MeasurementState members. Relayed straight from the state machine
+    #: so PulsedMasterLogic can mirror running vs paused, which sigMeasurementStatusUpdated's two
+    #: bools reach it as but status_dict has never stored.
+    sigMeasurementStateChanged = QtCore.Signal(object, object)
     # Internal signals
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
@@ -279,6 +287,13 @@ class PulsedMeasurementLogic(LogicBase):
         # timer for measurement
         self.__analysis_timer = None
         self.__execution_state = ExecutionState()
+        # The measurement state machine. parent=self matters: a QObject migrates to its owner's
+        # thread, so this follows the logic module when qudi moves it off the manager thread.
+        self._fsm = MeasurementStateMachine(parent=self)
+        self._fsm.sigStateChanged.connect(self._sync_module_state)
+        self._fsm.sigStateChanged.connect(self._sync_measurement_clock)
+        # Signal-to-signal: republishes every transition unchanged, no handler needed.
+        self._fsm.sigStateChanged.connect(self.sigMeasurementStateChanged)
         # last message reported via sigAnalysisProblem - lets _report_analysis_problem() dedup
         # repeated identical failures instead of logging/emitting on every single tick.
         self.__last_analysis_problem = None
@@ -413,6 +428,58 @@ class PulsedMeasurementLogic(LogicBase):
         self._pending_ensembles = dict(ensembles) if ensembles else {}
         self._pending_blocks = dict(blocks) if blocks else {}
 
+    def _verify_loaded_asset(self, action):
+        """Check the pulse generator really holds the asset this measurement is configured for.
+
+        Nothing re-reads the device between a load and pressing Play, so the two can diverge - most
+        obviously after run_pg_benchmark(), which overwrites the loaded asset, but also after any
+        direct pulsegenerator() call from a script. Measuring the wrong pulses with the right
+        x-axis produces data that looks valid and is not, so this refuses rather than warns.
+
+        Parameters
+        ----------
+        action : str
+            'start' or 'resume', used only in the error message.
+
+        Returns
+        -------
+        bool
+            True if the device matches, or if the comparison cannot be made.
+        """
+        asset = self._loaded_asset
+        if asset is None:
+            return True
+
+        try:
+            loaded_names, loaded_type = self._pulsegenerator().get_loaded_assets()
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator. '
+                               'Continuing without the consistency check.')
+            return True
+
+        if asset.is_sequence:
+            expected, expected_type = {asset.name}, 'sequence'
+        else:
+            # The exact waveform names this ensemble wrote, suffixes included - avoids having to
+            # re-derive the device's channel naming here.
+            expected, expected_type = set(asset.sampling_information.waveforms), 'waveform'
+        if not expected:
+            # Never sampled, so there is nothing to compare against.
+            return True
+
+        on_device = set(loaded_names.values())
+        if loaded_type == expected_type and on_device and on_device.issubset(expected):
+            return True
+
+        self.log.error(
+            'Cannot {0} the measurement: the pulse generator does not hold the asset this '
+            'measurement is configured for.\nExpected {1} "{2}" ({3}), but the device reports '
+            '{4}: {5}.\nRe-load "{2}" and try again.'
+            ''.format(action, expected_type, asset.name, sorted(expected),
+                      loaded_type or 'nothing loaded', sorted(on_device) or 'nothing')
+        )
+        return False
+
     def _commit_pending_asset(self):
         """Promote whatever's pending (from the last loaded_asset/refresh_loaded_asset_closure()
         call) to the actively-measured asset - called at the start of start_pulsed_measurement(),
@@ -528,6 +595,82 @@ class PulsedMeasurementLogic(LogicBase):
             if nested.get('fit_configs'):
                 self._fit_configs = tuple(nested['fit_configs'])
 
+    def _sync_module_state(self, old_state, new_state):
+        """Keep qudi-core's coarse module_state in step with this module's own state machine.
+
+        The only place lock()/unlock() is called. RUNNING -> PAUSED stays busy, so nothing happens.
+
+        Parameters
+        ----------
+        old_state, new_state : MeasurementState
+            As delivered by sigStateChanged.
+        """
+        was_busy = old_state is not MeasurementState.IDLE
+        is_busy = new_state is not MeasurementState.IDLE
+        if is_busy and not was_busy and self.module_state() == 'idle':
+            self.module_state.lock()
+        elif was_busy and not is_busy and self.module_state() == 'locked':
+            self.module_state.unlock()
+
+    def _best_effort(self, action, description):
+        """Run one shutdown step, logging whatever it raises instead of propagating it.
+
+        Only for fault paths. The steps of a shutdown are independent - a pulse generator that has
+        stopped answering must not be the reason the microwave source stays on - so each one is
+        attempted regardless of how the previous one went.
+
+        Parameters
+        ----------
+        action : callable
+            Takes no arguments; its return value is discarded.
+        description : str
+            What was being attempted, for the log message.
+        """
+        try:
+            action()
+        except Exception:
+            self.log.exception('{0} failed while returning to idle:'.format(description))
+
+    def _return_to_idle(self):
+        """Switch everything off and put the state machine back to IDLE after a fault.
+
+        Between a transition and the hardware calls that are meant to follow it there is a window
+        where the machine says RUNNING but the instruments do not agree. Nothing in the four
+        toggle methods can be made to fail atomically - each device is switched separately - so the
+        recovery is to finish switching off whatever will still answer and then step the machine
+        home, rather than to leave it locked with no way back short of restarting the module.
+
+        Best effort throughout, and never raises: it runs from `except` blocks, where an exception
+        of its own would replace the failure being reported.
+        """
+        self._best_effort(self.sigStopTimer.emit, 'Stopping the analysis timer')
+        self._best_effort(self.fast_counter_off, 'Switching the fast counter off')
+        self._best_effort(self.pulse_generator_off, 'Switching the pulse generator off')
+        if self._settings.microwave_settings.use_ext_microwave:
+            self._best_effort(self.microwave_off, 'Switching the external microwave off')
+        # Unlocks module_state via _sync_module_state(), and is a no-op if we are already idle.
+        self._fsm.recover()
+        self.sigMeasurementStatusUpdated.emit(False, False)
+
+    def _sync_measurement_clock(self, old_state, new_state):
+        """Drive the elapsed-time clock from the state machine, so the two cannot disagree.
+
+        Reaching IDLE deliberately does nothing: the clock keeps its final value (nothing reads it
+        while idle) and the next start() resets it.
+
+        Parameters
+        ----------
+        old_state, new_state : MeasurementState
+            As delivered by sigStateChanged.
+        """
+        if new_state is MeasurementState.RUNNING:
+            if old_state is MeasurementState.IDLE:
+                self.__execution_state.start()
+            else:
+                self.__execution_state.unpause()
+        elif new_state is MeasurementState.PAUSED:
+            self.__execution_state.pause()
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
@@ -600,7 +743,7 @@ class PulsedMeasurementLogic(LogicBase):
     def on_deactivate(self):
         """ Deactivate the module properly.
         """
-        if self.module_state() == 'locked':
+        if self._fsm.state is not MeasurementState.IDLE:
             self.stop_pulsed_measurement()
         self.__analysis_timer.timeout.disconnect()
         self.sigStartTimer.disconnect()
@@ -684,35 +827,46 @@ class PulsedMeasurementLogic(LogicBase):
             self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
             return self.fast_counter_settings
 
-        # Check if fast counter is running and do nothing if that is the case
-        counter_status = self._fastcounter().get_status()
-        if not counter_status >= 2 and not counter_status < 0:
-            # Set parameters, check if it is gated
-            if not self._fastcounter().is_gated():
-                requested = replace(requested, number_of_gates=0)
+        # Every call below goes to the device, and a device that raises here used to take the
+        # exception out of this slot entirely - which, on a queued cross-thread connection, has no
+        # caller to receive it. Reached from start_pulsed_measurement()'s prologue via
+        # _apply_invoked_settings(), so an escape there also stranded the GUI showing "running".
+        # Nothing is locked at this point, so the recovery is simply to report and leave the
+        # settings as they were.
+        try:
+            # Check if fast counter is running and do nothing if that is the case
+            counter_status = self._fastcounter().get_status()
+            if not counter_status >= 2 and not counter_status < 0:
+                # Set parameters, check if it is gated
+                if not self._fastcounter().is_gated():
+                    requested = replace(requested, number_of_gates=0)
 
-            self._apply_fast_counter_settings(requested)
+                self._apply_fast_counter_settings(requested)
 
-            # Apply the settings to hardware
-            bin_width, record_length, number_of_gates = self._fastcounter().configure(
-                self._settings.fast_counter_settings.bin_width,
-                self._settings.fast_counter_settings.record_length,
-                self._settings.fast_counter_settings.number_of_gates
-             )
-            self._apply_fast_counter_settings(
-                replace(
-                    self._settings.fast_counter_settings,
-                    bin_width=bin_width,
-                    record_length=record_length,
-                    number_of_gates=number_of_gates,
-                    is_gated=self._fastcounter().is_gated(),
+                # Apply the settings to hardware
+                bin_width, record_length, number_of_gates = self._fastcounter().configure(
+                    self._settings.fast_counter_settings.bin_width,
+                    self._settings.fast_counter_settings.record_length,
+                    self._settings.fast_counter_settings.number_of_gates
+                 )
+                self._apply_fast_counter_settings(
+                    replace(
+                        self._settings.fast_counter_settings,
+                        bin_width=bin_width,
+                        record_length=record_length,
+                        number_of_gates=number_of_gates,
+                        is_gated=self._fastcounter().is_gated(),
+                    )
                 )
-            )
-        else:
-            self.log.warning('Fast counter is not idle (status: {0}).\n'
-                             'Unable to apply new settings.'.format(counter_status))
+            else:
+                self.log.warning('Fast counter is not idle (status: {0}).\n'
+                                 'Unable to apply new settings.'.format(counter_status))
+        except Exception:
+            self.log.exception('Applying the fast counter settings to the hardware failed. The '
+                               'settings may be partly applied - re-check them before measuring:')
 
-        # emit update signal for master (GUI or other logic module)
+        # emit update signal for master (GUI or other logic module). Outside the try so the GUI is
+        # resynced to whatever the settings actually are now, on the failure path as well.
         self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
         return self.fast_counter_settings
 
@@ -931,7 +1085,12 @@ class PulsedMeasurementLogic(LogicBase):
                             power=microwave.cw_power,
                         )
                     )
-                
+        except Exception:
+            # The finally below already guaranteed the notification; this stops the exception
+            # itself leaving a queued cross-thread slot, where there is no caller to catch it.
+            # See set_fast_counter_settings() - same shape, same reasoning.
+            self.log.exception('Applying the microwave settings to the hardware failed. The '
+                               'settings may be partly applied - re-check them before measuring:')
         finally:
             # emit update signal for master (GUI or other logic module)
             self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
@@ -1265,7 +1424,7 @@ class PulsedMeasurementLogic(LogicBase):
                         labels=requested.labels,
                     )
                 )
-            if self.module_state() == 'idle':
+            if self._fsm.state is MeasurementState.IDLE:
                 # Everything else describes the pulse sequence being measured and can only change
                 # while no measurement is running.
                 self._apply_readout_settings(
@@ -1310,27 +1469,52 @@ class PulsedMeasurementLogic(LogicBase):
         """Start the analysis loop."""
         self.sigMeasurementStatusUpdated.emit(True, False)
 
-        self._commit_pending_asset()
+        # Everything up to the lock is preparation, and it runs after the GUI has already been told
+        # a measurement is starting. Each deliberate refusal below sends the corrective
+        # (False, False), but an *exception* used to skip them all - leaving the run/stop action
+        # latched on with no measurement in progress and nothing left that would ever unlatch it.
+        # Nothing is locked yet and the state machine has not moved, so there is no state to unwind:
+        # putting the correction out is the whole recovery.
+        try:
+            self._commit_pending_asset()
 
-        # Check if measurement settings need to be invoked
-        if self._settings.readout_settings.invoke_settings:
-            if self.measurement_information:
-                self._apply_invoked_settings()
-                self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
-            else:
-                # abort measurement if settings could not be invoked
-                self.log.error('Unable to invoke measurement settings.\nThis feature can only be '
-                               'used when creating the pulse sequence via predefined methods.\n'
-                               'Aborting measurement start.')
-                self.set_measurement_settings(invoke_settings=False)
+            # Verify against the device before anything is applied or switched on.
+            if not self._verify_loaded_asset('start'):
                 self.sigMeasurementStatusUpdated.emit(False, False)
                 return
 
-        with self._threadlock:
-            if self.module_state() == 'idle':
-                # Lock module state
-                self.module_state.lock()
+            # Check if measurement settings need to be invoked
+            if self._settings.readout_settings.invoke_settings:
+                if self.measurement_information:
+                    self._apply_invoked_settings()
+                    self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
+                else:
+                    # abort measurement if settings could not be invoked
+                    self.log.error('Unable to invoke measurement settings.\nThis feature can only be '
+                                   'used when creating the pulse sequence via predefined methods.\n'
+                                   'Aborting measurement start.')
+                    self.set_measurement_settings(invoke_settings=False)
+                    self.sigMeasurementStatusUpdated.emit(False, False)
+                    return
+        except Exception:
+            self.log.exception('Preparing the pulsed measurement failed before it could be started. '
+                               'Nothing was switched on:')
+            self.sigMeasurementStatusUpdated.emit(False, False)
+            return
 
+        with self._threadlock:
+            try:
+                # Also locks module_state, via _sync_module_state().
+                self._fsm.start()
+            except StateMachineError:
+                self.log.warning('Unable to start pulsed measurement. Measurement already running.')
+                return
+
+            # Everything from here on can fail against real hardware, and by this point the machine
+            # already says RUNNING and module_state is already locked. Without the rollback below a
+            # single device error leaves the toolchain believing a measurement is in progress that
+            # is not, and refusing every later start.
+            try:
                 # Clear previous fits
                 self.do_fit('No Fit', False)
                 self.do_fit('No Fit', True)
@@ -1340,8 +1524,8 @@ class PulsedMeasurementLogic(LogicBase):
 
                 # recall stashed raw data
                 if self._data_stash.recall(stashed_raw_data_tag) is not None:
-                     self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
-                                     ''.format(stashed_raw_data_tag))
+                    self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
+                                  ''.format(stashed_raw_data_tag))
                 #On a miss, the recall method will return None,
                 #the log message will not be printed, and the active_tag is cleared internally
 
@@ -1353,17 +1537,16 @@ class PulsedMeasurementLogic(LogicBase):
                 # start pulse generator
                 self.pulse_generator_on()
 
-                # start the time and set the paused state to false
-                self.__execution_state.start()
-
                 # initialize analysis_timer
                 self.sigTimerUpdated.emit(self.measurement_data.elapsed_time,
                                           self.measurement_data.elapsed_sweeps,
                                           self._timer_interval_s)
 
                 self.sigStartTimer.emit()
-            else:
-                self.log.warning('Unable to start pulsed measurement. Measurement already running.')
+            except Exception:
+                self.log.exception('Starting the pulsed measurement failed. Switching everything '
+                                   'off again and returning to idle:')
+                self._return_to_idle()
         return
 
     @QtCore.Slot(str)
@@ -1380,28 +1563,34 @@ class PulsedMeasurementLogic(LogicBase):
             self.log.exception('Final analysis pass before stopping measurement failed:')
 
         with self._threadlock:
-            if self.module_state() == 'locked':
-                # stopping the timer
-                self.sigStopTimer.emit()
-                # Turn off fast counter
-                self.fast_counter_off()
-                # Turn off pulse generator
-                self.pulse_generator_off()
-                # Turn off microwave source
-                if self._settings.microwave_settings.use_ext_microwave:
-                    self.microwave_off()
+            try:
+                # Legal from both RUNNING and PAUSED. Also unlocks module_state.
+                self._fsm.stop()
+            except StateMachineError:
+                self.log.warning('Unable to stop pulsed measurement. No measurement running.')
+                return
 
-                # stash raw data if requested
-                if stash_raw_data_tag:
-                          self._data_stash.stash(stash_raw_data_tag, self.measurement_data.raw_data,
-                                                 self.measurement_data.elapsed_sweeps, self.measurement_data.elapsed_time)
-                self._data_stash.clear_active()
+            # Independently, and in this order. The machine has already reached IDLE, so a device
+            # raising here does not strand the state - but it would leave the remaining instruments
+            # live, which for the pulse generator and the microwave source is the outcome that
+            # matters. Each is therefore attempted whatever happened to the one before it.
+            self._best_effort(self.sigStopTimer.emit, 'Stopping the analysis timer')
+            self._best_effort(self.fast_counter_off, 'Switching the fast counter off')
+            self._best_effort(self.pulse_generator_off, 'Switching the pulse generator off')
+            if self._settings.microwave_settings.use_ext_microwave:
+                self._best_effort(self.microwave_off, 'Switching the external microwave off')
 
-                # Set measurement paused flag
-                self.__execution_state.is_paused = False
+            # stash raw data if requested
+            if stash_raw_data_tag:
+                self._best_effort(
+                    lambda: self._data_stash.stash(
+                        stash_raw_data_tag, self.measurement_data.raw_data,
+                        self.measurement_data.elapsed_sweeps, self.measurement_data.elapsed_time),
+                    'Stashing the raw data'
+                )
+            self._data_stash.clear_active()
 
-                self.module_state.unlock()
-                self.sigMeasurementStatusUpdated.emit(False, False)
+            self.sigMeasurementStatusUpdated.emit(False, False)
         return
 
     @QtCore.Slot(bool)
@@ -1426,7 +1615,16 @@ class PulsedMeasurementLogic(LogicBase):
         Pauses the measurement
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            try:
+                # Only legal from RUNNING, so a second pause no longer re-runs the hardware-off
+                # calls below on already-stopped hardware.
+                self._fsm.pause()
+            except StateMachineError:
+                self.log.warning('Unable to pause pulsed measurement. No measurement running.')
+                self.sigMeasurementStatusUpdated.emit(False, False)
+                return
+
+            try:
                 # pausing the timer
                 if self.__analysis_timer.isActive():
                     # stopping the timer
@@ -1436,14 +1634,16 @@ class PulsedMeasurementLogic(LogicBase):
                 self.pulse_generator_off()
                 if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_off()
+            except Exception:
+                # A pause that failed part-way leaves some instruments running and some not, and
+                # PAUSED would claim otherwise - resuming from there would re-issue the on() calls
+                # to whichever ones never stopped. Going all the way to idle is the only outcome
+                # that matches what the hardware is actually doing.
+                self.log.exception('Pausing the pulsed measurement failed. Stopping it instead:')
+                self._return_to_idle()
+                return
 
-                # Set measurement paused flag
-                self.__execution_state.pause()
-
-                self.sigMeasurementStatusUpdated.emit(True, True)
-            else:
-                self.log.warning('Unable to pause pulsed measurement. No measurement running.')
-                self.sigMeasurementStatusUpdated.emit(False, False)
+            self.sigMeasurementStatusUpdated.emit(True, True)
         return
 
     @QtCore.Slot()
@@ -1452,7 +1652,22 @@ class PulsedMeasurementLogic(LogicBase):
         Continues the measurement
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            # Before the transition: the device can be touched while a measurement is paused, and a
+            # failed check must leave it paused rather than half-resumed.
+            if not self._verify_loaded_asset('resume'):
+                self.sigMeasurementStatusUpdated.emit(True, True)
+                return
+
+            try:
+                # Only legal from PAUSED, so continuing an already-running measurement no longer
+                # re-issues microwave_on()/pulse_generator_on() to live hardware.
+                self._fsm.resume()
+            except StateMachineError:
+                self.log.warning('Unable to continue pulsed measurement. No measurement paused.')
+                self.sigMeasurementStatusUpdated.emit(False, False)
+                return
+
+            try:
                 if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_on()
                 self.fast_counter_continue()
@@ -1461,14 +1676,16 @@ class PulsedMeasurementLogic(LogicBase):
                 # un-pausing the timer
                 if not self.__analysis_timer.isActive():
                     self.sigStartTimer.emit()
+            except Exception:
+                # Half-resumed, and RUNNING would claim otherwise. Falling back to PAUSED is not an
+                # option either - whatever did come back on would stay on behind a state that says
+                # it is off - so switch the lot off and go idle.
+                self.log.exception('Continuing the pulsed measurement failed. Switching everything '
+                                   'off again and returning to idle:')
+                self._return_to_idle()
+                return
 
-                # Set measurement paused flag
-                self.__execution_state.unpause()
-
-                self.sigMeasurementStatusUpdated.emit(True, False)
-            else:
-                self.log.warning('Unable to continue pulsed measurement. No measurement running.')
-                self.sigMeasurementStatusUpdated.emit(False, False)
+            self.sigMeasurementStatusUpdated.emit(True, False)
         return
 
     @QtCore.Slot(float)
@@ -1491,7 +1708,7 @@ class PulsedMeasurementLogic(LogicBase):
             self._apply_timer_interval(interval)
             if self._timer_interval_s > 0:
                 self.__analysis_timer.setInterval(int(1000. * self._timer_interval_s))
-                if self.module_state() == 'locked' and not self.__execution_state.is_paused:
+                if self._fsm.state is MeasurementState.RUNNING:
                     self.sigStartTimer.emit()
             else:
                 self.sigStopTimer.emit()
@@ -1533,7 +1750,7 @@ class PulsedMeasurementLogic(LogicBase):
     def manually_pull_data(self):
         """ Analyse and display the data
         """
-        if self.module_state() == 'locked':
+        if self._fsm.state is not MeasurementState.IDLE:
             self._pulsed_analysis_loop()
         return
 
@@ -1591,7 +1808,7 @@ class PulsedMeasurementLogic(LogicBase):
             with self._threadlock:
                 self._apply_readout_settings(self._settings.readout_settings.update_from_dict(units_labels))
 
-        if self.module_state() == 'locked':
+        if self._fsm.state is not MeasurementState.IDLE:
             return
 
         required = ('number_of_lasers', 'laser_ignore_list', 'alternating', 'controlled_variable', 'counting_length')
@@ -1741,7 +1958,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _extract_laser_pulses(self):
         # Get counter raw data (including recalled raw data from previous measurement)
-        if self.module_state() == 'locked':
+        if self._fsm.state is not MeasurementState.IDLE:
             fc_data, info_dict = self._get_raw_data()
             self.measurement_data.raw_data = fc_data
             self.measurement_data.elapsed_sweeps = info_dict['elapsed_sweeps']

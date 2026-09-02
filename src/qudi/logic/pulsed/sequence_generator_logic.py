@@ -75,6 +75,10 @@ from qudi.logic.pulsed.pulsed_data.settings_coercion import (
     as_settings_dict,
     coerce_settings,
 )
+# The generator state machine. Sits alongside qudi-core's coarse module_state and carries the
+# distinction it cannot: which activity is running, and whether an ensemble run is nested.
+from qudi.logic.pulsed.pulsed_fsm.state_machines import StateMachineError
+from qudi.logic.pulsed.pulsed_fsm.generator_state import GeneratorState, GeneratorStateMachine
 
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
@@ -283,11 +287,20 @@ class SequenceGeneratorLogic(LogicBase):
     #: given object is a sequence.
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
+    #: (old_state, new_state) as GeneratorState members. Relayed straight from the state machine so
+    #: PulsedMasterLogic can mirror what this module is doing without inferring it from busy flags.
+    sigGeneratorStateChanged = QtCore.Signal(object, object)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # A flag indicating if sampling of a sequence is in progress
-        self.__sequence_generation_in_progress = False
+        # The generator state machine. parent=self so it migrates to the logic thread with the
+        # module. Replaces the old __sequence_generation_in_progress flag: "am I inside an outer
+        # sequence run?" is now answered by GeneratorState.SAMPLING_SEQUENCE itself.
+        self._fsm = GeneratorStateMachine(parent=self)
+        self._fsm.sigStateChanged.connect(self._sync_module_state)
+        # Signal-to-signal: republishes every transition unchanged, no handler needed.
+        self._fsm.sigStateChanged.connect(self.sigGeneratorStateChanged)
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = None
@@ -477,12 +490,29 @@ class SequenceGeneratorLogic(LogicBase):
         self._merge_generator_declared_parameters()
         self._pog.activate_plugins()
 
-        self.__sequence_generation_in_progress = False
         return
 
     def on_deactivate(self):
         """Deinitialisation performed during deactivation of the module."""
         return
+
+    def _sync_module_state(self, old_state, new_state):
+        """Keep qudi-core's coarse module_state in step with this module's own state machine.
+
+        The only place lock()/unlock() is called. Self-transitions (a nested ensemble run inside a
+        sequence run) never reach here, since sigStateChanged only fires on a real change.
+
+        Parameters
+        ----------
+        old_state, new_state : GeneratorState
+            As delivered by sigStateChanged.
+        """
+        was_busy = old_state is not GeneratorState.IDLE
+        is_busy = new_state is not GeneratorState.IDLE
+        if is_busy and not was_busy and self.module_state() == 'idle':
+            self.module_state.lock()
+        elif was_busy and not is_busy and self.module_state() == 'locked':
+            self.module_state.unlock()
 
     # @_saved_pulse_blocks.constructor
     # def _restore_saved_blocks(self, block_list):
@@ -645,127 +675,162 @@ class SequenceGeneratorLogic(LogicBase):
             self.sigGeneratorSettingsUpdated.emit(self.pulse_generator_settings)
             return self.pulse_generator_settings
 
-        # Check if pulse generator is running and do nothing if that is the case
-        pulser_status, status_dict = self.pulsegenerator().get_status()
-        if pulser_status == 0:
-            # Set parameters if present
-            if 'activation_config' in settings_dict:
-                activation_config = settings_dict['activation_config']
-                available_configs = self.pulse_generator_constraints.activation_config
-                set_config = None
-                # Allow argument types str, set and tuple
-                if isinstance(activation_config, str):
-                    if activation_config in available_configs.keys():
-                        set_config = self._apply_activation_config(available_configs[activation_config])
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=activation_config, channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config by name.\n"{0}" not found in pulser constraints.'.format(
-                                activation_config
+        # Every branch below negotiates with the device, and a device that raises used to take the
+        # exception out of this slot entirely - which, on a queued cross-thread connection, has no
+        # caller to receive it. Nothing is locked here and no state machine is involved, so the
+        # recovery is to report and leave the settings wherever the failure left them; the
+        # notification below then resyncs the GUI to what they actually are.
+        changed_settings = dict()
+        try:
+            # Check if pulse generator is running and do nothing if that is the case
+            pulser_status, status_dict = self.pulsegenerator().get_status()
+            if pulser_status == 0:
+                # Set parameters if present
+                if 'activation_config' in settings_dict:
+                    activation_config = settings_dict['activation_config']
+                    available_configs = self.pulse_generator_constraints.activation_config
+                    set_config = None
+                    # Allow argument types str, set and tuple
+                    if isinstance(activation_config, str):
+                        if activation_config in available_configs.keys():
+                            set_config = self._apply_activation_config(available_configs[activation_config])
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=activation_config, channels=set_config),
                             )
-                        )
-                elif isinstance(activation_config, set):
-                    if activation_config in available_configs.values():
-                        set_config = self._apply_activation_config(activation_config)
-                        config_name = list(available_configs)[list(available_configs.values()).index(activation_config)]
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=config_name, channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
-                                activation_config
+                        else:
+                            self.log.error(
+                                'Unable to set activation config by name.\n"{0}" not found in pulser constraints.'.format(
+                                    activation_config
+                                )
                             )
-                        )
-                elif isinstance(activation_config, tuple):
-                    if activation_config in available_configs.items():
-                        set_config = self._apply_activation_config(activation_config[1])
-                        self._update_pulse_generator_settings(
-                            activation_config=ActivationConfig(name=activation_config[0], channels=set_config),
-                        )
-                    else:
-                        self.log.error(
-                            'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
-                                activation_config
+                    elif isinstance(activation_config, set):
+                        if activation_config in available_configs.values():
+                            set_config = self._apply_activation_config(activation_config)
+                            config_name = list(available_configs)[list(available_configs.values()).index(activation_config)]
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=config_name, channels=set_config),
                             )
+                        else:
+                            self.log.error(
+                                'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
+                                    activation_config
+                                )
+                            )
+                    elif isinstance(activation_config, tuple):
+                        if activation_config in available_configs.items():
+                            set_config = self._apply_activation_config(activation_config[1])
+                            self._update_pulse_generator_settings(
+                                activation_config=ActivationConfig(name=activation_config[0], channels=set_config),
+                            )
+                        else:
+                            self.log.error(
+                                'Unable to set activation config "{0}".\nNot found in pulser constraints.'.format(
+                                    activation_config
+                                )
+                            )
+                    # Check if the ultimately set config is part of the constraints
+                    if set_config is not None and set_config not in available_configs.values():
+                        self.log.error('Something went wrong while setting new activation config.')
+                        self._update_pulse_generator_settings(
+                            activation_config=ActivationConfig(name='', channels=set_config),
                         )
-                # Check if the ultimately set config is part of the constraints
-                if set_config is not None and set_config not in available_configs.values():
-                    self.log.error('Something went wrong while setting new activation config.')
+
+                    # search the generation_parameters for channel specifiers and adjust them if
+                    # they are no longer valid
+                    ana_chnls = natural_sort(self.analog_channels)
+                    digi_chnls = natural_sort(self.digital_channels)
+                    active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
+                    for name in [setting for setting in self.generation_parameters if setting.endswith('_channel')]:
+                        channel = self.generation_parameters[name]
+                        if isinstance(channel, str) and channel not in active_channels:
+                            if channel.startswith('a'):
+                                new_channel = ana_chnls[0] if ana_chnls else digi_chnls[0]
+                            elif channel.startswith('d'):
+                                new_channel = digi_chnls[0] if digi_chnls else ana_chnls[0]
+                            else:
+                                continue
+
+                            if new_channel is not None:
+                                self.log.warning(
+                                    'Change of activation config caused sampling_setting '
+                                    '"{0}" to be changed to "{1}".'.format(name, new_channel)
+                                )
+                                changed_settings[name] = new_channel
+
+                if 'sample_rate' in settings_dict:
                     self._update_pulse_generator_settings(
-                        activation_config=ActivationConfig(name='', channels=set_config),
+                        sample_rate=self.pulsegenerator().set_sample_rate(float(settings_dict['sample_rate'])),
                     )
 
-                # search the generation_parameters for channel specifiers and adjust them if they
-                # are no longer valid
-                changed_settings = dict()
-                ana_chnls = natural_sort(self.analog_channels)
-                digi_chnls = natural_sort(self.digital_channels)
-                active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
-                for name in [setting for setting in self.generation_parameters if setting.endswith('_channel')]:
-                    channel = self.generation_parameters[name]
-                    if isinstance(channel, str) and channel not in active_channels:
-                        if channel.startswith('a'):
-                            new_channel = ana_chnls[0] if ana_chnls else digi_chnls[0]
-                        elif channel.startswith('d'):
-                            new_channel = digi_chnls[0] if digi_chnls else ana_chnls[0]
-                        else:
-                            continue
+                if 'analog_levels' in settings_dict:
+                    amplitude, offset = self.pulsegenerator().set_analog_level(*settings_dict['analog_levels'])
+                    self._update_pulse_generator_settings(
+                        analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
+                    )
 
-                        if new_channel is not None:
-                            self.log.warning(
-                                'Change of activation config caused sampling_setting '
-                                '"{0}" to be changed to "{1}".'.format(name, new_channel)
-                            )
-                            changed_settings[name] = new_channel
+                if 'digital_levels' in settings_dict:
+                    low, high = self.pulsegenerator().set_digital_level(*settings_dict['digital_levels'])
+                    self._update_pulse_generator_settings(
+                        digital_levels=DigitalLevels(low=low, high=high),
+                    )
 
-            if 'sample_rate' in settings_dict:
-                self._update_pulse_generator_settings(
-                    sample_rate=self.pulsegenerator().set_sample_rate(float(settings_dict['sample_rate'])),
+                if 'interleave' in settings_dict:
+                    self._update_pulse_generator_settings(
+                        interleave=self.pulsegenerator().set_interleave(bool(settings_dict['interleave'])),
+                    )
+
+                self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
+
+            elif settings_dict:
+                # Only throw warning when arguments have been passed to this method
+                self.log.warning(
+                    'Pulse generator is not idle (status: {0:d}, "{1}").\nUnable to apply new settings.'.format(
+                        pulser_status, status_dict[pulser_status]
+                    )
                 )
-
-            if 'analog_levels' in settings_dict:
-                amplitude, offset = self.pulsegenerator().set_analog_level(*settings_dict['analog_levels'])
-                self._update_pulse_generator_settings(
-                    analog_levels=AnalogLevels(amplitude=amplitude, offset=offset),
-                )
-
-            if 'digital_levels' in settings_dict:
-                low, high = self.pulsegenerator().set_digital_level(*settings_dict['digital_levels'])
-                self._update_pulse_generator_settings(
-                    digital_levels=DigitalLevels(low=low, high=high),
-                )
-
-            if 'interleave' in settings_dict:
-                self._update_pulse_generator_settings(
-                    interleave=self.pulsegenerator().set_interleave(bool(settings_dict['interleave'])),
-                )
-
-            self._update_pulse_generator_settings(upload_speed=self.get_speed_write_load())
-
-        elif settings_dict:
-            # Only throw warning when arguments have been passed to this method
-            self.log.warning(
-                'Pulse generator is not idle (status: {0:d}, "{1}").\nUnable to apply new settings.'.format(
-                    pulser_status, status_dict[pulser_status]
-                )
-            )
+        except Exception:
+            self.log.exception('Negotiating the new pulse generator settings with the device '
+                               'failed. They may be partly applied - re-check them before '
+                               'sampling:')
 
         # emit update signal for master (GUI or other logic module)
         self.sigGeneratorSettingsUpdated.emit(self.pulse_generator_settings)
-        # Apply potential changes to generation_parameters
-        try:
-            if changed_settings:
-                self.generation_parameters = changed_settings
-        except UnboundLocalError:
-            pass
+        # Apply potential changes to generation_parameters. Bound to an empty dict before the try
+        # above, so this no longer needs the `except UnboundLocalError: pass` that used to stand in
+        # for "the activation_config branch may not have run" - and which silently swallowed any
+        # other UnboundLocalError along with it.
+        if changed_settings:
+            self.generation_parameters = changed_settings
         return self.pulse_generator_settings
 
     @QtCore.Slot()
     def clear_pulser(self):
-        """ """
+        """Wipe the pulse generator's memory and forget every asset's sampling information.
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
+        """
+        # Same wrapper shape as the load slots: the asset notification is what re-enables the GUI's
+        # load and sample buttons, so it has to go out even on the paths that refuse or fail - and
+        # the "pulser is running" refusal below used to return without it.
+        try:
+            err = self._clear_pulser()
+        except Exception:
+            self.log.exception('Clearing the pulse generator failed with exception:')
+            err = -1
+        if err == 0:
+            # Everything was just wiped, so this is not a question for the device.
+            self.sigLoadedAssetUpdated.emit('', '')
+        else:
+            # Refused, or failed part-way through: what is still loaded is the device's to say.
+            self._emit_loaded_asset()
+        return err
+
+    def _clear_pulser(self):
+        """Body of clear_pulser(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         if self.pulsegenerator().get_status()[0] > 0:
             self.log.error('Can´t clear the pulser as it is running. Switch off the pulser and try again.')
             return -1
@@ -781,8 +846,25 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_ensemble(ens)
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
-        self.sigLoadedAssetUpdated.emit('', '')
         return 0
+
+    def _emit_loaded_asset(self):
+        """Announce whatever the pulse generator actually holds now.
+
+        The single emit point for every slot that can change what is loaded, because
+        PulsedMasterLogic's SampLoad chain has no other way out of LOADING: a load path that
+        returns without emitting strands it there and every later generate/sample/load is refused
+        as "already in progress" until the module is restarted. Reading `loaded_asset` is itself a
+        device call, so a failure there falls back to the empty asset rather than taking the
+        notification down with it.
+        """
+        try:
+            name, asset_type = self.loaded_asset
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator. '
+                               'Reporting it as empty:')
+            name, asset_type = LoadedAsset.empty()
+        self.sigLoadedAssetUpdated.emit(name, asset_type)
 
     @QtCore.Slot(str)
     @QtCore.Slot(object)
@@ -792,20 +874,42 @@ class SequenceGeneratorLogic(LogicBase):
         Parameters
         ----------
         ensemble : str or PulseBlockEnsemble
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
+        # Wrapper only: the body may fail anywhere, and sigLoadedAssetUpdated still has to go out
+        # exactly once. Catching here also keeps a hardware exception from escaping a queued slot,
+        # which Qt turns into an abort of the whole application rather than an error.
+        try:
+            return self._load_ensemble(ensemble)
+        except Exception:
+            self.log.exception('Loading of PulseBlockEnsemble "{0}" failed with exception:'
+                               ''.format(getattr(ensemble, 'name', ensemble)))
+            return -1
+        finally:
+            self._emit_loaded_asset()
+
+    def _load_ensemble(self, ensemble):
+        """Body of load_ensemble(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         # If str has been passed, get the ensemble object from saved ensembles
         if isinstance(ensemble, str):
-            ensemble = self.saved_pulse_block_ensembles[ensemble]
+            # .get(), not [ensemble]: an unknown name is a routine miss to report, not a KeyError
+            # that escapes the slot.
+            name, ensemble = ensemble, self.saved_pulse_block_ensembles.get(ensemble)
             if ensemble is None:
-                self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                return
+                self.log.error('Unable to load PulseBlockEnsemble "{0}". Not found in saved '
+                               'ensembles.'.format(name))
+                return -1
         if not isinstance(ensemble, PulseBlockEnsemble):
             self.log.error(
                 'Unable to load PulseBlockEnsemble into pulser channels.\nArgument ({0})'
                 ' is no instance of PulseBlockEnsemble.'.format(type(ensemble))
             )
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-            return
+            return -1
 
         # Check if the PulseBlockEnsemble has been sampled already.
         if ensemble.sampling_information:
@@ -818,8 +922,7 @@ class SequenceGeneratorLogic(LogicBase):
                         'found on pulse generator device.\nPlease re-generate the '
                         'PulseBlockEnsemble.'.format(waveform, ensemble.name)
                     )
-                    self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                    return
+                    return -1
 
             if self.pulsegenerator().get_status()[0] > 0:
                 self.log.error('Can´t load a waveform, because pulser running. Switch off the pulser and try again.')
@@ -844,7 +947,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.error(
                 'Loading of PulseBlockEnsemble "{0}" failed.\nIt has not been generated yet.'.format(ensemble.name)
             )
-        self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            return -1
         return 0
 
     @QtCore.Slot(str)
@@ -855,20 +958,39 @@ class SequenceGeneratorLogic(LogicBase):
         Parameters
         ----------
         sequence : str or PulseSequence
+
+        Returns
+        -------
+        int
+            Error code (0:OK, -1:error).
         """
+        # See load_ensemble() - wrapper only, so the notification goes out exactly once and no
+        # hardware exception escapes the slot.
+        try:
+            return self._load_sequence(sequence)
+        except Exception:
+            self.log.exception('Loading of PulseSequence "{0}" failed with exception:'
+                               ''.format(getattr(sequence, 'name', sequence)))
+            return -1
+        finally:
+            self._emit_loaded_asset()
+
+    def _load_sequence(self, sequence):
+        """Body of load_sequence(). Reports failure by return code only - the wrapper owns both the
+        exception handling and the asset notification."""
         # If str has been passed, get the sequence object from saved sequences
         if isinstance(sequence, str):
-            sequence = self.saved_pulse_sequences.get(sequence)
+            name, sequence = sequence, self.saved_pulse_sequences.get(sequence)
             if sequence is None:
-                self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                return
+                self.log.error('Unable to load PulseSequence "{0}". Not found in saved sequences.'
+                               ''.format(name))
+                return -1
         if not isinstance(sequence, PulseSequence):
             self.log.error(
                 'Unable to load PulseSequence into pulser channels.\nArgument ({0})'
                 ' is no instance of PulseSequence.'.format(type(sequence))
             )
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-            return
+            return -1
 
         # Check if the PulseSequence has been sampled already.
         if sequence.sampling_information and sequence.name in self.sampled_sequences:
@@ -881,8 +1003,7 @@ class SequenceGeneratorLogic(LogicBase):
                         'found on pulse generator device.\nPlease re-generate the '
                         'PulseSequence.'.format(waveform, sequence.name)
                     )
-                    self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
-                    return
+                    return -1
 
             if self.pulsegenerator().get_status()[0] > 0:
                 self.log.error('Can´t load a sequence, because pulser running. Switch off the pulser and try again.')
@@ -893,7 +1014,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.error(
                 'Loading of PulseSequence "{0}" failed.\nIt has not been generated yet.'.format(sequence.name)
             )
-        self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            return -1
         return 0
 
     def _read_settings_from_device(self):
@@ -1005,8 +1126,10 @@ class SequenceGeneratorLogic(LogicBase):
         settings : GenerationParameters or dict or None
         kwargs
         """
-        # Check if generation is in progress and do nothing if that is the case
-        if self.module_state() != 'locked':
+        # Check if generation is in progress and do nothing if that is the case. Now that
+        # GENERATING is a real state, this finally guards generation too - previously it only ever
+        # fired during sampling and benchmarking, because generation never locked the module.
+        if self._fsm.state is GeneratorState.IDLE:
             current = self._generator_settings.generation_parameters
             # Warn about unknown keys before coercion. GenerationParameters has a fixed schema, so
             # (unlike the old plain dict) it cannot store arbitrary additional settings, and
@@ -1536,8 +1659,18 @@ class SequenceGeneratorLogic(LogicBase):
         predefined_sequence_name
         kwargs_dict
         """
-        gen_method = self.generate_methods[predefined_sequence_name]
-        gen_params = self.generate_method_params[predefined_sequence_name]
+        # .get(), not [name]: master's SampLoad chain leaves GENERATING only on
+        # sigPredefinedSequenceGenerated, so an unknown method name has to be reported through that
+        # signal rather than raised as a KeyError that escapes the slot and strands the chain.
+        gen_method = self.generate_methods.get(predefined_sequence_name)
+        gen_params = self.generate_method_params.get(predefined_sequence_name)
+        if gen_method is None or gen_params is None:
+            self.log.error(
+                'No predefined generate method named "{0}". Generation failed.'
+                ''.format(predefined_sequence_name)
+            )
+            self.sigPredefinedSequenceGenerated.emit(None, False)
+            return
         if 'name' not in gen_params:
             self.log.error(
                 'Mandatory generation parameter "name" not found in generate method '
@@ -1558,13 +1691,53 @@ class SequenceGeneratorLogic(LogicBase):
             )
 
         try:
+            self._fsm.start_generating()
+        except StateMachineError:
+            self.log.error(
+                'Cannot generate "{0}": the sequence generator is busy.'.format(predefined_sequence_name)
+            )
+            self.sigPredefinedSequenceGenerated.emit(None, False)
+            return
+
+        # Bound before the try so the finally can always emit, including on an exception that
+        # `except Exception` deliberately does not catch.
+        result = (None, False)
+        try:
+            result = self._generate_predefined_sequence(
+                predefined_sequence_name, kwargs_dict, gen_method, gen_params
+            )
+        except Exception:
+            # The body guards the generate method itself; this catches everything after it -
+            # saving the created blocks/ensembles/sequences, and _add_default_sequence().
+            self.log.exception(
+                'Storing the objects generated by "{0}" failed with exception:'
+                ''.format(predefined_sequence_name)
+            )
+        finally:
+            self._fsm.end_generating()
+            # Master's SampLoad chain leaves GENERATING only on this signal, so it goes out on
+            # every path. Emitted after the release, so the generator really is idle by the time
+            # the sample request this triggers comes back in.
+            self.sigPredefinedSequenceGenerated.emit(*result)
+
+    def _generate_predefined_sequence(self, predefined_sequence_name, kwargs_dict, gen_method, gen_params):
+        """Body of generate_predefined_sequence(), split out so the state machine bracket around it
+        stays a plain start / try / finally with nothing in between.
+
+        Returns
+        -------
+        tuple
+            The `(asset_name, produced_sequence)` pair for sigPredefinedSequenceGenerated, which
+            the caller emits. Returned rather than emitted here so there is exactly one emit site
+            and it sits in the caller's `finally`.
+        """
+        try:
             blocks, ensembles, sequences = gen_method(**kwargs_dict)
         except:
             self.log.exception(
                 'Generation of predefined sequence "{0}" failed with exception:'.format(predefined_sequence_name)
             )
-            self.sigPredefinedSequenceGenerated.emit(None, False)
-            return
+            return None, False
 
         # Save objects
         for block in blocks:
@@ -1601,8 +1774,7 @@ class SequenceGeneratorLogic(LogicBase):
         produced_sequence = (
             created_asset.is_sequence if created_asset is not None else len(sequences) > 0
         )
-        self.sigPredefinedSequenceGenerated.emit(created_name, produced_sequence)
-        return
+        return created_name, produced_sequence
 
     def _add_default_sequence(self, ensembles, sequences):
         if not isinstance(ensembles, (list, tuple)) or len(ensembles) < 1:
@@ -2201,7 +2373,8 @@ class SequenceGeneratorLogic(LogicBase):
         It is a dictionary containing:
         TODO: Add parameters that are stored
         """
-        # Get PulseBlockEnsemble from saved ensembles if string has been passed as argument
+        # Resolve and validate before entering the state machine: nothing may fail between
+        # start_ensemble_sampling() and the try/finally below, or its matching end would be skipped.
         try:
             if isinstance(ensemble, str):
                 ensemble = self.get_ensemble(ensemble)
@@ -2214,14 +2387,22 @@ class SequenceGeneratorLogic(LogicBase):
             if self._sampling_ensemble_sanity_check(ensemble) < 0:
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
+        except Exception as e:
+            self.log.exception(f'Unable to sample PulseBlockEnsemble "{ensemble}" due to :\n{e}')
+            self.sigSampleEnsembleComplete.emit(None)
+            return -1, list(), dict()
 
-            # lock module if it's not already locked (sequence sampling in progress)
-            if self.module_state() == 'idle':
-                self.module_state.lock()
-            elif not self.__sequence_generation_in_progress:
-                self.sigSampleEnsembleComplete.emit(None)
-                return -1, list(), dict()
+        try:
+            # Refused only if the generator is busy with something else. Inside a sequence run this
+            # is a self-transition, so the outer run keeps ownership and this changes nothing.
+            self._fsm.start_ensemble_sampling()
+        except StateMachineError:
+            self.log.error('Unable to sample PulseBlockEnsemble. The sequence generator is busy '
+                           'with another operation.')
+            self.sigSampleEnsembleComplete.emit(None)
+            return -1, list(), dict()
 
+        try:
             # Set the waveform name (excluding the device specific channel naming suffix, i.e. '_ch1')
             waveform_name = name_tag if name_tag else ensemble.name
 
@@ -2312,8 +2493,6 @@ class SequenceGeneratorLogic(LogicBase):
                         ensemble_info.number_of_samples, n_max_samples
                     )
                 )
-                if not self.__sequence_generation_in_progress:
-                    self.module_state.unlock()
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
 
@@ -2332,8 +2511,6 @@ class SequenceGeneratorLogic(LogicBase):
                     'Try using the overhead_bytes ConfigOption to limit memory usage.'
                     ''.format(ensemble.name)
                 )
-                if not self.__sequence_generation_in_progress:
-                    self.module_state.unlock()
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
 
@@ -2430,8 +2607,6 @@ class SequenceGeneratorLogic(LogicBase):
                                         'the number of samples staged to write ({3:d}).'
                                         ''.format(block_name, ensemble.name, written_samples, array_length)
                                     )
-                                    if not self.__sequence_generation_in_progress:
-                                        self.module_state.unlock()
                                     self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
                                     self.sigSampleEnsembleComplete.emit(None)
                                     return -1, list(), dict()
@@ -2484,8 +2659,6 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.warning(
                     'Empty waveform (0 samples) created from PulseBlockEnsemble "{0}".'.format(ensemble.name)
                 )
-            if not self.__sequence_generation_in_progress:
-                self.module_state.unlock()
             self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
             self.sigSampleEnsembleComplete.emit(ensemble)
 
@@ -2493,13 +2666,11 @@ class SequenceGeneratorLogic(LogicBase):
             if isinstance(ensemble, PulseBlockEnsemble):
                 ensemble = ensemble.name
             self.log.exception(f'Sampling of PulseBlockEnsemble "{ensemble}" failed due to :\n{e}')
-            if not self.__sequence_generation_in_progress:
-                try:
-                    self.module_state.unlock()
-                except:
-                    self.log.exception('Failed to unlock module state after sampling error:')
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
+        finally:
+            # Every exit path, including the returns above. A no-op when nested in a sequence run.
+            self._fsm.end_ensemble_sampling()
         return offset_bin, natural_sort(written_waveforms), ensemble_info
 
     @QtCore.Slot(str)
@@ -2523,6 +2694,8 @@ class SequenceGeneratorLogic(LogicBase):
 
         More sophisticated sequence sampling method can be implemented here.
         """
+        # Resolve and validate before entering the state machine: nothing may fail between
+        # start_sequence_sampling() and the try/finally below, or its matching end would be skipped.
         try:
             # Get PulseSequence from saved sequences if string has been passed as argument
             if isinstance(sequence, str):
@@ -2536,19 +2709,30 @@ class SequenceGeneratorLogic(LogicBase):
             if self._sampling_sequence_sanity_check(sequence) < 0:
                 self.sigSampleSequenceComplete.emit(None)
                 return
+        except Exception as e:
+            self.log.exception(f'Unable to sample PulseSequence "{sequence}" due to :\n{e}')
+            self.sigSampleSequenceComplete.emit(None)
+            return
 
-            # lock module and set sequence-generation-in-progress flag
-            if self.module_state() == 'idle':
-                self.__sequence_generation_in_progress = True
-                self.module_state.lock()
-            else:
-                self.log.error(
-                    'Cannot sample sequence "{0}" because the SequenceGeneratorLogic is '
-                    'still busy (locked).\nFunction call ignored.'.format(sequence.name)
-                )
-                self.sigSampleSequenceComplete.emit(None)
-                return
+        # Bookkeeping for this sampling run only - created fresh here and discarded once the run
+        # finishes (successfully or not), it is not persisted. Built before the state machine is
+        # entered so that nothing at all sits between start_sequence_sampling() and the try below.
+        state = SequenceSamplingState()
+        state.start()
 
+        try:
+            # SAMPLING_SEQUENCE is what makes the nested ensemble runs below self-transitions, so
+            # they no longer need to ask whether they own the module.
+            self._fsm.start_sequence_sampling()
+        except StateMachineError:
+            self.log.error(
+                'Cannot sample sequence "{0}" because the SequenceGeneratorLogic is '
+                'still busy.\nFunction call ignored.'.format(sequence.name)
+            )
+            self.sigSampleSequenceComplete.emit(None)
+            return
+
+        try:
             self._saved_pulse_sequences[sequence.name] = sequence
 
             # delete already written sequences on the device memory.
@@ -2561,11 +2745,6 @@ class SequenceGeneratorLogic(LogicBase):
 
             # Take current time
             start_time = time.time()
-
-            # Bookkeeping for this sampling run only - created fresh here and discarded once the
-            # run finishes (successfully or not), it is not persisted.
-            state = SequenceSamplingState()
-            state.start()
 
             # if all the Pulse_Block_Ensembles should be in the rotating frame, then each ensemble
             # will be created in general with a different offset_bin. Therefore, in order to keep track
@@ -2596,8 +2775,6 @@ class SequenceGeneratorLogic(LogicBase):
                             'PulseSequence "{1}".\nFailed to create waveforms on device.'
                             ''.format(seq_step.ensemble, sequence.name)
                         )
-                        self.module_state.unlock()
-                        self.__sequence_generation_in_progress = False
                         self.sigSampleSequenceComplete.emit(None)
                         return
 
@@ -2656,10 +2833,6 @@ class SequenceGeneratorLogic(LogicBase):
                 )
             )
 
-            # unlock module
-            self.module_state.unlock()
-            self.__sequence_generation_in_progress = False
-            state.finish()
             self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
             self.sigSampleSequenceComplete.emit(sequence)
             return
@@ -2668,13 +2841,13 @@ class SequenceGeneratorLogic(LogicBase):
             if isinstance(sequence, PulseSequence):
                 sequence = sequence.name
             self.log.exception(f'Sampling of PulseSequence "{sequence}" failed due to :\n{e}')
-            try:
-                self.module_state.unlock()
-            except:
-                self.log.exception('Failed to unlock module state after sampling error:')
-            self.__sequence_generation_in_progress = False
             self.sigSampleSequenceComplete.emit(None)
             return -1, list(), dict()
+        finally:
+            # Every exit path, not just the successful one. state.finish() used to run only on
+            # success, leaving in_progress True after either failure.
+            state.finish()
+            self._fsm.end_sequence_sampling()
 
     def _delete_waveform(self, names):
         if isinstance(names, str):
@@ -2721,13 +2894,14 @@ class SequenceGeneratorLogic(LogicBase):
 
     @QtCore.Slot()
     def run_pg_benchmark(self, t_goal=10):
-        # lock module if it's not already locked (sequence sampling in progress)
-        if self.module_state() == 'idle':
-            self.module_state.lock()
-        else:
-            self.log.error("Module is locked, can't sample benchmark chunk")
-            self.sigSampleEnsembleComplete.emit(None)
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+        try:
+            self._fsm.start_benchmark()
+        except StateMachineError:
+            self.log.error("Module is busy, can't sample benchmark chunk")
+            # Both notifications, exactly as on the completion path below: the GUI disabled its
+            # controls the moment the benchmark was requested and only these bring them back.
+            self.sigBenchmarkComplete.emit()
+            self._emit_loaded_asset()
             return
 
         try:
@@ -2803,10 +2977,16 @@ class SequenceGeneratorLogic(LogicBase):
         else:
             self.log.info(f"Pulse generator benchmark finished after {i:d} chunks.")
         finally:
-            if self.module_state() == 'locked':
-                self.module_state.unlock()
-            self.sigSampleEnsembleComplete.emit(None)
-            self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
+            self._fsm.end_benchmark()
+            # sigBenchmarkComplete, not the sigSampleEnsembleComplete(None) that used to go out
+            # here purely to unstick the GUI. Master reads a None there as "the sampling step
+            # failed", which is a claim about an operation that never ran - and there is a window,
+            # while a queued sample request is still in flight, where master says SAMPLING but the
+            # generator is idle enough for a benchmark to start.
+            self.sigBenchmarkComplete.emit()
+            # The benchmark overwrites whatever was loaded, so this is a real change, not a refresh
+            # - and if that does end a chain that was mid-load, it should: its asset is gone.
+            self._emit_loaded_asset()
 
     def _sample_load_benchmark_chunk(
         self, n_samples, waveform_name='qudi_benchmark_chunk', persistent_datapoint=False, ignore_datapoint=False

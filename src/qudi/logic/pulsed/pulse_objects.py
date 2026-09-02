@@ -1288,7 +1288,6 @@ class PredefinedGeneratorBase:
         channel = self.generator_settings.generation_parameters.microwave_channel
         return None if channel == '' else channel
 
- 
     @property
     def microwave_frequency(self):
         return self.generator_settings.generation_parameters.microwave_frequency
@@ -1304,7 +1303,6 @@ class PredefinedGeneratorBase:
     @property
     def wait_time(self):
         return self.generator_settings.generation_parameters.wait_time
-    
 
     @property
     def rabi_period(self):
