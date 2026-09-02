@@ -13,6 +13,7 @@ Counter budget
   Fast counter (running)   : ctr0, ctr1, ctr2
   Instreamer clock         : ctr3
   Scan counter             : ctr0 (CI), ctr1 (CO) -- configurable
+  Position-distance scan   : ctr0 (CI, APD), ctr1 (CO, clock), ctr2 (CI, trigger) -- configurable
   Instreamer digital chans : one counter each from the free pool
 
   Priority: fast counter > scanning > instreamer
@@ -27,12 +28,20 @@ Three public methods satisfy the scanning counter interface for PIE710CounterInt
     read(n_pixels)             -> wait for scan to finish, return per-pixel counts
     stop()                     -> abort scan tasks, restart instreamer if needed
 
+This assumes the scan trigger is a fixed-rate CLOCK: the CO task free-runs
+at a known rate once the first trigger edge arrives, and every subsequent
+real trigger edge is ignored. This is correct for scanners whose trigger
+really is a fixed-rate clock (e.g. the PI E-710 rig this was written for).
+See "POSITION-DISTANCE TRIGGER ACQUISITION MODE" below for the alternate
+set of methods needed when that assumption does not hold.
+
 State interaction
 -----------------
     arm()          : stops instreamer tasks, saves their running state,
                      creates CO+CI scan tasks
-    read()  }      : cleans up scan tasks, restarts instreamer if it was running
-    stop()  }        before arm() was called
+    read()  }      : cleans up scan tasks, restarts instreamer if it was
+    stop()  }        running before arm() was called
+
     start_measure(): stops any active scan tasks first (fast counter has priority)
 
 Deadlock prevention
@@ -42,6 +51,77 @@ Deadlock prevention
     without deadlocking.
     _ni_start_tasks() reads the plain boolean _scan_active instead of acquiring
     _scan_lock, further preventing any lock-ordering issues.
+
+POSITION-DISTANCE TRIGGER ACQUISITION MODE
+--------------------------------------------
+arm()/read()/stop() above assume the scan trigger is a fixed-rate clock.
+Some scanners (e.g. a PI E-727 configured in GCS TriggerMode 0, "Position
+Distance") instead emit one real trigger pulse per physical step of
+motion, computed directly from true axis position -- there is no
+fixed-rate clock that is guaranteed to line up with real motion, so
+arm()/read()'s "first edge arms an internally free-running CO clock,
+every later edge is ignored" model silently produces wrong per-pixel
+binning for this kind of trigger.
+
+arm_position_trigger() / read_position_trigger() / stop_position_trigger()
+are a second, independent trio of methods for exactly this case, ported
+from a proven MATLAB implementation's acquisition design: continuously
+and simultaneously count BOTH the APD photon channel AND the real
+trigger line's edges, both clocked by one shared free-running hardware
+sample clock, then compute per-pixel counts in software as the
+difference in cumulative APD count between the sample indices of every
+pair of consecutive REAL trigger edges.
+
+Counting the trigger line via a THIRD counter's CI count-edges channel
+(NOT sampling it as digital-input data):
+    An earlier version of this acquisition mode tried to sample the raw
+    trigger line as ordinary buffered digital input data (add_di_chan +
+    a sample-clocked timing config), the same way the proven MATLAB code
+    did (Port0/Line0, InputOnly). On real hardware (NI USB-6343 BNC) this
+    failed with DAQmx error -201062, "Selected lines do not support
+    buffered operations" -- PFI lines have no buffered-sampling hardware
+    behind them at all (they are pure routing/trigger-matrix inputs, not
+    recorder inputs), and this specific card's BNC enclosure does not
+    expose any port0 line (the only lines on this chip that DO support
+    buffered sampling) on any BNC connector -- only via an auxiliary
+    connector this rig does not have wired up.
+
+    The fix used here avoids needing port0 (and any new wiring) entirely:
+    PFI lines DO support being used as a CI count-edges source -- that is
+    the exact same routing role scan_apd_terminal already uses for the
+    APD photon channel above. So the trigger line is counted with a
+    second CI count-edges channel (scan_trigger_counter_channel, default
+    'ctr2'), with ci_count_edges_term set to scan_trigger_terminal -- the
+    SAME PFI pin already used for the clock-based trigger role -- instead
+    of being read as level-sampled DI data. Both this task and the APD CI
+    task are clocked by the same free-running CO output, so sample index
+    i of one task and sample index i of the other refer to the exact same
+    instant, with no separate timestamp matching required. The trigger
+    task's final cumulative value is an exact, hardware-counted total of
+    real edges seen (no software-side edge-detection ambiguity), and
+    np.searchsorted() against that cumulative trace finds the sample
+    index of each individual real edge.
+
+Selecting between the two acquisition modes (arm/read/stop vs.
+arm_position_trigger/read_position_trigger/stop_position_trigger) is done
+by the CALLER (e.g. PIE710CounterInterfuse's counter_trigger_mode
+ConfigOption) -- this module itself has no notion of "current mode": it
+just exposes both trios of methods side by side, unconditionally, at all
+times. Existing setups that only ever call arm()/read()/stop() are
+completely unaffected; nothing about their behavior changes. The two
+modes share _scan_lock and _scan_active and cannot run concurrently.
+
+VERIFICATION STATUS for the position-distance trigger mode: the nidaqmx
+calls used (add_co_pulse_chan_freq, add_ci_count_edges_chan +
+ci_count_edges_term, cfg_samp_clk_timing with AcquisitionType.CONTINUOUS,
+in_stream.avail_samp_per_chan) are standard documented nidaqmx Python
+API, and all three tasks' CI/CO call shapes are copied verbatim from this
+module's own proven _scan_create_tasks(). The counter-based trigger
+edge-counting approach (as opposed to DI sampling) has been confirmed to
+avoid the -201062 buffered-operations error on real hardware (NI
+USB-6343 BNC). Still worth confirming after wiring: that
+read_position_trigger()'s debug log reports edges == n_pixels + 1 on a
+real scan line before trusting resulting scan data.
 
 CROSS-COUNTER CYCLE SYNCHRONIZATION (checkpoint history)
 ---------------------------------------------------------
@@ -110,6 +190,15 @@ hardware:
       scan_channel_name:     'APD1'
       scan_read_timeout:     30.0
       sync_max_lag_cycles:   2000
+      # Only needed if the connected scanner uses position-distance
+      # triggering (see "POSITION-DISTANCE TRIGGER ACQUISITION MODE"
+      # above) instead of a fixed-rate clock trigger. No new wiring is
+      # needed beyond scan_trigger_terminal above -- see that section for
+      # why this uses a counter, not a digital-input channel.
+      scan_trigger_counter_channel:       'ctr2'
+      position_trigger_sample_rate_hz:    100000.0
+      position_trigger_max_total_time_s:  30.0
+      position_trigger_read_settle_s:     0.1
 """
 
 import collections
@@ -173,6 +262,9 @@ _FC_COUNTERS      = ('ctr0', 'ctr1', 'ctr2')
 _INSTREAM_CLK_CTR = 'ctr3'
 
 # PI E-710 waveform generator sample rate -- must match PIE710Controller.SAMP_RATE
+# Only used by the clock-based arm()/read()/stop() trio below. Not used by
+# arm_position_trigger()/read_position_trigger()/stop_position_trigger(),
+# which have no notion of a fixed scan clock rate at all.
 _PI_SAMP_RATE: float = 5000.0
 
 
@@ -249,6 +341,21 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
     # See module docstring, "CROSS-COUNTER CYCLE SYNCHRONIZATION".
     _sync_max_lag_cycles = ConfigOption(
         'sync_max_lag_cycles', 2000, missing='nothing')
+
+    # ── Position-distance trigger acquisition ConfigOptions ───────────────────
+    # See module docstring, "POSITION-DISTANCE TRIGGER ACQUISITION MODE".
+    # Used only by arm_position_trigger()/read_position_trigger()/
+    # stop_position_trigger() below -- arm()/read()/stop() above are
+    # completely unaffected by these and remain the default path for any
+    # existing setup's config.
+    _pt_trigger_counter_ch = ConfigOption(
+        'scan_trigger_counter_channel', default='ctr2', missing='nothing')
+    _pt_sample_rate_hz = ConfigOption(
+        'position_trigger_sample_rate_hz', default=100000.0, missing='nothing')
+    _pt_max_total_time_s = ConfigOption(
+        'position_trigger_max_total_time_s', default=30.0, missing='nothing')
+    _pt_read_settle_s = ConfigOption(
+        'position_trigger_read_settle_s', default=0.1, missing='nothing')
 
     STATUS_UNCONFIGURED = 0
     STATUS_IDLE         = 1
@@ -362,17 +469,32 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         self._streaming        = False
         self._poll_rate_reader = None
 
-        # ── Scan task state ────────────────────────────────────────────────────
+        # ── Scan task state (clock-based arm()/read()/stop()) ────────────────
         self._scan_task          = None    # CI task (photon counting)
         self._scan_co_task       = None    # CO task (scan clock)
         self._scan_reader        = None    # CounterReader for CI task
         self._scan_n_steps       = 1       # PI waveform steps per pixel
         self._scan_n_pixels      = 0       # pixels per scan line
         self._scan_was_streaming = False   # instreamer state before scan started
-        self._scan_active        = False   # True only while CO+CI tasks are running
+        self._scan_active        = False   # True while EITHER scan mode's tasks are running
         # RLock (reentrant) so read()'s finally block can call
-        # _scan_cleanup_unsafe -> _ni_start_tasks on the same thread.
+        # _scan_cleanup_unsafe -> _ni_start_tasks on the same thread
+        # without deadlocking. Shared with the position-distance trigger
+        # mode below for the same reason, and because the two modes are
+        # mutually exclusive and must never run concurrently.
         self._scan_lock = threading.RLock()
+
+        # ── Position-distance trigger acquisition state ──────────────────────
+        # See module docstring, "POSITION-DISTANCE TRIGGER ACQUISITION
+        # MODE". Shares _scan_lock and _scan_active with the clock-based
+        # scan task state above.
+        self._pt_co_task       = None   # CO: free-running sample clock
+        self._pt_ci_task       = None   # CI: cumulative APD edge count
+        self._pt_trig_task     = None   # CI: cumulative TRIGGER edge count
+        self._pt_n_pixels      = 0
+        self._pt_was_streaming = False
+        self._pt_last_ci_raw   = None
+        self._pt_last_trig_raw = None
 
         # ── Cross-counter cycle checkpoint history ────────────────────────────
         # See module docstring, "CROSS-COUNTER CYCLE SYNCHRONIZATION".
@@ -499,17 +621,29 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             f'CO output=Ctr{clock_num}InternalOutput  '
             f'APD={apd}  gate={self._scan_trigger_term}  '
             f'scan channel="{self._scan_ch_name}"  '
-            f'sync_max_lag_cycles={self._sync_max_lag_cycles}'
+            f'sync_max_lag_cycles={self._sync_max_lag_cycles}  '
+            f'position-trigger counter={self._pt_trigger_counter_ch}'
         )
 
     def on_deactivate(self):
-        # Stop scan tasks before anything else
+        # Stop scan tasks before anything else (both scan modes -- they
+        # share _scan_lock/_scan_active, but each has its own task handles
+        # to close)
         if self._scan_task is not None or self._scan_co_task is not None:
             try:
                 with self._scan_lock:
                     self._scan_cleanup_unsafe(restart_stream=False)
             except Exception as e:
                 self.log.warning(f'on_deactivate: scan cleanup warning: {e}')
+
+        if (self._pt_ci_task is not None or self._pt_co_task is not None
+                or self._pt_trig_task is not None):
+            try:
+                with self._scan_lock:
+                    self._pt_cleanup_unsafe(restart_stream=False)
+            except Exception as e:
+                self.log.warning(
+                    f'on_deactivate: position-trigger cleanup warning: {e}')
 
         if self._streaming:
             try:
@@ -619,13 +753,22 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
                 f'start_measure() called in invalid state {self._status}. '
                 'Call configure() first, or stop_measure() if currently running.')
 
-        # Fast counter has priority -- stop any active scan tasks first
+        # Fast counter has priority -- stop any active scan tasks first,
+        # from EITHER scan mode.
         if self._scan_active or self._scan_task is not None:
             self.log.warning(
                 'start_measure() called while scanner counter tasks are active. '
                 'Stopping scanner counter first.')
             with self._scan_lock:
                 self._scan_cleanup_unsafe(restart_stream=False)
+
+        if (self._pt_ci_task is not None or self._pt_co_task is not None
+                or self._pt_trig_task is not None):
+            self.log.warning(
+                'start_measure() called while position-trigger scanner '
+                'counter tasks are active. Stopping scanner counter first.')
+            with self._scan_lock:
+                self._pt_cleanup_unsafe(restart_stream=False)
 
         self._ni_stop_tasks()
         self._start_hardware_and_threads()
@@ -954,11 +1097,14 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
             # Read _scan_active as a plain boolean -- no lock needed.
             # This avoids deadlock when _ni_start_tasks is called from
-            # _scan_cleanup_unsafe which may hold _scan_lock.
+            # _scan_cleanup_unsafe/_pt_cleanup_unsafe which may hold
+            # _scan_lock. Shared by both scan modes -- either one reserves
+            # its own set of physical counters.
             if self._scan_active:
                 reserved_ctrs |= {
                     self._scan_counter_ch.lower(),
                     self._scan_clock_ctr.lower(),
+                    self._pt_trigger_counter_ch.lower(),
                 }
 
             try:
@@ -1972,7 +2118,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         return hist
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Scanning counter interface
+    #  Scanning counter interface -- clock-based trigger mode (unchanged)
     # ══════════════════════════════════════════════════════════════════════════
 
     @property
@@ -2009,14 +2155,25 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         Why n + 1 samples:
             raw[0]        = baseline count at gate HIGH instant
             np.diff(raw)  = n*n_pixels per-step increments (background-free)
+
+        Assumes the trigger is a fixed-rate clock -- see module docstring,
+        "POSITION-DISTANCE TRIGGER ACQUISITION MODE", for the alternate
+        arm_position_trigger() to use instead when that assumption does
+        not hold for a given scanner.
         """
         with self._scan_lock:
-            # Clean up any stale scan tasks
+            # Clean up any stale tasks from EITHER scan mode
             if self._scan_task is not None or self._scan_co_task is not None:
                 self.log.warning(
                     'arm() called while previous scan tasks are still active. '
                     'Cleaning up stale tasks first.')
                 self._scan_cleanup_unsafe(restart_stream=False)
+            if (self._pt_ci_task is not None or self._pt_co_task is not None
+                    or self._pt_trig_task is not None):
+                self.log.warning(
+                    'arm() called while position-trigger scan tasks are '
+                    'still active. Cleaning up stale tasks first.')
+                self._pt_cleanup_unsafe(restart_stream=False)
 
             # Fast counter has absolute priority
             if self._status in (self.STATUS_RUNNING, self.STATUS_PAUSED):
@@ -2126,7 +2283,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         except Exception as exc:
             self.log.warning(f'NIXSeriesCounter.stop() warning: {exc}')
 
-    # ── Scan task helpers ──────────────────────────────────────────────────────
+    # ── Scan task helpers (clock-based mode) ──────────────────────────────────
 
     def _scan_create_tasks(self, n_collect: int) -> None:
         """
@@ -2237,3 +2394,308 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
                 self._ni_start_tasks()
         else:
             self._scan_was_streaming = False
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Scanning counter interface -- position-distance trigger mode
+    # ══════════════════════════════════════════════════════════════════════════
+    #
+    #  See module docstring, "POSITION-DISTANCE TRIGGER ACQUISITION MODE".
+    #  This trio (arm_position_trigger / read_position_trigger /
+    #  stop_position_trigger) is a second, independent path alongside
+    #  arm()/read()/stop() above, for scanners whose trigger fires per
+    #  real physical step of motion rather than at a fixed rate. Shares
+    #  _scan_lock and _scan_active with the clock-based methods above so
+    #  the two modes cannot run concurrently.
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def arm_position_trigger(self, n_pixels: int, t_pixel: float) -> None:
+        """
+        Start continuous, simultaneous counting of the APD photon channel
+        and the raw trigger line's edges, both clocked by one shared
+        hardware sample clock. Must be called BEFORE firing the scan.
+
+        The trigger line is counted via a CI count-edges channel on
+        scan_trigger_counter_channel, with ci_count_edges_term set to
+        scan_trigger_terminal -- the SAME PFI pin already used elsewhere
+        in this module, no new wiring required. See module docstring,
+        "POSITION-DISTANCE TRIGGER ACQUISITION MODE", for why this is a
+        counter-based edge count rather than a digital-input sampling
+        task (PFI lines do not support buffered DI sampling on X-Series
+        hardware).
+
+        Unlike arm(), there is no fixed target sample count here -- this
+        keeps sampling continuously (up to position_trigger_max_total_time_s
+        worth of buffer) until read_position_trigger() is called, since
+        the real scan duration is not known in advance from the trigger
+        alone. The caller (e.g. PIE710CounterInterfuse) is expected to
+        confirm real motion is complete (e.g. via the scanner module's
+        wait_for_scan_complete()) before calling read_position_trigger().
+        """
+        with self._scan_lock:
+            if (self._pt_ci_task is not None or self._pt_co_task is not None
+                    or self._pt_trig_task is not None):
+                self.log.warning(
+                    'arm_position_trigger() called while previous '
+                    'position-trigger tasks are still active. Cleaning up '
+                    'stale tasks first.')
+                self._pt_cleanup_unsafe(restart_stream=False)
+            if self._scan_task is not None or self._scan_co_task is not None:
+                self.log.warning(
+                    'arm_position_trigger() called while clock-based scan '
+                    'tasks are still active. Cleaning up stale tasks first.')
+                self._scan_cleanup_unsafe(restart_stream=False)
+
+            if self._status in (self.STATUS_RUNNING, self.STATUS_PAUSED):
+                raise RuntimeError(
+                    f'Cannot arm scanner counter while fast counter is '
+                    f'running (status={self._status}). '
+                    f'Call stop_measure() or pause_measure() first.')
+
+            self._pt_was_streaming = self._ni_tasks_running
+            self._ni_stop_tasks()
+
+            self._pt_n_pixels = int(n_pixels)
+            self._scan_active = True
+
+            dev       = self._device_name
+            apd_term  = self._scan_apd_term if self._scan_apd_term else self._photon_pfi_line
+            trig_term = self._scan_trigger_term
+            clock_ctr = self._scan_clock_ctr
+            count_ctr = self._scan_counter_ch
+            trig_ctr  = self._pt_trigger_counter_ch
+            fs        = float(self._pt_sample_rate_hz)
+            n_buf     = max(2, int(round(fs * self._pt_max_total_time_s)))
+
+            self.log.debug(
+                f'arm_position_trigger  n_pixels={n_pixels}  '
+                f't_pixel={t_pixel * 1e3:.3f} ms  fs={fs:.0f} Hz  '
+                f'buffer={n_buf} samples  '
+                f'trigger counter={trig_ctr} on {trig_term}  APD={apd_term}'
+            )
+
+            co_task = ci_task = trig_task = None
+            try:
+                # CO: free-running internal sample clock. Starts producing
+                # pulses immediately on .start() -- no external trigger --
+                # so that acquisition covers the scanner's move+settle
+                # preamble as well as the actual scan line.
+                co_task = ni.Task(f'PosTrigClock_{id(self):d}')
+                co_task.co_channels.add_co_pulse_chan_freq(
+                    counter    = f'/{dev}/{clock_ctr}',
+                    freq       = fs,
+                    duty_cycle = 0.5,
+                    idle_state = ni.constants.Level.LOW,
+                )
+                co_task.timing.cfg_implicit_timing(
+                    sample_mode = ni.constants.AcquisitionType.CONTINUOUS,
+                )
+                co_output = f'/{co_task.channel_names[0]}InternalOutput'
+
+                # CI: cumulative APD edge count, clocked by CO.
+                ci_task = ni.Task(f'PosTrigCI_{id(self):d}')
+                ci_task.ci_channels.add_ci_count_edges_chan(
+                    f'/{dev}/{count_ctr}', edge=ni.constants.Edge.RISING,
+                )
+                ci_task.ci_channels.all.ci_count_edges_term = f'/{dev}/{apd_term}'
+                ci_task.timing.cfg_samp_clk_timing(
+                    rate           = fs,
+                    source         = co_output,
+                    active_edge    = ni.constants.Edge.RISING,
+                    sample_mode    = ni.constants.AcquisitionType.CONTINUOUS,
+                    samps_per_chan = n_buf,
+                )
+
+                # Trigger edge count: cumulative TRIGGER edge count, on a
+                # separate counter, clocked by the SAME CO output. Same
+                # ci_count_edges_term mechanism as the APD channel above,
+                # just pointed at scan_trigger_terminal instead -- no new
+                # wiring, this is the same PFI pin used for the clock-mode
+                # start trigger.
+                trig_task = ni.Task(f'PosTrigCount_{id(self):d}')
+                trig_task.ci_channels.add_ci_count_edges_chan(
+                    f'/{dev}/{trig_ctr}', edge=ni.constants.Edge.RISING,
+                )
+                trig_task.ci_channels.all.ci_count_edges_term = f'/{dev}/{trig_term}'
+                trig_task.timing.cfg_samp_clk_timing(
+                    rate           = fs,
+                    source         = co_output,
+                    active_edge    = ni.constants.Edge.RISING,
+                    sample_mode    = ni.constants.AcquisitionType.CONTINUOUS,
+                    samps_per_chan = n_buf,
+                )
+
+                # Start clocked (slave) tasks before the clock (master).
+                trig_task.start()
+                ci_task.start()
+                co_task.start()
+
+                self._pt_co_task   = co_task
+                self._pt_ci_task   = ci_task
+                self._pt_trig_task = trig_task
+
+            except ni.DaqError as exc:
+                for t in (trig_task, ci_task, co_task):
+                    if t is not None:
+                        try:
+                            t.close()
+                        except Exception:
+                            pass
+                self._pt_co_task = self._pt_ci_task = self._pt_trig_task = None
+                self._pt_cleanup_unsafe(restart_stream=True)
+                raise RuntimeError(
+                    f'NIXSeriesCounter.arm_position_trigger() failed: {exc}'
+                ) from exc
+
+    def read_position_trigger(self, n_pixels: int) -> Optional[dict]:
+        """
+        Stop counting, pull the full buffered cumulative-count trace of
+        both the APD and trigger counters, and return per-pixel counts as
+        the diff of APD count between the sample indices of every pair of
+        consecutive real trigger edges.
+
+        The trigger task's final cumulative value is an exact, hardware-
+        counted total of real edges seen -- no software-side edge
+        detection ambiguity. A healthy line yields exactly n_pixels + 1
+        such edges. If it doesn't, this raises a clear, actionable error
+        rather than silently reshaping data -- mirroring the proven
+        MATLAB code's own "Wrong number of piezo triggers" check. Raw
+        traces are kept on this instance as _pt_last_ci_raw /
+        _pt_last_trig_raw for post-mortem inspection after such an error.
+
+        @param n_pixels : must match the value passed to arm_position_trigger()
+        @return         : {channel_name: np.ndarray(n_pixels,)} or None
+        """
+        with self._scan_lock:
+            if (self._pt_ci_task is None or self._pt_trig_task is None
+                    or self._pt_co_task is None):
+                self.log.error(
+                    'read_position_trigger() called but no position-'
+                    'trigger tasks are active.')
+                return None
+            if int(n_pixels) != self._pt_n_pixels:
+                self.log.warning(
+                    f'read_position_trigger(n_pixels={n_pixels}) does not '
+                    f'match arm_position_trigger(n_pixels={self._pt_n_pixels})'
+                    f' -- using the value passed to read_position_trigger().')
+            ci_task   = self._pt_ci_task
+            trig_task = self._pt_trig_task
+
+        try:
+            # Give the last few real samples time to land in the buffer
+            # before freezing it -- the caller has already confirmed real
+            # motion is done (e.g. via wait_for_scan_complete()).
+            time.sleep(max(0.0, self._pt_read_settle_s))
+
+            n_ci    = ci_task.in_stream.avail_samp_per_chan
+            n_trig  = trig_task.in_stream.avail_samp_per_chan
+            n_avail = min(n_ci, n_trig)
+
+            if n_avail < 2:
+                raise RuntimeError(
+                    f'only {n_avail} samples available (ci={n_ci}, '
+                    f'trig={n_trig}) -- expected many more for a real scan '
+                    f'line. Check DAQ wiring / clock routing.'
+                )
+
+            ci_raw = np.asarray(
+                ci_task.read(number_of_samples_per_channel=n_avail, timeout=10.0),
+                dtype=np.int64,
+            )
+            trig_raw = np.asarray(
+                trig_task.read(number_of_samples_per_channel=n_avail, timeout=10.0),
+                dtype=np.int64,
+            )
+
+        except ni.DaqError as exc:
+            apd_term = self._scan_apd_term if self._scan_apd_term else self._photon_pfi_line
+            self.log.error(
+                f'NIXSeriesCounter.read_position_trigger() failed: {exc}\n'
+                f'  Confirm BNC: trigger OUT -> NI {self._scan_trigger_term}, '
+                f'and -> NI {apd_term} for APD.'
+            )
+            return None
+        finally:
+            with self._scan_lock:
+                self._pt_cleanup_unsafe(restart_stream=True)
+
+        self._pt_last_ci_raw   = ci_raw
+        self._pt_last_trig_raw = trig_raw
+
+        total_edges = int(trig_raw[-1]) if len(trig_raw) else 0
+        expected    = n_pixels + 1
+        if total_edges != expected:
+            raise RuntimeError(
+                f'NIXSeriesCounter.read_position_trigger(): hardware '
+                f'counted {total_edges} real trigger edges over '
+                f'{n_avail} samples, expected exactly {expected} '
+                f'(n_pixels + 1) for a healthy line of {n_pixels} pixels. '
+                f'Likely causes: trigger step/start/stop thresholds not '
+                f'matching the real scan range, or the acquisition window '
+                f'(position_trigger_max_total_time_s='
+                f'{self._pt_max_total_time_s:.1f} s) being too short and '
+                f'cutting the line off. Raw traces are available on this '
+                f'instance as _pt_last_ci_raw / _pt_last_trig_raw for '
+                f'inspection.'
+            )
+
+        # Sample index of the k-th real edge = first index where the
+        # cumulative trigger count reaches k, for k = 1 .. expected.
+        edge_indices     = np.searchsorted(trig_raw, np.arange(1, expected + 1), side='left')
+        counts_at_edges  = ci_raw[edge_indices]
+        counts_per_pixel = np.diff(counts_at_edges).astype(np.float64)
+
+        self.log.debug(
+            f'read_position_trigger OK  n_pixels={n_pixels}  '
+            f'edges={total_edges}  total={int(counts_per_pixel.sum())}  '
+            f'mean={counts_per_pixel.mean():.1f}  '
+            f'max={counts_per_pixel.max():.0f} cts/px'
+        )
+
+        return {self._scan_ch_name: counts_per_pixel}
+
+    def stop_position_trigger(self) -> None:
+        """
+        Abort position-trigger tasks immediately and restart the
+        instreamer if it was running. Must never raise exceptions.
+        """
+        try:
+            with self._scan_lock:
+                self._pt_cleanup_unsafe(restart_stream=True)
+        except Exception as exc:
+            self.log.warning(
+                f'NIXSeriesCounter.stop_position_trigger() warning: {exc}')
+
+    # ── Scan task helpers (position-distance trigger mode) ────────────────────
+
+    def _pt_cleanup_unsafe(self, restart_stream: bool = True) -> None:
+        """
+        Stop and close CO + CI + trigger-count position-trigger tasks,
+        then optionally restart the instreamer. Caller must hold
+        _scan_lock (an RLock -- reentrant calls from
+        arm_position_trigger()/read_position_trigger() are safe).
+
+        Clears _scan_active BEFORE closing tasks so that any concurrent
+        _ni_start_tasks() call (which reads _scan_active without a lock)
+        sees False and does not try to reserve our counters.
+        """
+        self._scan_active = False
+
+        for attr in ('_pt_trig_task', '_pt_ci_task', '_pt_co_task'):
+            task = getattr(self, attr, None)
+            if task is not None:
+                try:
+                    if not task.is_task_done():
+                        task.stop()
+                    task.close()
+                except ni.DaqError as exc:
+                    self.log.warning(
+                        f'Position-trigger task cleanup ({attr}): {exc}')
+                finally:
+                    setattr(self, attr, None)
+
+        if restart_stream and self._pt_was_streaming:
+            self._pt_was_streaming = False
+            if self._status not in (self.STATUS_RUNNING, self.STATUS_PAUSED):
+                self._ni_start_tasks()
+        else:
+            self._pt_was_streaming = False

@@ -42,6 +42,32 @@ PIE710Scanner.retrigger_line() (and the underlying
 PIE710Controller.retrigger_line()) for the exact mechanism and a caveat
 about the assumption it relies on.
 
+Counter trigger mode
+---------------------
+The counter_trigger_mode ConfigOption selects which pair of methods on the
+connected photon_counter module is called to drive a scan line:
+
+    'clock' (default):
+        counter.arm(n_pixels, t_pixel) / counter.read(n_pixels) /
+        counter.stop(). Assumes the scan trigger is a fixed-rate clock --
+        this is the ORIGINAL behavior of this interfuse, unchanged, and
+        remains the default for any existing config that does not set
+        counter_trigger_mode at all.
+
+    'position_distance':
+        counter.arm_position_trigger(n_pixels, t_pixel) /
+        counter.read_position_trigger(n_pixels) /
+        counter.stop_position_trigger(). For scanners (e.g. a PI E-727 in
+        GCS TriggerMode 0, "Position Distance") whose trigger fires once
+        per real physical step of motion rather than at a fixed rate --
+        see NIXSeriesCounter's module docstring, "POSITION-DISTANCE
+        TRIGGER ACQUISITION MODE", for the acquisition model this uses.
+
+Both method pairs are expected to exist together on the connected
+photon_counter module (see ni_x_series_counter.py) -- this option only
+selects which pair this interfuse calls; it does not change what the
+counter module itself supports.
+
 YAML configuration:
     interfuse:
         confocal_scanner:
@@ -49,6 +75,8 @@ YAML configuration:
             connect:
                 scanner:        'my_pi_scanner'
                 photon_counter: 'my_counter'
+            options:
+                counter_trigger_mode: 'clock'   # or 'position_distance'
 """
 
 import threading
@@ -57,6 +85,7 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.scanning_probe_interface import (
     BackScanCapability,
@@ -96,10 +125,19 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         Uses Qudi module_state ('locked' / 'idle').
         The scanning probe logic polls module_state() to detect completion.
         The scan thread's finally block unlocks module_state when done.
+
+    Counter trigger mode:
+        See module docstring, "Counter trigger mode". Controlled by the
+        counter_trigger_mode ConfigOption ('clock' default, or
+        'position_distance'); dispatched via _counter_arm() /
+        _counter_read() / _counter_stop() below.
     """
 
     _scanner = Connector(name='scanner',        interface='PIE710ScannerInterface')
     _counter = Connector(name='photon_counter', interface='NIXSeriesCounter')
+
+    _counter_trigger_mode = ConfigOption(
+        'counter_trigger_mode', default='clock', missing='nothing')
 
     # =========================================================================
     # Lifecycle
@@ -119,12 +157,44 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         self._lock         = threading.Lock()
 
     def on_activate(self) -> None:
+        mode = self._counter_trigger_mode
+        if mode not in ('clock', 'position_distance'):
+            raise ValueError(
+                f'Invalid counter_trigger_mode "{mode}" -- must be '
+                f'"clock" or "position_distance".'
+            )
         self._constraints = self._build_constraints()
-        self.log.info('PIE710CounterInterfuse ready.')
+        self.log.info(
+            f'PIE710CounterInterfuse ready. counter_trigger_mode="{mode}"'
+        )
 
     def on_deactivate(self) -> None:
         if self.module_state() == 'locked':
             self.stop_scan()
+
+    # =========================================================================
+    # Counter dispatch -- see module docstring, "Counter trigger mode"
+    # =========================================================================
+
+    def _counter_arm(self, n_pixels: int, t_pixel: float) -> None:
+        counter = self._counter()
+        if self._counter_trigger_mode == 'position_distance':
+            counter.arm_position_trigger(n_pixels=n_pixels, t_pixel=t_pixel)
+        else:
+            counter.arm(n_pixels=n_pixels, t_pixel=t_pixel)
+
+    def _counter_read(self, n_pixels: int) -> Optional[Dict[str, np.ndarray]]:
+        counter = self._counter()
+        if self._counter_trigger_mode == 'position_distance':
+            return counter.read_position_trigger(n_pixels=n_pixels)
+        return counter.read(n_pixels=n_pixels)
+
+    def _counter_stop(self) -> None:
+        counter = self._counter()
+        if self._counter_trigger_mode == 'position_distance':
+            counter.stop_position_trigger()
+        else:
+            counter.stop()
 
     # =========================================================================
     # Constraints
@@ -144,6 +214,30 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             for ch in counter.channel_names
         )
 
+        def _axis_range(name: str) -> Tuple[float, float]:
+            """
+            Uses scanner.get_scan_safe_range(name) when the connected
+            scanner module provides it (e.g. PIE727Scanner, whose
+            lin_pts_ratio padding can make a full-travel-range scan
+            physically overshoot real limits -- see that module's
+            docstring, "SCAN RANGE VS. lin_pts_ratio PADDING"), falling
+            back to the plain real travel range otherwise (e.g.
+            PIE710Scanner, which has no padding concept and therefore no
+            such method) -- duck-typed via getattr() rather than added to
+            the shared PIE710ScannerInterface, so this requires no
+            changes to that interface or to PIE710Scanner.
+            """
+            getter = getattr(scanner, 'get_scan_safe_range', None)
+            if getter is not None:
+                lo, hi = getter(name)
+            else:
+                lo, hi = {
+                    'x': scanner.x_range,
+                    'y': scanner.y_range,
+                    'z': scanner.z_range,
+                }[name]
+            return float(lo), float(hi)
+
         def _make_axis(name: str, lo: float, hi: float) -> ScannerAxis:
             span = float(hi - lo)
             return ScannerAxis(
@@ -161,9 +255,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             )
 
         axis_objects = (
-            _make_axis('x', *scanner.x_range),
-            _make_axis('y', *scanner.y_range),
-            _make_axis('z', *scanner.z_range),
+            _make_axis('x', *_axis_range('x')),
+            _make_axis('y', *_axis_range('y')),
+            _make_axis('z', *_axis_range('z')),
         )
 
         return ScanConstraints(
@@ -326,7 +420,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         self._stop_event.set()
         self._scanner().halt_generators()
-        self._counter().stop()   # aborts CO + CI tasks
+        self._counter_stop()   # aborts CO + CI (+ DI) tasks
 
         thread = self._scan_thread
         if thread and thread.is_alive():
@@ -349,7 +443,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         self._stop_event.set()
         self._scanner().halt()
         self._scanner().halt_generators()
-        self._counter().stop()
+        self._counter_stop()
         thread = self._scan_thread
         if thread and thread.is_alive():
             thread.join(timeout=5.0)
@@ -417,13 +511,13 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         # 1. Arm counter before scanner fires
         try:
-            self._counter().arm(n_pixels=n_pts, t_pixel=t_pixel)
+            self._counter_arm(n_pixels=n_pts, t_pixel=t_pixel)
         except Exception as exc:
             self.log.error(f'Counter arm failed: {exc}')
             return
 
         if self._stop_event.is_set():
-            self._counter().stop()
+            self._counter_stop()
             return
 
         # 2. Fire PI scan (BLOCKING: includes move, settle, and full
@@ -437,7 +531,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             )
         except Exception as exc:
             self.log.error(f'Scanner start_scan failed: {exc}')
-            self._counter().stop()
+            self._counter_stop()
             return
 
         # 3. Verify PI generators idle
@@ -446,12 +540,12 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             stop_event  = self._stop_event,
         )
         if not completed or self._stop_event.is_set():
-            self._counter().stop()
+            self._counter_stop()
             return
 
         # 4. Read (CO.wait_until_done returns immediately since scan already done)
         try:
-            counts_dict = self._counter().read(n_pixels=n_pts)
+            counts_dict = self._counter_read(n_pixels=n_pts)
         except Exception as exc:
             self.log.error(f'Counter read failed: {exc}')
             counts_dict = None
@@ -514,13 +608,13 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
             # Arm counter for this line
             try:
-                self._counter().arm(n_pixels=n_fast, t_pixel=t_pixel)
+                self._counter_arm(n_pixels=n_fast, t_pixel=t_pixel)
             except Exception as exc:
                 self.log.error(f'Counter arm failed on line {i_slow}: {exc}')
                 break
 
             if self._stop_event.is_set():
-                self._counter().stop()
+                self._counter_stop()
                 break
 
             # Fire this line's fast-axis sweep: full configuration on the
@@ -539,7 +633,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             except Exception as exc:
                 action = 'start_scan' if i_slow == 0 else 'retrigger_line'
                 self.log.error(f'Scanner {action} failed on line {i_slow}: {exc}')
-                self._counter().stop()
+                self._counter_stop()
                 break
 
             # Verify PI idle
@@ -548,12 +642,12 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 stop_event  = self._stop_event,
             )
             if not completed or self._stop_event.is_set():
-                self._counter().stop()
+                self._counter_stop()
                 break
 
             # Read this line
             try:
-                line_counts = self._counter().read(n_pixels=n_fast)
+                line_counts = self._counter_read(n_pixels=n_fast)
             except Exception as exc:
                 self.log.error(f'Counter read failed on line {i_slow}: {exc}')
                 line_counts = None
