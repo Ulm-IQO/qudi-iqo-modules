@@ -741,14 +741,6 @@ class PIE727Controller:
         n_wave_points = linear_region_len + 2 * n_speedupdown
         segment_length = n_wave_points
 
-        # Validate the padded range against real travel limits BEFORE
-        # issuing MOV -- gives a clear, actionable error instead of a
-        # raw MOV rejection. With ratio=1.0 this reduces to validating
-        # the exact requested [start, stop] range, since there is no
-        # padding to exceed it. See module docstring, "SCAN RANGE VS.
-        # lin_pts_ratio PADDING", for why this can legitimately trigger
-        # even for well-formed scan requests, and get_scan_safe_range()
-        # for the proactive fix used by PIE710CounterInterfuse.
         travel_min = self.get_min_travel([str(axis_num)])[0]
         travel_max = self.get_max_travel([str(axis_num)])[0]
         padded_low  = wave_offset
@@ -771,6 +763,19 @@ class PIE727Controller:
                 + f") exceeds axis {axis_num}'s real travel range "
                 f"[{travel_min:.4f}, {travel_max:.4f}] um."
             )
+
+        # The tolerance above only gates the sanity CHECK -- it does not
+        # change the value actually sent to move_absolute()/wave_lin().
+        # Real PI firmware enforces its travel limit with zero tolerance
+        # of its own, so a wave_offset that is float noise away from an
+        # exact boundary (e.g. -1.4e-7 instead of exactly 0.0) would pass
+        # the check above but still get rejected by real hardware at MOV
+        # time ('error 7: Position out of limits'). Clamping here, AFTER
+        # the sanity check, is what actually fixes that -- the check
+        # above still catches genuinely out-of-range requests; this only
+        # snaps float noise back onto the real boundary for values that
+        # already passed it.
+        wave_offset = float(np.clip(wave_offset, travel_min, travel_max))
 
         # Disable triggering BEFORE moving to the new line's wave_offset --
         # matches the proven MATLAB ScanLine's ordering (CTO disable is

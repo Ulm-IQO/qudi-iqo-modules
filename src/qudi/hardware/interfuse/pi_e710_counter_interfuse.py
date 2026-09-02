@@ -68,6 +68,44 @@ photon_counter module (see ni_x_series_counter.py) -- this option only
 selects which pair this interfuse calls; it does not change what the
 counter module itself supports.
 
+Scan range vs. scanner padding requirements
+----------------------------------------------
+axis.position bounds (built in _build_constraints() below) are always the
+scanner's REAL, full travel range -- narrowing them to anything less was
+tried and reverted, because qudi's scanning_probe_logic and
+scanning_optimize_logic both reuse axis.position bounds for ordinary
+absolute-position validation (crosshair moves, optimizer sub-scan widths,
+etc.), completely independent of scanning -- narrowing them broke real,
+non-scanning positioning near the edges of true travel range.
+
+Instead, if the connected scanner module exposes get_scan_safe_range(axis)
+(e.g. PIE727Scanner, whose lin_pts_ratio padding technique requires
+overshoot room beyond [start, stop] that can exceed real travel limits
+near the edges of a large scan -- see that module's docstring, "SCAN
+RANGE VS. lin_pts_ratio PADDING"), configure_scan() below clamps the
+REQUESTED scan range into that safe sub-range before actually running the
+scan, logging a clear warning explaining what was requested vs. what will
+actually be scanned. The resulting ScanData is built from the CLAMPED
+range, so the image's axis labels/extent always honestly reflect what was
+actually scanned -- never a silent mismatch between displayed axes and
+real motion.
+
+Clamping behavior (see _clamp_axis_range()):
+    - if the requested window already fits inside the safe range: no
+      change.
+    - if the requested window's WIDTH fits inside the safe range, but the
+      window itself is positioned partly/fully outside it: the window is
+      SHIFTED into the safe range, preserving the requested width exactly.
+    - if the requested window's WIDTH itself is wider than the safe
+      range: it is clipped down to the full safe range (unavoidable --
+      even a window starting at the very edge of the safe range cannot be
+      wider than the safe range itself).
+
+This is duck-typed via getattr() -- PIE710Scanner (E-710 rig) has no
+padding concept and therefore no get_scan_safe_range() method, so this
+clamping is skipped entirely for that scanner, exactly reproducing this
+interfuse's original, unmodified behavior for that setup.
+
 YAML configuration:
     interfuse:
         confocal_scanner:
@@ -131,6 +169,12 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         counter_trigger_mode ConfigOption ('clock' default, or
         'position_distance'); dispatched via _counter_arm() /
         _counter_read() / _counter_stop() below.
+
+    Scan range clamping:
+        See module docstring, "Scan range vs. scanner padding
+        requirements". Controlled entirely by whether the connected
+        scanner module exposes get_scan_safe_range(); dispatched via
+        _clamp_scan_settings_to_safe_range() below.
     """
 
     _scanner = Connector(name='scanner',        interface='PIE710ScannerInterface')
@@ -197,7 +241,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             counter.stop()
 
     # =========================================================================
-    # Constraints
+    # Constraints -- always the scanner's REAL, full travel range.
+    # See module docstring, "Scan range vs. scanner padding requirements",
+    # for why this is intentional and must not be narrowed here.
     # =========================================================================
 
     def _build_constraints(self) -> ScanConstraints:
@@ -213,30 +259,6 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             )
             for ch in counter.channel_names
         )
-
-        def _axis_range(name: str) -> Tuple[float, float]:
-            """
-            Uses scanner.get_scan_safe_range(name) when the connected
-            scanner module provides it (e.g. PIE727Scanner, whose
-            lin_pts_ratio padding can make a full-travel-range scan
-            physically overshoot real limits -- see that module's
-            docstring, "SCAN RANGE VS. lin_pts_ratio PADDING"), falling
-            back to the plain real travel range otherwise (e.g.
-            PIE710Scanner, which has no padding concept and therefore no
-            such method) -- duck-typed via getattr() rather than added to
-            the shared PIE710ScannerInterface, so this requires no
-            changes to that interface or to PIE710Scanner.
-            """
-            getter = getattr(scanner, 'get_scan_safe_range', None)
-            if getter is not None:
-                lo, hi = getter(name)
-            else:
-                lo, hi = {
-                    'x': scanner.x_range,
-                    'y': scanner.y_range,
-                    'z': scanner.z_range,
-                }[name]
-            return float(lo), float(hi)
 
         def _make_axis(name: str, lo: float, hi: float) -> ScannerAxis:
             span = float(hi - lo)
@@ -255,9 +277,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             )
 
         axis_objects = (
-            _make_axis('x', *_axis_range('x')),
-            _make_axis('y', *_axis_range('y')),
-            _make_axis('z', *_axis_range('z')),
+            _make_axis('x', *scanner.x_range),
+            _make_axis('y', *scanner.y_range),
+            _make_axis('z', *scanner.z_range),
         )
 
         return ScanConstraints(
@@ -274,6 +296,97 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     @property
     def constraints(self) -> ScanConstraints:
         return self._constraints
+
+    # =========================================================================
+    # Scan range clamping -- see module docstring, "Scan range vs. scanner
+    # padding requirements"
+    # =========================================================================
+
+    def _clamp_scan_settings_to_safe_range(self, settings: ScanSettings) -> ScanSettings:
+        """
+        Returns settings unchanged if the connected scanner has no
+        get_scan_safe_range() method (e.g. PIE710Scanner -- no padding
+        concept, nothing to clamp), or if the requested range already
+        fits inside the safe range for every scanned axis.
+
+        Otherwise returns a NEW ScanSettings with the offending axis/axes'
+        range replaced by the clamped window (see _clamp_axis_range()),
+        after logging a clear warning per affected axis explaining what
+        was requested vs. what will actually be scanned.
+        """
+        scanner = self._scanner()
+        getter = getattr(scanner, 'get_scan_safe_range', None)
+        if getter is None:
+            return settings
+
+        new_range: List[Tuple[float, float]] = []
+        clamped_any = False
+
+        for axis_name, (req_lo, req_hi) in zip(settings.axes, settings.range):
+            safe_lo, safe_hi = (float(v) for v in getter(axis_name))
+            lo, hi, changed = self._clamp_axis_range(
+                float(req_lo), float(req_hi), safe_lo, safe_hi)
+            if changed:
+                clamped_any = True
+                self.log.warning(
+                    f'Requested scan range for axis "{axis_name}" '
+                    f'[{req_lo:.4f}, {req_hi:.4f}] um exceeds the range '
+                    f'this scanner can safely trigger across with its '
+                    f'current padding configuration '
+                    f'[{safe_lo:.4f}, {safe_hi:.4f}] um. Scanning '
+                    f'[{lo:.4f}, {hi:.4f}] um instead -- the resulting '
+                    f'image reflects this actual, real scanned range, '
+                    f'not the originally requested one.'
+                )
+            new_range.append((lo, hi))
+
+        if not clamped_any:
+            return settings
+
+        return ScanSettings(
+            channels   = settings.channels,
+            axes       = settings.axes,
+            range      = tuple(new_range),
+            resolution = settings.resolution,
+            frequency  = settings.frequency,
+        )
+
+    @staticmethod
+    def _clamp_axis_range(
+        req_lo: float, req_hi: float, safe_lo: float, safe_hi: float,
+    ) -> Tuple[float, float, bool]:
+        """
+        Returns (lo, hi, changed): (lo, hi) is guaranteed to fit inside
+        [safe_lo, safe_hi].
+
+        - If [req_lo, req_hi] already fits: returned unchanged, changed=False.
+        - If its WIDTH fits but the window itself is positioned partly/
+          fully outside [safe_lo, safe_hi]: SHIFTED into bounds, exact
+          width preserved.
+        - If its WIDTH itself exceeds (safe_hi - safe_lo): clipped down
+          to the full safe range (unavoidable -- even a window starting
+          at the very edge of the safe range cannot be wider than the
+          safe range itself).
+        """
+        span      = req_hi - req_lo
+        safe_span = safe_hi - safe_lo
+
+        if req_lo >= safe_lo and req_hi <= safe_hi:
+            return req_lo, req_hi, False
+
+        if span > safe_span:
+            return safe_lo, safe_hi, True
+
+        lo, hi = req_lo, req_hi
+        if lo < safe_lo:
+            shift = safe_lo - lo
+            lo += shift
+            hi += shift
+        elif hi > safe_hi:
+            shift = hi - safe_hi
+            lo -= shift
+            hi -= shift
+        return lo, hi, True
 
     # =========================================================================
     # Scan settings properties
@@ -306,6 +419,10 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 self.log.error('Cannot configure scan while scanning.')
                 return
 
+            # Validated against the scanner's REAL, full travel range --
+            # see _build_constraints(). A request within true travel
+            # limits always passes this, even if it will go on to be
+            # clamped below for padding reasons.
             self._constraints.check_settings(settings)
 
             supported = {
@@ -318,11 +435,18 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                     f'Supported: {supported}'
                 )
 
+            # See module docstring, "Scan range vs. scanner padding
+            # requirements" -- no-op for scanners without
+            # get_scan_safe_range() (e.g. PIE710Scanner).
+            settings = self._clamp_scan_settings_to_safe_range(settings)
+
             self._scan_settings = settings
             self._scan_data = ScanData.from_constraints(
                 settings=settings, constraints=self._constraints)
 
-            # Matching default back scan so logic validation always passes
+            # Matching default back scan so logic validation always passes.
+            # Built from the (possibly clamped) forward settings, so back
+            # scan range always matches what will actually be scanned.
             default_back = ScanSettings(
                 channels   = settings.channels,
                 axes       = settings.axes,
@@ -335,7 +459,21 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 settings=default_back, constraints=self._constraints)
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """Accept back scan settings. Data will always be NaN."""
+        """
+        Accept back scan settings. Data will always be NaN.
+
+        The back scan's RANGE is always forced to exactly match the
+        forward scan's range (self._scan_settings.range) -- never
+        independently re-clamped here. check_back_scan_settings() enforces
+        "back scan range == forward scan range" as a hard, unconditional
+        rule (unrelated to any scanner padding concerns), so any
+        independent clamping of the back scan's range risks landing on a
+        very slightly different window than the forward scan's already-
+        clamped one (e.g. different edge-case rounding), which would then
+        fail that very check. Only resolution/frequency are genuinely
+        independent of the forward scan and are taken from the given
+        settings as-is.
+        """
         with self._lock:
             if self.module_state() == 'locked':
                 self.log.error('Cannot configure back scan while scanning.')
@@ -343,6 +481,14 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             if self._scan_settings is None:
                 self.log.error('Configure forward scan before back scan.')
                 return
+
+            settings = ScanSettings(
+                channels   = settings.channels,
+                axes       = settings.axes,
+                range      = self._scan_settings.range,
+                resolution = settings.resolution,
+                frequency  = settings.frequency,
+            )
             self._constraints.check_back_scan_settings(settings, self._scan_settings)
             self._back_scan_settings = settings
             self._back_scan_data = ScanData.from_constraints(
@@ -420,7 +566,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         self._stop_event.set()
         self._scanner().halt_generators()
-        self._counter_stop()   # aborts CO + CI (+ DI) tasks
+        self._counter_stop()   # aborts CO + CI (+ trigger-counter) tasks
 
         thread = self._scan_thread
         if thread and thread.is_alive():
