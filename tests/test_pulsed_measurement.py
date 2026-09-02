@@ -481,10 +481,11 @@ def test_pulsed_measurement_closure_round_trip():
     )
 
     as_dict = measurement.to_dict()
-    # A PulseSequence is loaded, so it is written under 'loaded_sequence' - never 'loaded_ensemble'
-    # - and 'ensembles' is shown, because for a sequence they mean something.
-    assert as_dict['objects']['loaded_sequence']['type'] == 'PulseSequence'
-    assert 'loaded_ensemble' not in as_dict['objects']
+    # A PulseSequence is loaded, so 'sequence' is populated. The three keys are always the same
+    # ones - see test_pulse_objects_dict_keys_are_the_same_for_both_asset_kinds.
+    assert set(as_dict['objects']) == {'sequence', 'ensembles', 'blocks'}
+    assert as_dict['objects']['sequence']['name'] == 'seq_main'
+    assert 'type' not in as_dict['objects']['sequence']  # the kind is not encoded any more
     assert len(as_dict['objects']['ensembles']) == 2
     assert len(as_dict['objects']['blocks']) == 3  # blk_2 shared between ens_a/ens_b, deduped
 
@@ -518,12 +519,12 @@ def test_pulsed_measurement_bare_ensemble_closure_round_trip():
     )
 
     as_dict = measurement.to_dict()
-    # A bare ensemble is written under 'loaded_ensemble', and 'ensembles' is left out entirely
-    # rather than written as an empty dict - an empty 'ensembles' beside an ensemble is exactly
-    # the reading that used to confuse people.
-    assert as_dict['objects']['loaded_ensemble']['type'] == 'PulseBlockEnsemble'
-    assert 'loaded_sequence' not in as_dict['objects']
-    assert 'ensembles' not in as_dict['objects']
+    # A bare ensemble leaves 'sequence' empty and is filed under 'ensembles' instead. That
+    # emptiness is the only kind marker: no key rename, no 'type' tag.
+    assert set(as_dict['objects']) == {'sequence', 'ensembles', 'blocks'}
+    assert as_dict['objects']['sequence'] == {}
+    assert set(as_dict['objects']['ensembles']) == {'ens_a'}
+    assert 'type' not in as_dict['objects']['ensembles']['ens_a']
 
     restored = PulsedMeasurement.from_dict(as_dict)
     assert isinstance(restored.objects.loaded_asset, PulseBlockEnsemble)
@@ -532,6 +533,84 @@ def test_pulsed_measurement_bare_ensemble_closure_round_trip():
     assert restored.objects.loaded_asset.name == 'ens_a'
     assert restored.objects.ensembles == {}
     assert set(restored.objects.blocks) == {'blk_1', 'blk_2'}
+
+
+def test_pulse_objects_dict_keys_are_the_same_for_both_asset_kinds():
+    """The whole point of the layout: evaluation code reads one fixed set of keys and never has to
+    test which ones are present. Only whether 'sequence' is empty differs."""
+    blk = PulseBlock(name='blk_1', element_list=[PulseBlockElement(init_length_s=1e-6)])
+    ens_a = PulseBlockEnsemble(name='ens_a', block_list=[('blk_1', 0)])
+    sequence = PulseSequence(name='seq_main', ensemble_list=[{'ensemble': 'ens_a'}])
+
+    from_sequence = PulseObjects(loaded_asset=sequence, ensembles={'ens_a': ens_a},
+                                 blocks={'blk_1': blk}).to_dict()
+    from_ensemble = PulseObjects(loaded_asset=ens_a, blocks={'blk_1': blk}).to_dict()
+    from_nothing = PulseObjects().to_dict()
+
+    expected = {'sequence', 'ensembles', 'blocks'}
+    assert set(from_sequence) == set(from_ensemble) == set(from_nothing) == expected
+
+    # The kind is reconstructed, not stated.
+    assert from_sequence['sequence']
+    assert from_ensemble['sequence'] == {}
+    assert set(from_ensemble['ensembles']) == {'ens_a'}
+
+
+def test_pulse_objects_empty_sequence_is_not_mistaken_for_an_ensemble():
+    """PulseSequence(name='x') has an empty ensemble_list but is still a sequence. The kind test is
+    on the whole 'sequence' value - which always carries at least a name - not on ensemble_list."""
+    empty_sequence = PulseSequence(name='seq_empty')
+    assert empty_sequence.ensemble_list == []
+
+    as_dict = PulseObjects(loaded_asset=empty_sequence).to_dict()
+    assert as_dict['sequence'], "an empty-but-real sequence must still read as truthy"
+    assert as_dict['sequence']['ensemble_list'] == []
+
+    restored = PulseObjects.from_dict(as_dict)
+    assert isinstance(restored.loaded_asset, PulseSequence)
+    assert restored.loaded_ensemble is None
+
+
+def test_pulse_objects_refuses_to_guess_the_loaded_asset_when_ambiguous():
+    """An empty 'sequence' beside several ensembles cannot come from to_dict(); the loaded asset is
+    then genuinely ambiguous, so from_dict() leaves it unset rather than picking one."""
+    ens_a = PulseBlockEnsemble(name='ens_a', block_list=[('blk_1', 0)])
+    ens_b = PulseBlockEnsemble(name='ens_b', block_list=[('blk_1', 0)])
+
+    restored = PulseObjects.from_dict({
+        'sequence': {},
+        'ensembles': {'ens_a': ens_a.get_dict_representation(),
+                      'ens_b': ens_b.get_dict_representation()},
+        'blocks': {},
+    })
+    assert restored.loaded_asset is None
+    assert set(restored.ensembles) == {'ens_a', 'ens_b'}  # kept, not discarded
+
+
+def test_pulse_objects_reads_the_post_split_key_names():
+    """Files written between the split and the unification named the key after the kind. from_dict()
+    still reads those - see also test_pulse_objects_reads_pre_split_sequence_key for the one before."""
+    blk = PulseBlock(name='blk_1', element_list=[PulseBlockElement(init_length_s=1e-6)])
+    ens_a = PulseBlockEnsemble(name='ens_a', block_list=[('blk_1', 0)])
+    sequence = PulseSequence(name='seq_main', ensemble_list=[{'ensemble': 'ens_a'}])
+
+    split_sequence = {
+        'blocks': {'blk_1': blk.get_dict_representation()},
+        'ensembles': {'ens_a': ens_a.get_dict_representation()},
+        'loaded_sequence': dict({'type': 'PulseSequence'}, **sequence.get_dict_representation()),
+    }
+    restored = PulseObjects.from_dict(split_sequence)
+    assert isinstance(restored.loaded_asset, PulseSequence)
+    assert set(restored.ensembles) == {'ens_a'}
+
+    split_ensemble = {
+        'blocks': {'blk_1': blk.get_dict_representation()},
+        'loaded_ensemble': dict({'type': 'PulseBlockEnsemble'},
+                                **ens_a.get_dict_representation()),
+    }
+    restored = PulseObjects.from_dict(split_ensemble)
+    assert isinstance(restored.loaded_asset, PulseBlockEnsemble)
+    assert restored.loaded_sequence is None
 
 
 def test_pulse_objects_elements_property_reflects_blocks_live():
@@ -822,7 +901,7 @@ def test_saved_header_round_trips_through_real_data_storage(tmp_path):
     # Every container comes back as a real dict, not a str. 'pulsed measurement settings' is the
     # one that used to fail, on every file, because of a single nan buried in upload_speed.
     for key in ('fast counter settings', 'generation parameters', 'generation method parameters',
-                'pulsed measurement settings', 'loaded asset objects'):
+                'pulsed measurement settings', 'pulse objects'):
         assert isinstance(restored[key], dict), f'{key} came back as {type(restored[key]).__name__}'
 
     pgs = restored['pulsed measurement settings']['generator_settings']['pulse_generator_settings']
@@ -846,17 +925,22 @@ def test_saved_header_round_trips_through_real_data_storage(tmp_path):
     assert cv[7] == 'nan'
     assert cv[0] == 0.0
 
-    # The saved asset keeps its kind-named key and reconstructs.
-    objs = restored['loaded asset objects']
-    assert 'loaded_ensemble' in objs and 'loaded_sequence' not in objs
-    assert 'ensembles' not in objs  # bare ensemble resolves nothing one level up
+    # The saved asset comes back through the fixed three-key shape and reconstructs. A bare
+    # ensemble leaves 'sequence' empty and sits under 'ensembles'.
+    objs = restored['pulse objects']
+    assert set(objs) == {'sequence', 'ensembles', 'blocks'}
+    assert not objs['sequence']
+    assert set(objs['ensembles']) == {'rabi'}
     assert isinstance(PulseObjects.from_dict(objs).loaded_asset, PulseBlockEnsemble)
+    # The redundant sibling is gone; the name stays, since it is not reconstructable.
+    assert 'loaded asset type' not in restored
+    assert restored['loaded asset name'] == 'rabi'
 
     # And the dedup holds in a real file: fast_counter_settings appears flat, not also nested.
     assert 'fast_counter_settings' not in restored['pulsed measurement settings']['measurement_settings']
 
 
-def test_saved_header_shows_ensembles_only_for_a_sequence(tmp_path):
+def test_saved_header_uses_the_same_keys_for_a_sequence(tmp_path):
     sequence, _ens_a, saved_ensembles, saved_blocks = _build_closure_fixtures()
 
     class _FakeLog:
@@ -877,11 +961,15 @@ def test_saved_header_shows_ensembles_only_for_a_sequence(tmp_path):
     )
     _data, restored, _general = TextDataStorage.load_data(file_path)
 
-    objs = restored['loaded asset objects']
-    assert 'loaded_sequence' in objs and 'loaded_ensemble' not in objs
+    # Same three keys a bare ensemble produces (see the test above); only 'sequence' being
+    # populated distinguishes them, which is what lets evaluation code skip the branching.
+    objs = restored['pulse objects']
+    assert set(objs) == {'sequence', 'ensembles', 'blocks'}
+    assert objs['sequence']['name'] == 'seq_main'
     assert set(objs['ensembles']) == {'ens_a', 'ens_b'}
-    assert restored['loaded asset type'] == 'PulseSequence'
     assert isinstance(PulseObjects.from_dict(objs).loaded_asset, PulseSequence)
+    assert 'loaded asset type' not in restored
+    assert restored['loaded asset name'] == 'seq_main'
 
 
 def test_pulse_objects_metadata_dict_can_omit_generation_method_parameters():
@@ -897,9 +985,24 @@ def test_pulse_objects_metadata_dict_can_omit_generation_method_parameters():
     )
 
     kept = objects.to_metadata_dict()
-    assert kept['loaded_sequence']['generation_method_parameters'] == {'tau_step': 1e-9}
+    assert kept['sequence']['generation_method_parameters'] == {'tau_step': 1e-9}
 
     dropped = objects.to_metadata_dict(omit_generation_method_parameters=True)
-    assert 'generation_method_parameters' not in dropped['loaded_sequence']
+    assert 'generation_method_parameters' not in dropped['sequence']
     # The nested ensemble's own parameters are not duplicated anywhere, so they stay.
     assert dropped['ensembles']['ens_a']['generation_method_parameters'] == {'xy8_order': 8}
+
+
+def test_metadata_dict_omit_follows_a_bare_ensemble_into_ensembles():
+    """A loaded bare ensemble lives under 'ensembles', so the omit flag has to reach it there -
+    otherwise the signal header regains the duplicate the flag exists to drop."""
+    blk = PulseBlock(name='blk_1', element_list=[PulseBlockElement(init_length_s=1e-6)])
+    ensemble = PulseBlockEnsemble(name='ens_a', block_list=[('blk_1', 0)])
+    ensemble.generation_method_parameters = GenerationMethodParameters({'xy8_order': 8})
+    objects = PulseObjects(loaded_asset=ensemble, blocks={'blk_1': blk})
+
+    kept = objects.to_metadata_dict()
+    assert kept['ensembles']['ens_a']['generation_method_parameters'] == {'xy8_order': 8}
+
+    dropped = objects.to_metadata_dict(omit_generation_method_parameters=True)
+    assert 'generation_method_parameters' not in dropped['ensembles']['ens_a']
