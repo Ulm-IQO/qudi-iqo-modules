@@ -1915,9 +1915,14 @@ class PulsedMeasurementLogic(LogicBase):
         display-only variant that drops duplicate/bulky SamplingInformation fields (see its
         docstring); the full snapshot file still uses to_dict() for lossless round-tripping.
 
-        Inside 'loaded asset objects' the asset appears under 'loaded_sequence' or
-        'loaded_ensemble' after its kind, and 'ensembles' shows up only for a sequence - see
-        PulseObjects.to_dict().
+        'pulse objects' always carries the same three keys - 'sequence', 'ensembles', 'blocks' -
+        whichever kind of asset is loaded, so evaluation code reads one fixed shape. The kind is
+        reconstructed rather than stated: an empty 'sequence' means a bare PulseBlockEnsemble was
+        loaded, and it is then the single entry under 'ensembles'. See PulseObjects.to_dict().
+
+        There is deliberately no 'loaded asset type' beside it: the structure above already carries
+        that. 'loaded asset name' stays, because a sequence referencing several ensembles gives no
+        other way to say which asset was the loaded one.
 
         Parameters
         ----------
@@ -1939,8 +1944,7 @@ class PulsedMeasurementLogic(LogicBase):
             blocks=dict(blocks) if blocks else {},
         )
         return {'loaded asset name': self._loaded_asset.name,
-                'loaded asset type': type(self._loaded_asset).__name__,
-                'loaded asset objects': objects.to_metadata_dict(
+                'pulse objects': objects.to_metadata_dict(
                     omit_generation_method_parameters=omit_generation_method_parameters
                 )}
 

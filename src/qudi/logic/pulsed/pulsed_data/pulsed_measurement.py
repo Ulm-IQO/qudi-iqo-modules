@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, field
+from logging import getLogger
 from typing import TYPE_CHECKING, Dict, List, Optional, Union
 
 from qudi.util.datafitting import FitContainer
@@ -34,6 +35,8 @@ if TYPE_CHECKING:
     # imports several classes from this package), so importing these at runtime here would invert
     # that layering. Only needed for type hints below.
     from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockElement, PulseBlockEnsemble, PulseSequence
+
+_logger = getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -144,7 +147,7 @@ class PulseObjects:
 
     One slot holds the loaded asset (`loaded_asset`) whichever kind it is; `loaded_sequence` and
     `loaded_ensemble` are Optional views over it that read as None for the other kind. to_dict()
-    names the saved key after the kind, and shows `ensembles` only when they mean something.
+    flattens that back out into a fixed three-key shape - see its docstring.
     """
 
     #: The loaded top-level asset, whichever kind it is - independent copy
@@ -157,9 +160,10 @@ class PulseObjects:
     #: separate fields here.
     loaded_asset: Optional[Union['PulseBlockEnsemble', 'PulseSequence']] = None
     #: Every PulseBlockEnsemble `loaded_asset` references by name, keyed by name - independent
-    #: copies. Empty if `loaded_asset` is itself a bare PulseBlockEnsemble (or nothing is loaded):
-    #: there is nothing to resolve one level up in that case, which is why to_dict() leaves the key
-    #: out entirely rather than writing an empty dict.
+    #: copies. Empty *on the instance* if `loaded_asset` is itself a bare PulseBlockEnsemble (or
+    #: nothing is loaded): there is nothing to resolve one level up in that case. Note this differs
+    #: from the saved form, where to_dict() files a bare loaded ensemble into 'ensembles' so the
+    #: 'sequence' key can stay empty - see to_dict().
     ensembles: Dict[str, 'PulseBlockEnsemble'] = field(default_factory=dict)
     #: Every PulseBlock referenced by `ensembles` (or, for a bare-ensemble `loaded_asset`,
     #: referenced directly by it), keyed by name - independent copies, same provenance as
@@ -194,31 +198,42 @@ class PulseObjects:
         return [element for block in self.blocks.values() for element in block.element_list]
 
     def to_dict(self):
-        """The loaded asset is written under 'loaded_sequence' or 'loaded_ensemble' - the key name
-        itself says which kind it is, so a saved file never reads 'sequence' while describing a
-        PulseBlockEnsemble. It still also carries a 'type' tag holding the class name: that is the
-        forward-compatible hook a third asset type would use, and it survives being read back
-        without the classes importable.
+        """Always writes exactly three keys - 'sequence', 'ensembles', 'blocks' - whichever kind of
+        asset is loaded, so evaluation code reads one fixed shape and never has to test which keys
+        are present before it can start.
 
-        'ensembles' appears only when a PulseSequence is loaded. A bare ensemble resolves nothing
-        one level up, so for it the key is left out rather than written as an empty dict - an empty
-        'ensembles' next to an ensemble is exactly the reading that used to confuse people.
+        The kind is not encoded anywhere; it is *reconstructed* from the structure. A loaded
+        PulseSequence goes in 'sequence'. A loaded bare PulseBlockEnsemble goes into 'ensembles'
+        instead and 'sequence' stays empty, so:
+
+            if not data['sequence']:   # -> a PulseBlockEnsemble was loaded (or nothing was)
+
+        Test the whole 'sequence' value, never its 'ensemble_list': PulseSequence(name='x') has an
+        empty ensemble_list and is still a sequence, whereas a real sequence's representation always
+        carries at least its 'name' and so is never falsy.
+
+        This replaces an older layout that named the key after the kind ('loaded_sequence' /
+        'loaded_ensemble') and tagged the value with its class name. from_dict() still reads that
+        one, and the pre-split single-'sequence'-plus-'type'-tag one before it.
 
         The flattened `elements` view (see the property above) is deliberately NOT exported: every
         element already appears inside its block's 'element_list', so a second copy would only
         duplicate them. Use the `elements` property on a live instance if you want them flat.
         """
-        data = {}
-        if self.loaded_asset is not None:
-            asset_dict = {'type': type(self.loaded_asset).__name__}
-            asset_dict.update(self.loaded_asset.get_dict_representation())
-            data['loaded_sequence' if self.loaded_asset.is_sequence else 'loaded_ensemble'] = asset_dict
+        sequence = {}
+        ensembles = {name: ens.get_dict_representation() for name, ens in self.ensembles.items()}
         if self.loaded_sequence is not None:
-            data['ensembles'] = {
-                name: ens.get_dict_representation() for name, ens in self.ensembles.items()
-            }
-        data['blocks'] = {name: blk.get_dict_representation() for name, blk in self.blocks.items()}
-        return data
+            sequence = self.loaded_sequence.get_dict_representation()
+        elif self.loaded_ensemble is not None:
+            # A bare ensemble resolves nothing one level up, so `ensembles` is empty on the
+            # instance and filing the asset here costs nothing - and it is what lets 'sequence'
+            # stay empty as the kind marker.
+            ensembles[self.loaded_ensemble.name] = self.loaded_ensemble.get_dict_representation()
+        return {
+            'sequence': sequence,
+            'ensembles': ensembles,
+            'blocks': {name: blk.get_dict_representation() for name, blk in self.blocks.items()},
+        }
 
     def to_metadata_dict(self, omit_generation_method_parameters=False):
         """Trimmed variant of to_dict() for saved-measurement metadata: drops fields from each
@@ -237,7 +252,9 @@ class PulseObjects:
             Optional, also drop 'generation_method_parameters' from the loaded asset's own entry,
             for a header that already writes it out at its top level (only the signal file does -
             see _get_signal_metadata()). Deliberately applies to the loaded asset alone: every
-            ensemble under 'ensembles' has its own, which is not duplicated anywhere.
+            *other* ensemble under 'ensembles' has its own, which is not duplicated anywhere. Note
+            a loaded bare ensemble now lives under 'ensembles' too (see to_dict()), so the flag has
+            to follow it there rather than keying off a separate top-level entry.
         """
         def trim_sampling_information(sampling_info_dict):
             return {
@@ -249,17 +266,26 @@ class PulseObjects:
             }
 
         data = self.to_dict()
-        asset_dict = data.get('loaded_sequence') or data.get('loaded_ensemble')
-        if asset_dict is not None:
-            asset_dict['sampling_information'] = trim_sampling_information(
-                asset_dict['sampling_information']
+        # Which entry is the loaded asset: 'sequence' when non-empty, else the bare ensemble
+        # to_dict() filed under its own name. `None` when nothing is loaded.
+        loaded_ensemble_name = (
+            self.loaded_ensemble.name if self.loaded_sequence is None
+            and self.loaded_ensemble is not None else None
+        )
+
+        sequence_dict = data['sequence']
+        if sequence_dict:
+            sequence_dict['sampling_information'] = trim_sampling_information(
+                sequence_dict['sampling_information']
             )
             if omit_generation_method_parameters:
-                asset_dict.pop('generation_method_parameters', None)
-        for ensemble_dict in data.get('ensembles', {}).values():
+                sequence_dict.pop('generation_method_parameters', None)
+        for name, ensemble_dict in data['ensembles'].items():
             ensemble_dict['sampling_information'] = trim_sampling_information(
                 ensemble_dict['sampling_information']
             )
+            if omit_generation_method_parameters and name == loaded_ensemble_name:
+                ensemble_dict.pop('generation_method_parameters', None)
         return data
 
     @classmethod
@@ -276,22 +302,46 @@ class PulseObjects:
             name: PulseBlockEnsemble.ensemble_from_dict(ensemble_dict)
             for name, ensemble_dict in (data.get('ensembles') or {}).items()
         }
-        sequence_dict = data.get('loaded_sequence')
-        ensemble_dict = data.get('loaded_ensemble')
-        if sequence_dict is None and ensemble_dict is None:
-            # Files written before the key split put both kinds under one 'sequence' key,
-            # distinguished only by the 'type' tag inside it - see to_dict().
-            legacy_dict = data.get('sequence')
-            if legacy_dict is not None:
-                if legacy_dict.get('type') == 'PulseSequence':
-                    sequence_dict = legacy_dict
-                elif legacy_dict.get('type') == 'PulseBlockEnsemble':
-                    ensemble_dict = legacy_dict
+        # Three layouts are readable here, newest first:
+        #   1. current  - 'sequence' (no 'type' tag); a bare ensemble sits in 'ensembles'
+        #   2. split    - 'loaded_sequence' / 'loaded_ensemble', named after the kind
+        #   3. pre-split- one 'sequence' key holding either kind, told apart by a 'type' tag
+        # (1) and (3) share the key name, so the 'type' tag is what separates them: the current
+        # format never writes one.
+        sequence_dict = data.get('sequence') or None
+        ensemble_dict = None
+        take_loaded_ensemble_from_ensembles = False
+        if sequence_dict is not None and 'type' in sequence_dict:
+            if sequence_dict.get('type') == 'PulseBlockEnsemble':
+                sequence_dict, ensemble_dict = None, sequence_dict
+            elif sequence_dict.get('type') != 'PulseSequence':
+                sequence_dict = None
+        elif sequence_dict is None:
+            sequence_dict = data.get('loaded_sequence')
+            ensemble_dict = data.get('loaded_ensemble')
+            take_loaded_ensemble_from_ensembles = (
+                sequence_dict is None and ensemble_dict is None and bool(ensembles)
+            )
+
         loaded_asset = None
         if sequence_dict is not None:
             loaded_asset = PulseSequence.sequence_from_dict(sequence_dict)
         elif ensemble_dict is not None:
             loaded_asset = PulseBlockEnsemble.ensemble_from_dict(ensemble_dict)
+        elif take_loaded_ensemble_from_ensembles:
+            # Current format, ensemble case: to_dict() filed the loaded bare ensemble as the sole
+            # entry in 'ensembles'. Pop it back out, because on the instance `ensembles` holds only
+            # what the asset resolves one level up - empty for a bare ensemble.
+            if len(ensembles) == 1:
+                _, loaded_asset = ensembles.popitem()
+            else:
+                # Cannot come from to_dict(); with an empty 'sequence' and several candidates the
+                # loaded asset is genuinely ambiguous, so refuse to guess rather than pick one.
+                _logger.warning(
+                    'Cannot tell which of the %d ensembles was the loaded asset: no "sequence" '
+                    'entry and more than one candidate. Leaving loaded_asset unset.',
+                    len(ensembles),
+                )
         return cls(loaded_asset=loaded_asset, ensembles=ensembles, blocks=blocks)
 
     def __setstate__(self, state):

@@ -806,6 +806,13 @@ own `name`. Those flat keys are the long-standing readable convention, their nes
 removed without breaking reconstruction, and both copies are read off one object in one call, so
 they cannot diverge.
 
+One scalar was removed under that policy rather than kept: `'loaded asset type'`. It is the
+exception because it did not merely *duplicate* a value, it duplicated a **derivation** — the kind
+is already implied by which of `pulse objects`' fixed keys is populated, so keeping the string was
+a second, independently-writable answer to a question the structure already settles. `loaded asset
+name` fails that test and stays: nothing else in the file identifies which asset was loaded when a
+sequence references several ensembles.
+
 #### `PulsedData` *(mutable)*
 
 `measurement_data: PulsedMeasurementData` plus `fit_result` / `fit_result_alt`.
@@ -829,13 +836,45 @@ so there is no "at most one is set" invariant for `replace()` or a stray assignm
 follow the tri-state `getattr(x, 'is_sequence', None)` pattern, so an object that is not a pulse
 asset at all reads `None` from both rather than raising.
 
-`to_dict()` writes the asset under `loaded_sequence` or `loaded_ensemble` — the key names the kind,
-so a saved file never reads `sequence` while describing a `PulseBlockEnsemble` — and shows
-`ensembles` **only** for a sequence. A bare ensemble resolves nothing one level up, so the key is
-left out rather than written as an empty dict; an empty `ensembles` beside an ensemble was exactly
-the reading that used to confuse people. `from_dict()` branches on which key is present, and still
-reads the pre-split single `sequence` key by its `type` tag; `__setstate__` does the same for a
-`.pulsedmeasurement` pickled before the rename.
+`to_dict()` always writes exactly three keys — `sequence`, `ensembles`, `blocks` — whichever kind of
+asset is loaded. The kind is **not** encoded; it is reconstructed from the structure:
+
+```python
+if not data['sequence']:      # -> a PulseBlockEnsemble was loaded (or nothing was)
+```
+
+A loaded `PulseSequence` goes in `sequence`. A loaded bare `PulseBlockEnsemble` goes into
+`ensembles` instead — it resolves nothing one level up, so that slot is free — and `sequence` stays
+empty. Evaluation code therefore reads one fixed shape and never tests which keys are present,
+which is the whole reason for the layout: branching on key names is the cost that gets paid by
+every downstream consumer, forever.
+
+**Test the whole `sequence` value, never its `ensemble_list`.** `PulseSequence(name='x')` has an
+empty `ensemble_list` and is still a sequence; a real sequence's representation always carries at
+least its `name`, so the value itself is never falsy. Keying off `ensemble_list` would silently
+reclassify an empty-but-real sequence as an ensemble.
+
+`from_dict()` reads three layouts, told apart without ambiguity:
+
+| Layout | Shape | Discriminator |
+|---|---|---|
+| current | `sequence` (no `type` tag); a bare ensemble in `ensembles` | no `type` tag |
+| split | `loaded_sequence` / `loaded_ensemble`, named after the kind | key name |
+| pre-split | one `sequence` key holding either kind | inner `type` tag |
+
+The current and pre-split layouts share the key name, so the `type` tag separates them: the current
+format never writes one. `__setstate__` separately handles a `.pulsedmeasurement` pickled before the
+`sequence` → `loaded_asset` **attribute** rename, which is unrelated to any of this.
+
+Reconstructing a bare ensemble from the sole `ensembles` entry is the one lossy spot: an empty
+`sequence` beside *several* ensembles cannot come from `to_dict()` and leaves the loaded asset
+genuinely ambiguous, so `from_dict()` warns and leaves `loaded_asset` unset rather than guessing.
+
+> **History.** This reverses an earlier decision. The `loaded_sequence`/`loaded_ensemble` split was
+> introduced deliberately so the key name would state the kind, on the reasoning that "an empty
+> `ensembles` beside an ensemble is exactly the reading that used to confuse people". That optimises
+> for a person *reading* the file and charges the person *parsing* it. The trade was reversed in
+> favour of parsers; the split layout stays readable by `from_dict()`.
 
 The point is that a saved measurement's dict shows every block/ensemble definition in full rather than
 just a name, and stays frozen in time — editing a same-named asset later never changes an
@@ -849,7 +888,9 @@ already-taken snapshot.
   header shows sequence *structure* rather than thousands of numbers. Its
   `omit_generation_method_parameters` flag additionally drops the loaded asset's own
   `generation_method_parameters` for the signal file, which writes that container flat at its top
-  level — see **One copy of a container per file** below. There is no `from_metadata_dict()`.
+  level — see **One copy of a container per file** below. Because a loaded bare ensemble now lives
+  under `ensembles`, that flag follows it there, while every *other* ensemble under `ensembles`
+  keeps its own copy (those are not duplicated anywhere). There is no `from_metadata_dict()`.
 
 #### `PulsedMeasurement` *(mutable)* — the root
 
@@ -1050,12 +1091,21 @@ object's actual type. Had it been a persisted field instead, convention 3's miss
 would have defaulted it to `False` on every pre-existing file, silently reclassifying every saved
 `PulseSequence` as an ensemble.
 
-It is therefore **not** in `to_dict()`, `to_metadata_dict()` or any pickle. The saved form carries the
-distinction as strings instead, in three places: the key name `PulseObjects.to_dict()` files the asset
-under (`loaded_sequence` / `loaded_ensemble`), which is what `from_dict()` branches on; a `'type'` tag
-holding the class name inside that value; and `'loaded asset type'` in each `.dat` header. Keep all
-three as strings: they must survive without the classes present, and the `'type'` tag in particular
-is what a third asset type would extend — the key name alone would not generalise as cleanly.
+It is therefore **not** in `to_dict()`, `to_metadata_dict()` or any pickle. The saved form does not
+record the distinction at all any more — it **reconstructs** it from the structure: an empty
+`sequence` key means a bare `PulseBlockEnsemble` was loaded, and it is then the sole entry under
+`ensembles`. That works without the classes importable, which is the property that matters, and it
+cannot drift out of sync with the content the way a redundant string tag can.
+
+This replaced three string markers that all said the same thing: the key name (`loaded_sequence` /
+`loaded_ensemble`), a `'type'` tag inside the value, and `'loaded asset type'` in each `.dat`
+header. The standing argument for keeping the `'type'` tag was that a third asset type would extend
+it. A third type is better served by its own top-level key alongside `sequence` — that keeps the
+"read fixed keys, test which is populated" rule intact, where another tag value would force every
+consumer back into branching on strings.
+
+`'loaded asset name'` **stays** in the header. It is not reconstructable: a sequence referencing
+several ensembles gives no other way to say which asset was the loaded one.
 
 Three places it deliberately does **not** replace `isinstance`:
 
