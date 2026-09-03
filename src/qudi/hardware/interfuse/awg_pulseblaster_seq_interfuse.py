@@ -528,8 +528,6 @@ class AwgPulseBlasterInterfuse(PulserInterface):
             value = True if d_key in active else False
             tail = np.full(self._pb_extra_wait_samples, value, dtype=bool)
             padded[d_key] = np.concatenate([samples, tail])
-            if value:
-                self.log.info(d_key)
         return padded
 
     def _find_min_run_length(self, combined_2d):
