@@ -50,75 +50,188 @@ alone. Confirmed on real hardware, in this order of discovery:
   4. TRIGGER-DISABLE ORDERING (real bug, fixed): scan_axis() must disable
      triggering (CTO param 8 -> disable_threshold) BEFORE moving to the
      new line's wave_offset, exactly matching the proven MATLAB
-     ScanLine()'s own call order (CTO disable is its very first
-     trigger-related call, issued before MOV). An earlier version of
-     this method issued the repositioning move first and only disabled
-     triggering afterward, leaving the PREVIOUS line's trigger
-     thresholds fully armed while that move traveled through a wide
-     range of real positions -- generating real, physical extra trigger
-     pulses that got counted as if they belonged to the next line.
-     Confirmed via hardware trace: a cluster of spurious edges with a
-     smoothly-decelerating time signature appeared identically regardless
-     of the new scan's own pixel count/geometry, which only makes sense
-     if they were produced by the repositioning move using stale trigger
-     config, not by the new line's own (correctly configured) triggering.
+     ScanLine()'s own call order. Issuing the repositioning move first
+     and only disabling triggering afterward leaves the PREVIOUS line's
+     trigger thresholds fully armed while that move travels through a
+     wide range of real positions -- generating real, physical extra
+     trigger pulses that get counted as if they belonged to the next
+     line.
 
-SCAN RANGE VS. lin_pts_ratio PADDING
---------------------------------------
-When lin_pts_ratio < 1.0, scan_axis() pads the commanded waveform beyond
-[start, stop] on both sides, to give the stage room to accelerate up to
-scanning speed before entering the real, triggered region (and decelerate
-after leaving it). The padding needed on each side scales with the scan
-span:
+  5. WAVE_OFFSET CLAMP (real bug, fixed): the padded-range pre-MOV check
+     tolerates 1e-6 um of float noise around an exact travel-limit
+     boundary -- but that tolerance only gates the CHECK; the literal
+     wave_offset value must be clamped to [travel_min, travel_max] before
+     being used by move_absolute()/wave_lin(), since real PI firmware
+     enforces its travel limit with zero tolerance of its own.
+
+AUTOMATIC SPEED-UP/SLOW-DOWN PADDING
+----------------------------------------
+Every scan line needs some amount of speed-up ramp before, and slow-down
+ramp after, the real triggered region, so that the stage is already at
+(or smoothly decelerating from) full scanning velocity while triggering
+is active -- see "SCAN RANGE VS. PADDING" below for why this is a real,
+physical requirement, not a tunable safety margin. This module computes
+the padding needed for EVERY scan automatically, from two physically
+named, independently-motivated limits -- there is no user-facing "ratio"
+knob to hand-tune per scan:
+
+  max_acceleration_um_s2 (ConfigOption, default 3000.0):
+      The stage's real acceleration limit. A scan whose combination of
+      span, resolution, and frequency would otherwise demand ramping up
+      to scanning velocity faster than this gets MORE padding
+      (proportionally more speed-up/slow-down time) automatically, so
+      the implied average acceleration during that ramp never exceeds
+      this value. Calibrated from a real hardware measurement: a scan
+      spanning 120 um (40 to 160 um) at 100 points and 300 Hz was found
+      to require a manually-tuned padding fraction equivalent to
+      accelerating at ~3240 um/s^2 as the boundary of reliable
+      triggering; 3000 um/s^2 keeps a small margin below that measured
+      boundary. Treat this the same way as any hardware calibration
+      constant in this file -- a real measurement on THIS stage/
+      controller, not a PI-specified spec -- revisit if scans still show
+      edge-count mismatches at the current default.
+
+  min_speedup_time_s (ConfigOption, default 0.005):
+      A floor under how little padding time a scan can ever be given,
+      REGARDLESS of how slow/gentle it is. Exists specifically because a
+      scan with NO speed-up ramp at all (the old lin_pts_ratio=1.0
+      "padding off" case) was observed on real hardware to sometimes
+      produce ZERO real trigger edges for an entire line -- the real
+      servo response has following error/lag right at motion start with
+      no ramp to smooth it, and the real position may never cleanly
+      cross the trigger threshold at all. This floor guarantees every
+      scan gets at least this much speed-up/slow-down time, even a very
+      slow scan that the acceleration limit alone would otherwise let
+      run with almost no padding at all.
+
+      NOT CALIBRATED against real hardware the way max_acceleration_um_s2
+      is -- we only know that a ZERO-length ramp can fail; we do not have
+      a real measurement of the true minimum ramp time this stage needs.
+      0.005 s (5 ms) is a conservative starting default, not a confirmed
+      hardware constant. If you ever see edge-count mismatches
+      SPECIFICALLY on slow/low-resolution scans (where this floor, not
+      the acceleration limit, is the binding constraint), raise this
+      value and re-test; if you confirm it can be lowered without
+      trigger issues, that is useful data for tightening the default.
+
+      NOTE: setting this to a value that is technically positive but far
+      too small to matter (e.g. 5e-18) is NOT the same as disabling it --
+      it still contributes a ratio very close to 1.0 (i.e. "almost no
+      padding needed") to the min() in _effective_ratio(), silently
+      weakening whatever padding max_acceleration_um_s2 alone would have
+      produced. To genuinely disable this constraint, set it to exactly
+      0 or None -- only those values are excluded from the min()
+      altogether (see _effective_ratio() below).
+
+For a given scan (t_pixel, n_points, amp_true), the padding fraction
+actually used is derived as follows. The linear (triggered) region's
+duration is always exactly T = t_pixel * n_points, independent of how
+much padding is applied (padding only ever adds MORE time before/after
+this fixed-duration region, never touches per-pixel dwell time
+integrity). From T, two independent upper bounds on the "fraction of
+total line time spent in the linear region" (called ratio internally,
+purely as an implementation detail of the WAV_LIN point-count math --
+never exposed to a caller) are computed:
+
+    ratio_max_accel   = (T^2 * a_max) / (T^2 * a_max + 2 * amp_true)
+    ratio_max_speedup = T / (T + 2 * min_speedup_time_s)
+
+and the LOWER (more conservative -- i.e. more total padding) of the two
+is the one actually used for that scan. Setting either ConfigOption to
+None or a non-positive value disables that specific constraint; if BOTH
+are disabled, no padding is applied at all (ratio=1.0, reproducing the
+original, unprotected "padding off" behavior -- entirely at the caller's
+own risk, matching the failure mode described above).
+
+SCAN RANGE VS. PADDING
+--------------------------
+Padding overshoots the commanded waveform beyond [start, stop] on both
+sides, to give the stage room to accelerate up to scanning speed before
+entering the real, triggered region (and decelerate after leaving it).
+The padding needed on each side scales with the scan span:
 
     overshoot_per_side = amp_true * (1 - ratio) / (2 * ratio)
 
-This is a real, physical requirement of the technique, not a tunable
-safety margin -- and it means requesting a scan spanning (close to) the
-axis' FULL real travel range, with padding enabled, will overshoot past
-the real travel limits and fail scan_axis()'s pre-MOV range check (with a
-clear error) rather than silently doing something unsafe.
+This is a real, physical requirement of the technique -- requesting a
+scan spanning (close to) an axis' FULL real travel range, with padding
+applied, will overshoot past the real travel limits and fail
+scan_axis()'s pre-MOV range check (with a clear error) rather than
+silently doing something unsafe.
 
-The proven MATLAB code never solved this either: its own MOV() wrapper has
-an identical hardware range check, so requesting a full-travel-range scan
-with padding there would have failed the exact same way. The original lab
-simply never did that, by manual convention -- there was no code-level
-protection.
-
-get_scan_safe_range(axis) (below) computes, in closed form, the largest
-sub-range of an axis' real travel range that is guaranteed to remain
-within real travel limits after padding is applied, for a scan spanning
-up to that entire returned range (and, by direct consequence of the
-overshoot scaling linearly with span, for any smaller scan positioned
-anywhere inside that same returned range too). Solving
-overshoot_per_side(R) == margin simultaneously with R == travel_span -
-2*margin (i.e. a self-consistent "exactly uses up all its own margin"
-scan) simplifies to:
-
-    margin = travel_span * (1 - ratio) / 2
+get_scan_safe_range(axis, t_pixel, n_points) computes, in closed form,
+the largest sub-range of an axis' real travel range that is guaranteed to
+remain within real travel limits after padding is applied, for a SPECIFIC
+scan's t_pixel/n_points (using the axis' full travel span as the
+worst-case amplitude for that specific scan's implied padding
+requirement). Passing the real t_pixel/n_points of the scan being
+planned (as PIE710CounterInterfuse's configure_scan() now does) is what
+keeps this self-consistent with what scan_axis() will actually do for
+that exact request -- calling it without real parameters falls back to
+NOT narrowing the range at all (logs a warning), since there is no longer
+a fixed, parameter-independent padding fraction to assume.
 
 PIE710CounterInterfuse uses this (via getattr, since PIE710Scanner has no
-padding concept and therefore no need for this method) to restrict the
-scan-range GUI/constraints proactively, so this class of error should
-never actually surface to a user in normal operation -- only
-move_absolute()/get_position()/etc. (ordinary, non-scanning motion) still
-use the full real x_range/y_range/z_range; only the scan-range
-constraint is narrowed.
+padding concept and therefore no need for this method) to clamp actual
+scan requests into a range that fits after padding, logging a clear
+warning when it does so. Only move_absolute()/get_position()/etc.
+(ordinary, non-scanning motion) use the full real x_range/y_range/z_range;
+axis.position bounds reported to Qudi are ALWAYS the true, full travel
+range (never narrowed), since qudi's own scanning_probe_logic and
+scanning_optimize_logic both reuse those bounds for ordinary absolute-
+position validation completely independent of scanning.
 
-STILL NOT INDEPENDENTLY VERIFIED ON THIS SPECIFIC UNIT: the exact best
-lin_pts_ratio value for this stage's mechanics. lin_pts_ratio=1.0 (no
-padding at all) has been observed on real hardware to produce ZERO
-trigger pulses for an entire line -- the real physical servo response
-has inherent following error/lag right at motion start with no
-acceleration runway at all, so the actual position may never cleanly
-cross the trigger threshold. lin_pts_ratio=0.7 (the MATLAB default) was
-observed to occasionally produce a small number of extra, decelerating-
-pattern spurious edges before settling into clean triggering (traced to
-the trigger-disable-ordering bug above, now fixed). lin_pts_ratio=0.5 has
-been confirmed, after that fix, to produce exactly n_pixels + 1 real
-trigger edges with a clean, uniform inter-trigger timing pattern on real
-hardware. Treat 0.5 as the current known-good value for this stage;
-revisit only if scans show visible distortion at line edges.
+MINIMUM TRIGGER STEP (min_trig_step_um)
+-------------------------------------------
+A scan's real per-pixel trigger step is trig_step = amp_true / n_points
+(the exact value scan_axis() programs into CTO param 1). If a scan's
+requested span and resolution together imply a trig_step too small for
+this stage/controller to reliably resolve as distinct triggered steps
+(as opposed to, e.g., noise/settling ripple around a single physical
+position repeatedly re-crossing an overly-fine threshold), real trigger
+behavior degrades -- extra or missing edges, run-to-run variability at
+the same nominal settings.
+
+min_trig_step_um (ConfigOption, default 0.05):
+    The smallest real trigger step this module will program without
+    either erroring out (scan_axis(), as a hard safety net for any
+    caller bypassing the interfuse) or -- the intended, normal path --
+    having the caller pre-emptively reduce resolution to fit.
+
+    NOT CALIBRATED against real hardware -- this is a conservative
+    placeholder (50 nm), not a confirmed physical limit of this specific
+    stage/controller. If you see real edge-count mismatches at a given
+    span/resolution combination that this default does NOT catch, raise
+    it and re-test; if you confirm finer real steps than this default
+    trigger reliably, that is useful data for tightening it. Set to 0 or
+    None to disable this check entirely (not recommended without having
+    independently confirmed your scan's implied step is safe).
+
+get_max_resolution_for_span(span_um) computes, in closed form, the
+largest n_points that keeps span_um / n_points >= min_trig_step_um for a
+scan of that span. PIE710CounterInterfuse uses this (via getattr, since
+PIE710Scanner has no min-step concept) to automatically reduce a
+requested scan's RESOLUTION, with a clear warning, to whatever this
+returns -- checked AFTER range clamping, so it is always evaluated
+against the range that will actually be scanned. This is the intended,
+normal path: a well-behaved caller going through the interfuse should
+never actually trigger scan_axis()'s own hard error below.
+
+scan_axis() ALSO independently checks its own trig_step against
+min_trig_step_um and raises PIE727Error if it is too small -- this is a
+defensive last-resort check, not the primary mechanism, in case
+scan_axis() is ever called directly (bypassing the interfuse's
+resolution auto-adjustment) with parameters that violate this limit.
+
+STILL NOT INDEPENDENTLY VERIFIED ON THIS SPECIFIC UNIT: whether the
+constant-acceleration ramp approximation underlying max_acceleration_um_s2
+is a good match to PI's real internal speed-up curve shape (likely an
+S-curve or similar easing, not literally constant acceleration), the real
+minimum speed-up time this stage needs (min_speedup_time_s's actual
+calibrated value), and the real minimum reliable trigger step
+(min_trig_step_um's actual calibrated value). Treat all three as useful,
+conservative TUNING KNOBS confirmed to correctly predict the DIRECTION of
+the real effect, not as first-principles-exact models of this
+controller's real dynamics.
 
 CRITICAL CROSS-FILE COUPLING -- RESOLVED
 -------------------------------------------
@@ -133,10 +246,7 @@ notion of a fixed scan clock rate at all; it hardware-counts real trigger
 edges directly. Confirmed on real hardware for this E-727 (via
 SPA? 1 0x0E000200 = 50 us servo cycle, WTR? = 1 cycle/point, and
 independently confirmed by the proven MATLAB code's own SampRate = 20e3
-property) that the true wave generator rate is 20000.0 Hz -- this value
-matters for this module's own internal timing calculations
-(wave_generator_rate_hz config option below) regardless of which counter
-acquisition mode is used downstream.
+property) that the true wave generator rate is 20000.0 Hz.
 
 YAML configuration:
     hardware:
@@ -151,7 +261,9 @@ YAML configuration:
                 z_range: [0.0, 200.0]
                 trigger_output_id: 1
                 wave_generator_rate_hz: 20000.0   # confirmed -- see module docstring
-                lin_pts_ratio: 0.5                # confirmed working on real hardware -- see module docstring
+                max_acceleration_um_s2: 3000.0    # calibrated from real hardware -- see module docstring
+                min_speedup_time_s: 0.005         # conservative, UNCALIBRATED default -- see module docstring
+                min_trig_step_um: 0.05            # conservative, UNCALIBRATED default -- see module docstring
 """
 
 import ctypes
@@ -164,19 +276,11 @@ import numpy as np
 
 from qudi.core.configoption import ConfigOption
 
-# Reuses the SAME abstract interface as the E-710 module, so this class is
-# a drop-in replacement behind the existing PIE710CounterInterfuse without
-# any changes to that interfuse's Connector wiring. Adjust this import
-# path to wherever pi_e710_scanning_probe.py actually lives in your
-# project tree.
 from .pi_e710_scanning_probe import PIE710ScannerInterface
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 #  PI GCS2 DLL WRAPPER  (PI_GCS2_DLL_x64.dll)
-#  All wave/trigger functions below use the COMPILED per-command DLL
-#  functions, matching the confirmed real header (PI_GCS2_DLL.h) and the
-#  proven MATLAB implementation -- NOT the generic ASCII string channel.
 # ══════════════════════════════════════════════════════════════════════════════
 
 class PIE727Error(Exception):
@@ -199,7 +303,7 @@ class PIE727Controller:
     _BUF_SM = 256
     _BUF_MD = 1024
 
-    def __init__(self, dll_path: str, use_windll: bool = False):
+    def __init__(self, dll_path: str, use_windll: bool = False, logger=None):
         self._id: int = -1
         self._dll_path = dll_path
         self._registered: set = set()
@@ -207,20 +311,26 @@ class PIE727Controller:
         self._travel_min: List[float] = []
         self._travel_max: List[float] = []
 
+        # Optional logger (passed down from PIE727Scanner, which has
+        # self.log via qudi's LogicBase/Base -- PIE727Controller itself is
+        # a plain ctypes wrapper with no qudi logger of its own). If None,
+        # padding-adjustment info messages are silently skipped.
+        self._logger = logger
+
         self.wave_generator_rate_hz: Optional[float] = None
-        # Servo update period, seconds -- 1 / wave_generator_rate_hz, set
-        # alongside it. Used for wave-timing calculations, matching the
-        # proven MATLAB code's servo_pt_time property.
         self.servo_point_time_s: Optional[float] = None
 
-        # Fraction of each line spent in the linear (triggered) region,
-        # with the remainder split between speed-up/slow-down ramps on
-        # each side. Matches the proven MATLAB code's lin_pts_ratio_1D.
-        self.lin_pts_ratio: float = 1.0
+        # See module docstring, "AUTOMATIC SPEED-UP/SLOW-DOWN PADDING".
+        # Neither is a user-facing "ratio" -- both are physically named
+        # limits combined automatically, per scan, in _effective_ratio().
+        self.max_acceleration_um_s2: Optional[float] = None
+        self.min_speedup_time_s: Optional[float] = None
+
+        # See module docstring, "MINIMUM TRIGGER STEP".
+        self.min_trig_step_um: Optional[float] = None
 
         # Cached parameters from the most recent scan_axis() call, so
-        # retrigger_line() can repeat the exact same line -- see module
-        # docstring for why this must be a full repeat, not a bare WGO.
+        # retrigger_line() can repeat the exact same line.
         self._last_scan_kwargs: Optional[dict] = None
 
         self._dll = self._load_dll(dll_path, use_windll)
@@ -242,7 +352,6 @@ class PIE727Controller:
         CP = ctypes.c_char_p
         PI = ctypes.POINTER(ctypes.c_int)
         PD = ctypes.POINTER(ctypes.c_double)
-        CI = ctypes.c_int   # BOOL is a plain int on Windows
 
         def sig(name, rt, *at):
             try:
@@ -253,7 +362,6 @@ class PIE727Controller:
             except AttributeError:
                 pass
 
-        # ── Connection ────────────────────────────────────────────────────
         sig("PI_ConnectUSB",       I, CP)
         sig("PI_ConnectRS232",     I, I, I)
         sig("PI_IsConnected",      I, I)
@@ -261,14 +369,10 @@ class PIE727Controller:
         sig("PI_GetError",         I, I)
         sig("PI_TranslateError",   I, I, CP, I)
 
-        # ── Identification ────────────────────────────────────────────────
         sig("PI_qIDN",   I, I, CP, I)
         sig("PI_qVER",   I, I, CP, I)
-        # CONFIRMED against the real header: only 3 arguments, no filter
-        # parameter.
         sig("PI_qSAI",   I, I, CP, I)
 
-        # ── Servo / motion ────────────────────────────────────────────────
         sig("PI_SVO",       I, I, CP, PI)
         sig("PI_qSVO",      I, I, CP, PI)
         sig("PI_MOV",       I, I, CP, PD)
@@ -283,10 +387,8 @@ class PIE727Controller:
         sig("PI_VEL",       I, I, CP, PD)
         sig("PI_qVEL",      I, I, CP, PD)
 
-        # ── Digital I/O info (used only for diagnostics) ──────────────────
         sig("PI_qTIO", I, I, PI, PI)
 
-        # ── Wave generator (compiled functions, confirmed real signatures) ─
         sig("PI_IsGeneratorRunning", I, I, PI, PI, I)
         sig("PI_WAV_LIN", I, I, I, I, I, I, I, D, D, I)
         sig("PI_qWAV",    I, I, PI, PI, PD, I)
@@ -297,7 +399,6 @@ class PIE727Controller:
         sig("PI_WCL",     I, I, PI, I)
         sig("PI_WOS",     I, I, PI, PD, I)
 
-        # ── Trigger output (compiled functions) ───────────────────────────
         sig("PI_CTO",  I, I, PI, PI, PD, I)
         sig("PI_qCTO", I, I, PI, PI, PD, I)
 
@@ -373,8 +474,6 @@ class PIE727Controller:
         if self._id >= 0:
             self._dll.PI_GetError(self._id)
 
-    # ── Properties ────────────────────────────────────────────────────────────
-
     @property
     def connected(self) -> bool:
         return self._id >= 0 and bool(self._dll.PI_IsConnected(self._id))
@@ -390,8 +489,6 @@ class PIE727Controller:
     @property
     def travel_max(self) -> List[float]:
         return list(self._travel_max)
-
-    # ── Connection ────────────────────────────────────────────────────────────
 
     def connect_usb(self, description: str = "") -> int:
         _id = self._fn("PI_ConnectUSB")(description.encode("ascii"))
@@ -414,8 +511,6 @@ class PIE727Controller:
             except Exception:
                 pass
             self._id = -1
-
-    # ── Identification ────────────────────────────────────────────────────────
 
     def get_identification(self) -> str:
         self._require_connection()
@@ -443,15 +538,12 @@ class PIE727Controller:
         return axes if axes else ['1', '2', '3']
 
     def get_digital_io_counts(self) -> Tuple[int, int]:
-        """Diagnostic only: number of digital input/output lines (TIO?)."""
         self._require_connection()
         n_in, n_out = ctypes.c_int(0), ctypes.c_int(0)
         self._check(
             self._fn("PI_qTIO")(self._id, ctypes.byref(n_in), ctypes.byref(n_out)),
             "qTIO")
         return n_in.value, n_out.value
-
-    # ── Servo ─────────────────────────────────────────────────────────────────
 
     def set_servo(self, axes, states: List[bool]):
         self._require_connection()
@@ -465,8 +557,6 @@ class PIE727Controller:
         arr = self._ibuf(n)
         self._check(self._fn("PI_qSVO")(self._id, self._ax(axes), arr), "qSVO")
         return [bool(arr[i]) for i in range(n)]
-
-    # ── Motion ────────────────────────────────────────────────────────────────
 
     def get_position(self, axes) -> List[float]:
         self._require_connection()
@@ -527,8 +617,6 @@ class PIE727Controller:
                     break
                 time.sleep(poll_interval)
 
-    # ── Travel limits / velocity ──────────────────────────────────────────────
-
     def get_min_travel(self, axes) -> List[float]:
         self._require_connection()
         n = self._nax(axes, len(self._axes))
@@ -549,8 +637,6 @@ class PIE727Controller:
             self._fn("PI_VEL")(self._id, self._ax(axes), self._darr(velocities)),
             "VEL")
 
-    # ── Wave generator (compiled functions) ──────────────────────────────────
-
     def wave_clear(self, wave_table_ids: List[int]):
         self._require_connection()
         arr = self._iarr(wave_table_ids)
@@ -567,11 +653,6 @@ class PIE727Controller:
         PI_WAV_LIN(ID, iWaveTableId, iOffsetOfFirstPointInWaveTable,
         iNumberOfPoints, iAddAppendWave, iNumberOfSpeedUpDownPointsInWave,
         dAmplitudeOfWave, dOffsetOfWave, iSegmentLength)
-
-        add_append_wave: 0 = new/replace table content, 2 = append
-        (matches the proven MATLAB usage pattern -- confirmed against the
-        real compiled function signature, not the ASCII 'X'/'&' string
-        convention used only by the separate GCS-string WAV command).
         """
         self._require_connection()
         self._check(
@@ -612,7 +693,7 @@ class PIE727Controller:
     def wave_start_stop(self, wave_gen_ids: List[int], start_modes: List[int]):
         """
         PI_WGO(ID, piWaveGeneratorIdsArray, iStartModArray, iArraySize).
-        start_modes: 1 = start ("immediately", bit 0), 0 = stop.
+        start_modes: 1 = start, 0 = stop.
         """
         self._require_connection()
         assert len(wave_gen_ids) == len(start_modes)
@@ -632,16 +713,7 @@ class PIE727Controller:
             "IsGeneratorRunning")
         return [bool(out[i]) for i in range(len(wave_gen_ids))]
 
-    # ── Trigger output (compiled function, position-distance mode) ──────────
-
     def set_trigger_param(self, trig_out_id: int, cto_param: int, value: float):
-        """
-        Single PI_CTO(ID, [trig_out_id], [cto_param], [value], 1) call --
-        one (TrigOutID, CTOPam, Value) triple at a time, matching the
-        proven MATLAB code's own call-by-call style (easier to isolate a
-        failure to one specific parameter than a combined multi-entry
-        call).
-        """
         self._require_connection()
         self._check(
             self._fn("PI_CTO")(
@@ -672,17 +744,7 @@ class PIE727Controller:
         Distance"): one physical trigger pulse per trig_step of real
         motion along axis_num, only while position is within
         [trig_start, trig_stop]. Ported directly from the proven MATLAB
-        ScanLine sequence (CTO calls in that exact order):
-
-            1. CTO(trig_out, 8, disable_threshold)  -- disable triggering
-               first, by setting the start threshold far outside any
-               real travel range, so no stray triggers fire while the
-               remaining parameters are still being set up.
-            2. CTO(trig_out, 2, axis_num)  -- select the trigger axis
-            3. CTO(trig_out, 3, 0)         -- TriggerMode 0 = Position Distance
-            4. CTO(trig_out, 1, trig_step) -- step size
-            5. CTO(trig_out, 8, trig_start) -- real start threshold
-            6. CTO(trig_out, 9, trig_stop)  -- real stop threshold
+        ScanLine sequence.
         """
         self.set_trigger_param(trigger_output_id, 8, disable_threshold)
         self.set_trigger_param(trigger_output_id, 2, axis_num)
@@ -690,6 +752,75 @@ class PIE727Controller:
         self.set_trigger_param(trigger_output_id, 1, trig_step)
         self.set_trigger_param(trigger_output_id, 8, trig_start)
         self.set_trigger_param(trigger_output_id, 9, trig_stop)
+
+    # ── Minimum trigger step ────────────────────────────────────────────────────
+
+    def get_max_resolution_for_step(self, span_um: float) -> Optional[int]:
+        """
+        Returns the largest number of scan points (resolution) that keeps
+        the real per-pixel trigger step -- span_um / n_points, the exact
+        formula scan_axis() uses to program CTO param 1 -- at or above
+        min_trig_step_um, for a scan spanning span_um.
+
+        Returns None if min_trig_step_um is not configured (None or
+        <= 0), meaning no minimum-step limit is enforced at all, or if
+        span_um is not positive.
+
+        See module docstring, "MINIMUM TRIGGER STEP".
+        """
+        if self.min_trig_step_um is None or self.min_trig_step_um <= 0:
+            return None
+        span = abs(span_um)
+        if span <= 0:
+            return None
+        return max(1, int(np.floor(span / self.min_trig_step_um)))
+
+    # ── Automatic padding computation ──────────────────────────────────────────
+
+    def _effective_ratio(self, t_pixel: float, n_points: int, amp_true: float) -> float:
+        """
+        See module docstring, "AUTOMATIC SPEED-UP/SLOW-DOWN PADDING", for
+        the full derivation. Combines max_acceleration_um_s2 and
+        min_speedup_time_s into the internal "fraction of line time spent
+        in the linear region" needed for THIS specific scan's WAV_LIN
+        point-count math -- this value is never exposed to a caller as a
+        tunable setting; it is fully derived, per scan, from the two
+        named, physical ConfigOptions above.
+        """
+        T = t_pixel * n_points
+        if T <= 0 or amp_true == 0:
+            return 1.0
+
+        candidates = []
+        reasons = []
+
+        a_max = self.max_acceleration_um_s2
+        if a_max is not None and a_max > 0:
+            r = (T * T * a_max) / (T * T * a_max + 2.0 * abs(amp_true))
+            candidates.append(min(r, 1.0))
+            reasons.append(('max_acceleration_um_s2', a_max, r))
+
+        min_su = self.min_speedup_time_s
+        if min_su is not None and min_su > 0:
+            r = T / (T + 2.0 * min_su)
+            candidates.append(min(r, 1.0))
+            reasons.append(('min_speedup_time_s', min_su, r))
+
+        if not candidates:
+            return 1.0
+
+        ratio = min(candidates)
+
+        if ratio < 1.0 and self._logger is not None:
+            binding = min(reasons, key=lambda x: x[2])
+            self._logger.debug(
+                f"scan_axis: applying automatic padding (ratio={ratio:.4f}) "
+                f"for span={amp_true:.3f} um, n_points={n_points}, "
+                f"t_pixel={t_pixel*1e3:.4f} ms -- binding constraint: "
+                f"{binding[0]}={binding[1]}"
+            )
+
+        return ratio
 
     # ── High-level single-axis line scan (ported from proven MATLAB ScanLine) ─
 
@@ -700,33 +831,47 @@ class PIE727Controller:
     ) -> float:
         """
         Configure and run a single-axis line scan. See module docstring
-        for the full description of the ported MATLAB algorithm.
-
-        lin_pts_ratio == 1.0: padding/speed-up-slow-down is OFF entirely.
-        The wave ramps directly across [start, stop] with no overshoot
-        outside the requested range, and no gentle acceleration region.
-        Observed on real hardware to sometimes produce ZERO real trigger
-        edges for a whole line -- see module docstring, "STILL NOT
-        INDEPENDENTLY VERIFIED" -- prefer lin_pts_ratio < 1.0 in practice.
-
-        lin_pts_ratio < 1.0: speed-up/slow-down padding is enabled, per
-        the proven MATLAB algorithm. See module docstring, "SCAN RANGE VS.
-        lin_pts_ratio PADDING", for the exact overshoot formula and how
-        get_scan_safe_range() uses it to keep the GUI from ever selecting
-        a range that would trip the check below.
+        for the full description of the ported MATLAB algorithm and the
+        automatic padding computation (_effective_ratio()).
         """
         self._require_connection()
         n_points = len(positions)
         start, stop = positions[0], positions[-1]
         amp_true = stop - start
+        trig_step = amp_true / n_points
 
-        ratio = self.lin_pts_ratio
+        # See module docstring, "MINIMUM TRIGGER STEP". This is a
+        # defensive last-resort check -- a well-behaved caller going
+        # through PIE710CounterInterfuse.configure_scan() should have
+        # already reduced n_points (via get_max_resolution_for_span())
+        # so this never actually fires.
+        if self.min_trig_step_um is not None and self.min_trig_step_um > 0:
+            if abs(trig_step) < self.min_trig_step_um - 1e-9:
+                raise PIE727Error(
+                    f"scan_axis: real trigger step {abs(trig_step)*1e3:.4f} nm "
+                    f"(n_points={n_points}, span={amp_true:.4f} um) is smaller "
+                    f"than the configured minimum trigger step "
+                    f"min_trig_step_um={self.min_trig_step_um:.6f} um -- see "
+                    f"module docstring, 'MINIMUM TRIGGER STEP'. Reduce "
+                    f"n_points (or increase span) before calling scan_axis(). "
+                    f"Callers going through PIE710CounterInterfuse."
+                    f"configure_scan() should never see this: that path "
+                    f"auto-adjusts resolution to fit before this hardware "
+                    f"call is ever reached -- if you ARE seeing this via "
+                    f"that path, PIE727Scanner.get_max_resolution_for_span() "
+                    f"and this check have gone out of sync and need "
+                    f"reconciling."
+                )
+
+        ratio = self._effective_ratio(t_pixel, n_points, amp_true)
         servo_pt = 1.0 / wave_generator_rate_hz
         line_time = t_pixel * n_points / min(ratio, 1.0)
 
         if ratio >= 1.0:
-            # Padding OFF: scan exactly [start, stop], no overshoot, no
-            # speed-up/slow-down region at all.
+            # Both max_acceleration_um_s2 and min_speedup_time_s disabled
+            # (None/<=0) -- no padding at all. Reproduces the original,
+            # unprotected behavior -- see module docstring for the known
+            # real-hardware risk (zero trigger edges) of this mode.
             wave_offset = start
             amp_padded = amp_true
             n_speedupdown = 0
@@ -741,17 +886,13 @@ class PIE727Controller:
         n_wave_points = linear_region_len + 2 * n_speedupdown
         segment_length = n_wave_points
 
+        # Validate the padded range against real travel limits BEFORE
+        # issuing MOV. Tolerance clears IEEE double-precision rounding
+        # noise in the padding arithmetic above.
         travel_min = self.get_min_travel([str(axis_num)])[0]
         travel_max = self.get_max_travel([str(axis_num)])[0]
         padded_low  = wave_offset
         padded_high = wave_offset + amp_padded
-        # Tolerance clears IEEE double-precision rounding noise in the
-        # padding arithmetic above (e.g. start - amp_true/perc_over can
-        # land on -1e-14 instead of exactly 0.0 for a scan request that
-        # is, geometrically, exactly on the travel boundary) -- 1e-6 um
-        # (1 pm) is far below any real mechanical/positioning precision
-        # of this stage, so this never masks a genuine out-of-range
-        # request, only float noise around an exact boundary.
         _tol = 1e-6
         if padded_low < travel_min - _tol or padded_high > travel_max + _tol:
             raise PIE727Error(
@@ -759,7 +900,8 @@ class PIE727Controller:
                 f"{padded_high:.4f}] um (requested [{start:.4f}, "
                 f"{stop:.4f}] um"
                 + ("" if ratio >= 1.0 else
-                   f" + speed-up/slow-down padding via lin_pts_ratio={ratio}")
+                   f" + automatic speed-up/slow-down padding, effective "
+                   f"ratio={ratio:.4f}")
                 + f") exceeds axis {axis_num}'s real travel range "
                 f"[{travel_min:.4f}, {travel_max:.4f}] um."
             )
@@ -767,25 +909,13 @@ class PIE727Controller:
         # The tolerance above only gates the sanity CHECK -- it does not
         # change the value actually sent to move_absolute()/wave_lin().
         # Real PI firmware enforces its travel limit with zero tolerance
-        # of its own, so a wave_offset that is float noise away from an
-        # exact boundary (e.g. -1.4e-7 instead of exactly 0.0) would pass
-        # the check above but still get rejected by real hardware at MOV
-        # time ('error 7: Position out of limits'). Clamping here, AFTER
-        # the sanity check, is what actually fixes that -- the check
-        # above still catches genuinely out-of-range requests; this only
-        # snaps float noise back onto the real boundary for values that
-        # already passed it.
+        # of its own, so clamp here, AFTER the sanity check, to snap any
+        # remaining float noise back onto the real boundary.
         wave_offset = float(np.clip(wave_offset, travel_min, travel_max))
 
-        # Disable triggering BEFORE moving to the new line's wave_offset --
-        # matches the proven MATLAB ScanLine's ordering (CTO disable is
-        # its very first trigger-related call, issued before MOV). See
-        # module docstring, item 4, for why issuing the move first (an
-        # earlier version of this method's ordering) is a real bug: it
-        # leaves the PREVIOUS line's trigger thresholds fully armed while
-        # this move travels through a wide range of real positions,
-        # generating real, physical extra trigger pulses that get counted
-        # as if they belonged to the next line.
+        # Disable triggering BEFORE moving to the new line's wave_offset
+        # -- matches the proven MATLAB ScanLine's ordering. See module
+        # docstring, item 4.
         self.set_trigger_param(trigger_output_id, 8, disable_threshold)
 
         self.move_absolute([str(axis_num)], [wave_offset])
@@ -802,7 +932,6 @@ class PIE727Controller:
         )
         self.wave_select([axis_num], [axis_num])
 
-        trig_step = amp_true / n_points
         trig_start = start
         trig_stop = trig_start + amp_true + trig_step * 0.5
         self.configure_position_distance_trigger(
@@ -818,19 +947,17 @@ class PIE727Controller:
 
     def retrigger_line(self) -> float:
         """
-        Re-run the most recently configured line scan from scratch. This
-        CANNOT be a bare WGO restart -- see module docstring for why the
-        proven hardware/algorithm leaves the stage at the END of the
-        ramp, not the start, after every line, so a genuine repeat needs
-        the full move + reprogram + retrigger sequence, exactly like the
-        first line.
+        Re-run the most recently configured line scan from scratch --
+        see module docstring, item 3, for why this must be a full repeat
+        (move + reprogram + retrigger), not a bare WGO restart. Uses the
+        SAME cached t_pixel/positions as the original call, so the
+        automatic padding computation is recomputed identically every
+        time from those same cached inputs.
         """
         if self._last_scan_kwargs is None:
             raise PIE727Error(
                 "retrigger_line() called with no prior scan_axis() call.")
         return self.scan_axis(**self._last_scan_kwargs)
-
-    # ── Context manager ───────────────────────────────────────────────────────
 
     def __enter__(self):
         return self
@@ -859,15 +986,17 @@ class PIE727Scanner(PIE710ScannerInterface):
     timing/trigger behavior further on real hardware.
     """
 
-    _dll_path            = ConfigOption('dll_path', default="C:/PI/PI_GCS2_DLL_x64.dll")
-    _usb_serial           = ConfigOption('usb_serial', default="")
-    _axis_ids             = ConfigOption('axis_ids', default=['1', '2', '3'])
-    _x_range              = ConfigOption('x_range', default=[0.0, 200.0])
-    _y_range              = ConfigOption('y_range', default=[0.0, 200.0])
-    _z_range              = ConfigOption('z_range', default=[0.0, 200.0])
-    _trigger_output_id    = ConfigOption('trigger_output_id', default=1)
+    _dll_path              = ConfigOption('dll_path', default="C:/PI/PI_GCS2_DLL_x64.dll")
+    _usb_serial            = ConfigOption('usb_serial', default="")
+    _axis_ids              = ConfigOption('axis_ids', default=['1', '2', '3'])
+    _x_range               = ConfigOption('x_range', default=[0.0, 200.0])
+    _y_range               = ConfigOption('y_range', default=[0.0, 200.0])
+    _z_range               = ConfigOption('z_range', default=[0.0, 200.0])
+    _trigger_output_id     = ConfigOption('trigger_output_id', default=1)
     _wave_generator_rate_hz = ConfigOption('wave_generator_rate_hz', default=20000.0)
-    _lin_pts_ratio        = ConfigOption('lin_pts_ratio', default=1.0)
+    _max_acceleration_um_s2 = ConfigOption('max_acceleration_um_s2', default=3000.0)
+    _min_speedup_time_s     = ConfigOption('min_speedup_time_s', default=0.005)
+    _min_trig_step_um       = ConfigOption('min_trig_step_um', default=0.05)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -881,7 +1010,7 @@ class PIE727Scanner(PIE710ScannerInterface):
     def on_activate(self) -> None:
         self._ctrl = None
         try:
-            self._ctrl = PIE727Controller(self._dll_path)
+            self._ctrl = PIE727Controller(self._dll_path, logger=self.log)
             self._ctrl.connect_usb(self._usb_serial)
 
             ids = list(self._axis_ids)
@@ -917,28 +1046,29 @@ class PIE727Scanner(PIE710ScannerInterface):
 
             self._ctrl.wave_generator_rate_hz = float(self._wave_generator_rate_hz)
             self._ctrl.servo_point_time_s = 1.0 / float(self._wave_generator_rate_hz)
-            self._ctrl.lin_pts_ratio = float(self._lin_pts_ratio)
+            self._ctrl.max_acceleration_um_s2 = (
+                float(self._max_acceleration_um_s2)
+                if self._max_acceleration_um_s2 is not None else None
+            )
+            self._ctrl.min_speedup_time_s = (
+                float(self._min_speedup_time_s)
+                if self._min_speedup_time_s is not None else None
+            )
+            self._ctrl.min_trig_step_um = (
+                float(self._min_trig_step_um)
+                if self._min_trig_step_um is not None else None
+            )
 
-            # Log scan-safe ranges alongside real travel limits, so it's
-            # visible at activation time whether/how much the GUI's scan
-            # range will be narrowed by the current lin_pts_ratio -- see
-            # module docstring, "SCAN RANGE VS. lin_pts_ratio PADDING".
-            for ax in ('x', 'y', 'z'):
-                full = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[ax]
-                safe = self.get_scan_safe_range(ax)
-                self.log.info(
-                    f"Axis '{ax}' scan-safe range (lin_pts_ratio="
-                    f"{self._lin_pts_ratio}): [{safe[0]:.3f}, {safe[1]:.3f}] um  "
-                    f"(real travel: [{full[0]:.3f}, {full[1]:.3f}] um)"
-                )
+            self.log.info(
+                f"Automatic scan padding active: "
+                f"max_acceleration_um_s2={self._ctrl.max_acceleration_um_s2}  "
+                f"min_speedup_time_s={self._ctrl.min_speedup_time_s}  "
+                f"min_trig_step_um={self._ctrl.min_trig_step_um}  "
+                f"-- padding/resolution limits are computed fresh per "
+                f"scan; see module docstring for what each protects "
+                f"against."
+            )
         except Exception as exc:
-            # Prevent a leaked/half-open USB connection on any activation
-            # failure -- do NOT rely on __del__/garbage collection timing
-            # to close it. Confirmed real issue: the E-727/DLL combination
-            # is documented (in the working MATLAB driver's own comments)
-            # to sometimes accept multiple simultaneous connections rather
-            # than cleanly rejecting a second one, which can corrupt
-            # subsequent responses on ANY of the open connections.
             if self._ctrl is not None:
                 try:
                     self._ctrl.close_connection()
@@ -972,48 +1102,73 @@ class PIE727Scanner(PIE710ScannerInterface):
 
     # ── Scan-safe range (padding-aware) ────────────────────────────────────────
 
-    def _scan_safe_margin(self, travel_min: float, travel_max: float) -> float:
-        """
-        See module docstring, "SCAN RANGE VS. lin_pts_ratio PADDING", for
-        the derivation. margin = travel_span * (1 - ratio) / 2.
-        """
-        ratio = float(self._lin_pts_ratio)
-        if ratio >= 1.0:
-            return 0.0
-        return (travel_max - travel_min) * (1.0 - ratio) / 2.0
-
-    def get_scan_safe_range(self, axis: str) -> List[float]:
+    def get_scan_safe_range(
+        self, axis: str,
+        t_pixel: Optional[float] = None, n_points: Optional[int] = None,
+    ) -> List[float]:
         """
         Returns the sub-range of this axis' real travel range that is
         guaranteed to remain within real travel limits after scan_axis()
-        applies lin_pts_ratio padding, for a scan spanning up to this
-        entire returned range (and, by direct consequence of the
-        overshoot scaling linearly with span, for any smaller scan
-        positioned anywhere inside this same returned range too).
+        applies its automatic padding, FOR A SCAN WITH THIS SPECIFIC
+        t_pixel/n_points spanning up to the entire returned range.
 
-        Used by PIE710CounterInterfuse, via getattr() (since
-        PIE710Scanner has no padding concept and therefore no need for
-        this method), to restrict the scan-range GUI/constraints to
-        values that will not raise scan_axis()'s travel-range error at
-        scan time.
+        Pass the ACTUAL t_pixel/n_points of the scan being planned --
+        PIE710CounterInterfuse does this at configure_scan() time. This
+        is required for a self-consistent answer: since padding is now
+        computed per-scan (see module docstring, "AUTOMATIC SPEED-UP/
+        SLOW-DOWN PADDING"), there is no longer a single, parameter-
+        independent padding fraction to assume.
+
+        If t_pixel/n_points are omitted, this CANNOT compute a real
+        margin and returns the full, real travel range UNCHANGED (logging
+        a warning) -- i.e. it does not narrow anything rather than risk
+        returning an inconsistent, falsely-optimistic answer.
 
         Does NOT affect move_absolute()/get_position()/etc. -- ordinary,
-        non-scanning motion is still clipped against the full real
-        x_range/y_range/z_range; only the scan-range constraint reported
-        to the interfuse is narrowed.
-
-        Rounded to 6 decimal places (nanometer-level for um values) to
-        clear IEEE double-precision rounding noise in the margin
-        calculation (e.g. 1.0 - 0.7 is not exactly 0.3 in floating point)
-        -- without this, a GUI-entered boundary value exactly equal to
-        the intended bound (e.g. 30.0 for a computed margin that should
-        be exactly 30.0) could be rejected by ScalarConstraint.check() as
-        "out of bounds" against a noisy bound like 30.000000000000004.
+        non-scanning motion always uses the full real x_range/y_range/
+        z_range; only scan-range clamping (in the interfuse) uses this.
         """
         full = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
         lo, hi = full
-        margin = self._scan_safe_margin(lo, hi)
+
+        if t_pixel is None or n_points is None or self._ctrl is None:
+            self.log.warning(
+                f"get_scan_safe_range('{axis}') called without real scan "
+                f"parameters (t_pixel/n_points) -- cannot compute a "
+                f"self-consistent safe range; returning the full, "
+                f"unclamped travel range [{lo:.4f}, {hi:.4f}] um."
+            )
+            return [lo, hi]
+
+        amp_true = hi - lo
+        ratio = self._ctrl._effective_ratio(t_pixel, n_points, amp_true)
+        if ratio >= 1.0:
+            margin = 0.0
+        else:
+            margin = amp_true * (1.0 - ratio) / 2.0
+
         return [round(lo + margin, 6), round(hi - margin, 6)]
+
+    # ── Minimum-resolution (min-step-aware) ─────────────────────────────────────
+
+    def get_max_resolution_for_span(self, span_um: float) -> Optional[int]:
+        """
+        Returns the largest scan resolution (number of points) that keeps
+        the real per-pixel trigger step at or above min_trig_step_um for
+        a scan spanning span_um, or None if min_trig_step_um is not
+        configured (disabled). See module docstring, "MINIMUM TRIGGER
+        STEP".
+
+        PIE710CounterInterfuse uses this (via getattr, since PIE710Scanner
+        has no min-step concept and therefore no need for this method) to
+        automatically reduce a requested scan's resolution, with a clear
+        warning, to whatever this returns -- BEFORE the scan actually
+        runs, rather than letting a too-small step reach real hardware,
+        where scan_axis() would otherwise reject it with a hard error.
+        """
+        if self._ctrl is None:
+            return None
+        return self._ctrl.get_max_resolution_for_step(span_um)
 
     # ── Motion ────────────────────────────────────────────────────────────────
 
@@ -1117,9 +1272,8 @@ class PIE727Scanner(PIE710ScannerInterface):
         self._ctrl._last_scan_kwargs = scan_kwargs
         self._active_scan_axis = axis
 
-        # NOTE: per module docstring, the stage is left at the END of the
-        # ramp after the scan completes, NOT back at pos_array[0] -- do
-        # NOT assume _target_pos == pos_array[0] here.
+        # Per module docstring, item 3: the stage is left at the END of
+        # the ramp after the scan completes, NOT back at pos_array[0].
         self._target_pos[axis] = pos_array[-1]
 
         return duration_s
