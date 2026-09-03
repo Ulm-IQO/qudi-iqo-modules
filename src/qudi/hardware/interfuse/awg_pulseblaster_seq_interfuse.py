@@ -223,6 +223,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     # EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
     _pb_extra_wait_time = ConfigOption('pb_extra_wait_time', default=0.0, missing='nothing')
+    _pb_extra_wait_active_channels = ConfigOption('pb_extra_wait_active_channels', default=[], missing='nothing')
 
     # Arming verification (trigger_master='pulseblaster' path). After
     # arming the AWG, pulser_on() polls the AWG's own SCPI status register
@@ -509,28 +510,26 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def _append_extra_wait_tail(self, pb_digital_dict):
         """
-        EXPERIMENTAL -- see module docstring, "EXPERIMENTAL: pb_extra_wait_time".
-
-        Return a COPY of pb_digital_dict with self._pb_extra_wait_samples
-        additional all-LOW samples appended to the END of EVERY channel
-        (including the trigger channel, so every channel in the returned
-        dict stays the same length as each other).
-
-        MUST be called BEFORE _apply_trigger_delay_roll(), so the
-        trigger-delay shift and minimum-gap validation operate on the
-        final, true loop length including this padding.
-
-        No-op (returns an unmodified copy) if _pb_extra_wait_samples <= 0
-        -- this is a real code-path no-op, not just a zero-valued
-        parameter, so pb_extra_wait_time: 0.0 provably changes nothing.
+        Append self._pb_extra_wait_samples of dead time to the end of every
+        PB channel. Channels named in pb_extra_wait_active_channels are held
+        HIGH throughout the tail (e.g. a channel that must stay continuously
+        active right up to the next trigger); all other channels are forced
+        LOW, as before. The AWG side is never affected -- this dict is
+        PB-only content, appended after the AWG's own sequence/waveform is
+        already finalized, so the AWG remains genuinely idle (sitting at
+        step 1, waiting for the next trigger) throughout this entire tail.
         """
         if self._pb_extra_wait_samples <= 0:
             return {k: v.copy() for k, v in pb_digital_dict.items()}
 
+        active = set(self._pb_extra_wait_active_channels)
         padded = {}
         for d_key, samples in pb_digital_dict.items():
-            tail = np.zeros(self._pb_extra_wait_samples, dtype=bool)
+            value = True if d_key in active else False
+            tail = np.full(self._pb_extra_wait_samples, value, dtype=bool)
             padded[d_key] = np.concatenate([samples, tail])
+            if value:
+                self.log.info(d_key)
         return padded
 
     def _find_min_run_length(self, combined_2d):
