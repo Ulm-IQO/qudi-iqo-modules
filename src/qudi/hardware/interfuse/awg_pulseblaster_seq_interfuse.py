@@ -32,6 +32,11 @@ Channel naming
   so the GUI creates voltage widgets, laser/gate dropdowns work, and
   activation-config validation works correctly for all of them.
 
+  The NUMBER of PB channels exposed is auto-detected from the connected
+  PulseBlaster hardware module's own get_constraints() (see
+  pb_num_channels below) -- it is never hardcoded here, so it can't
+  silently drift out of sync with the actual connected board.
+
   INTERNAL REPRESENTATION: everywhere INSIDE this interfuse (sample
   buffers, delay-shift logic, gap validation, caches), PB channel data is
   keyed using qudi's own d_ch naming -- the SAME names visible in the
@@ -146,6 +151,16 @@ Start / stop ordering
   trigger_master = 'pulseblaster': arm AWG first, then start PB.
   trigger_master = 'awg':          reverse order.
 
+Default channel activation
+  default_activation_config names one of the AWG's OWN activation
+  presets (e.g. 'A2_M3_M4', exactly as reported by the AWG hardware
+  module). ALL PulseBlaster channels are always activated alongside it
+  by default -- PB channel activation is pure software bookkeeping (no
+  hardware validation cost, unlike the AWG side), so there's no reason
+  to default to only a subset of PB channels. Individual PB channels
+  can still be switched off afterward via the GUI/set_active_channels(),
+  exactly like any other channel.
+
 Diagnostics
   debug_channel_routing (bool, default False): logs every digital
   channel's AWG-vs-PB classification and PB hardware index on every
@@ -163,10 +178,10 @@ awg_pb_interfuse:
         trigger_master: 'pulseblaster'
         awg_trigger_delay: 300e-9
         awg_trigger_pb_channel: 'd_ch9'
-        pb_channels: [0, 1, 2, 3, 4, 5, 6, 7, 8]
         pb_channel_d_offset: 5
-        pb_extra_wait_time: 5e-6   # EXPERIMENTAL -- see module docstring
-        default_activation_config: 'A2_M3_M4_pb9'
+        pb_num_channels: 21          # optional -- omit to auto-detect from hardware
+        pb_extra_wait_time: 5e-6     # EXPERIMENTAL -- see module docstring
+        default_activation_config: 'A2_M3_M4'
         debug_channel_routing: False
         debug_watch_channel: 'd_ch10'
 """
@@ -196,8 +211,12 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     _trigger_master         = ConfigOption('trigger_master', default='pulseblaster', missing='warn')
     _awg_trigger_delay       = ConfigOption('awg_trigger_delay', default=0.0, missing='nothing')
     _awg_trigger_pb_channel  = ConfigOption('awg_trigger_pb_channel', default=None, missing='nothing')
-    _pb_channels             = ConfigOption('pb_channels', default=[0, 1, 2, 3], missing='warn')
     _pb_channel_d_offset     = ConfigOption('pb_channel_d_offset', default=5, missing='nothing')
+    # Optional manual override for the PB channel count. Leave unset
+    # (None) to auto-detect from the connected PB hardware module -- see
+    # _resolve_pb_channel_count(). Only set this if you deliberately want
+    # to expose FEWER channels than the board physically has.
+    _pb_num_channels         = ConfigOption('pb_num_channels', default=None, missing='nothing')
     _default_activation_config = ConfigOption('default_activation_config', default=None, missing='nothing')
     _debug_channel_routing   = ConfigOption('debug_channel_routing', default=False, missing='nothing')
     _debug_watch_channel     = ConfigOption('debug_watch_channel', default=None, missing='nothing')
@@ -253,8 +272,19 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         self._pb_sample_buffer    = {}
         self._pb_current_wfm_name = ''
 
+        # Number of PB channels exposed to qudi -- auto-detected from
+        # hardware unless overridden by pb_num_channels. Everything below
+        # (channel names, activation configs, etc.) is derived from this
+        # single number, so there is only one place it can go out of sync.
+        self._pb_channel_count = self._resolve_pb_channel_count()
+        self.log.info(
+            'PulseBlaster: exposing {0} channel(s), d_ch{1} .. d_ch{2}.'
+            ''.format(self._pb_channel_count, self._pb_channel_d_offset,
+                      self._pb_channel_d_offset + self._pb_channel_count - 1)
+        )
+
         self._pb_active_channels = {
-            self._pb_index_to_d_ch(i): False for i in range(len(self._pb_channels))
+            self._pb_index_to_d_ch(i): False for i in range(self._pb_channel_count)
         }
 
         self._update_rate_params()
@@ -268,6 +298,29 @@ class AwgPulseBlasterInterfuse(PulserInterface):
     # =========================================================================
     # Private helpers — channel naming
     # =========================================================================
+
+    def _resolve_pb_channel_count(self):
+        """
+        Number of PulseBlaster channels to expose to qudi.
+
+        Uses pb_num_channels from config if set. Otherwise auto-detects
+        from the connected PulseBlaster module's OWN
+        get_constraints().activation_config (the largest channel set
+        reported there is the board's real channel count) -- so this
+        can't silently drift out of sync with the actual hardware model,
+        same principle already used for pb_min_instr_cycles.
+        """
+        if self._pb_num_channels is not None:
+            return int(self._pb_num_channels)
+        pb_c = self.pulseblaster().get_constraints()
+        try:
+            return max(len(v) for v in pb_c.activation_config.values())
+        except Exception:
+            self.log.error(
+                'Could not auto-detect PB channel count from hardware constraints. '
+                'Falling back to 4. Set pb_num_channels in config to override.'
+            )
+            return 4
 
     def _extract_d_ch_number(self, d_ch_name):
         """
@@ -306,11 +359,11 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         if ch_num is None or ch_num < self._pb_channel_d_offset:
             return None
         hw_ch = ch_num - self._pb_channel_d_offset
-        if hw_ch >= len(self._pb_channels):
+        if hw_ch >= self._pb_channel_count:
             self.log.error(
                 'Channel "{0}" maps to PB hw index {1}, outside the '
-                'configured pb_channels list (length {2}).'
-                .format(d_ch_name, hw_ch, len(self._pb_channels)))
+                'available {2} PB channels.'
+                .format(d_ch_name, hw_ch, self._pb_channel_count))
             return None
         return hw_ch
 
@@ -320,7 +373,7 @@ class AwgPulseBlasterInterfuse(PulserInterface):
 
     def _all_pb_d_ch_names(self):
         """All configured PB channels, as QUDI-facing d_ch* names."""
-        return [self._pb_index_to_d_ch(i) for i in range(len(self._pb_channels))]
+        return [self._pb_index_to_d_ch(i) for i in range(self._pb_channel_count)]
 
     def _to_pb_hw_keys(self, qudi_keyed_dict):
         """
@@ -681,25 +734,36 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         )
 
     def _apply_default_activation_config(self):
-        """Apply the yaml-specified default_activation_config at startup."""
-        constraints = self.get_constraints()
-        available   = constraints.activation_config
+        """
+        Apply the yaml-specified default_activation_config -- an AWG-side
+        preset name (e.g. 'A2_M3_M4') -- with ALL PulseBlaster channels
+        activated alongside it. PB channel activation is pure software
+        bookkeeping (no hardware activation_config validation, unlike the
+        AWG side), so there's no reason to ever default to a PB subset;
+        individual PB channels can still be switched off afterward via
+        the GUI/set_active_channels().
+        """
+        awg_configs = self.awg().get_constraints().activation_config
 
-        if self._default_activation_config not in available:
+        if self._default_activation_config not in awg_configs:
             self.log.warning(
-                'default_activation_config "{0}" not found. Available: {1}. '
-                'Starting with all channels inactive.'
-                ''.format(self._default_activation_config, list(available.keys()))
+                'default_activation_config "{0}" not found among AWG activation '
+                'configs. Available: {1}. Starting with all channels inactive.'
+                ''.format(self._default_activation_config, list(awg_configs.keys()))
             )
             return
 
-        target_set = available[self._default_activation_config]
+        awg_target_set = awg_configs[self._default_activation_config]
+        pb_target_set  = set(self._all_pb_d_ch_names())
+        target_set     = awg_target_set | pb_target_set
+
         all_possible = {**self.awg().get_active_channels(), **self._pb_active_channels}
         self.set_active_channels({ch: (ch in target_set) for ch in all_possible})
 
         self.log.info(
-            'Default activation config "{0}" applied. Active channels: {1}'
-            ''.format(self._default_activation_config, sorted(target_set))
+            'Default activation config "{0}" applied (AWG preset + all {1} PB '
+            'channels). Active channels: {2}'
+            ''.format(self._default_activation_config, len(pb_target_set), sorted(target_set))
         )
 
     def _get_awg_waveform_length(self, awg_wfm_name):
@@ -755,14 +819,13 @@ class AwgPulseBlasterInterfuse(PulserInterface):
         c.sequence_steps.min, c.sequence_steps.max = awg_c.sequence_steps.min, awg_c.sequence_steps.max
         c.sequence_steps.step, c.sequence_steps.default = awg_c.sequence_steps.step, awg_c.sequence_steps.default
 
-        # Activation configs: each AWG config extended with PB channel subsets,
-        # plus a PB-only config for standalone PB tests.
+        # Activation configs: every AWG preset, extended with ALL PB
+        # channels (PB activation is free/software-only, so there's no
+        # reason to expose partial-PB variants of each preset), plus a
+        # PB-only config for standalone PB tests.
         activation_config = {}
         for cfg_name, awg_ch_set in awg_c.activation_config.items():
-            activation_config[cfg_name] = awg_ch_set
-            for n_pb in range(1, len(self._pb_channels) + 1):
-                pb_subset = frozenset(self._pb_index_to_d_ch(i) for i in range(n_pb))
-                activation_config['{0}_pb{1:d}'.format(cfg_name, n_pb)] = awg_ch_set | pb_subset
+            activation_config[cfg_name] = awg_ch_set | set(self._all_pb_d_ch_names())
         activation_config['pb_only'] = frozenset(self._all_pb_d_ch_names())
 
         c.activation_config = activation_config
