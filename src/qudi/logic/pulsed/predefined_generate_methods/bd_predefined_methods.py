@@ -48,9 +48,179 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+
+
+    def _get_pulser_off_mw_element(self, length, increment, amp=None, freq=None, phase=None, always_on_channel=None):
+                """
+        
+                @param length:
+                @param increment:
+                @param amp:
+                @param freq:
+                @param phase:
+                @return:
+                """
+                mw_element = self._get_mw_element(length=length, increment=increment, amp=amp, freq=freq, phase=phase)
+                if always_on_channel.startswith('d'):
+                    mw_element.digital_high[always_on_channel] = True
+                elif always_on_channel.startswith('a'):
+                    mw_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )        
+                return mw_element
+
+    def _get_pulser_off_idle_element(self, length, increment, always_on_channel=None):
+                idle_element = self._get_idle_element(length=length, increment=increment)
+                if always_on_channel.startswith('d'):
+                    idle_element.digital_high[always_on_channel] = True
+                elif always_on_channel.startswith('a'):
+                    idle_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )        
+                return idle_element
+
+    def _get_pulser_on_idle_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+                idle_element = self._get_idle_element(length=length, increment=increment)
+                if always_on_channel.startswith('d'):
+                    idle_element.digital_high[always_on_channel] = True
+                elif always_on_channel.startswith('a'):
+                    idle_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )   
+                if pulser_channel.startswith('d'):
+                    idle_element.digital_high[pulser_channel] = True
+                elif pulser_channel.startswith('a'):
+                    idle_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )       
+                return idle_element
+
+    def _get_pulser_on_laser_gate_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+                laser_gate_element = self._get_laser_gate_element(length=length, increment=increment)
+                if always_on_channel.startswith('d'):
+                    laser_gate_element.digital_high[always_on_channel] = True
+                elif always_on_channel.startswith('a'):
+                    laser_gate_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )    
+                if pulser_channel.startswith('d'):
+                    laser_gate_element.digital_high[pulser_channel] = True
+                elif pulser_channel.startswith('a'):
+                    laser_gate_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )       
+                return laser_gate_element
+
+    def _get_pulser_on_delay_gate_element(self, always_on_channel=None, pulser_channel=None):
+                delay_gate_element = self._get_delay_gate_element()
+                if always_on_channel.startswith('d'):
+                    delay_gate_element.digital_high[always_on_channel] = True
+                elif always_on_channel.startswith('a'):
+                    delay_gate_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )    
+                if pulser_channel.startswith('d'):
+                    delay_gate_element.digital_high[pulser_channel] = True
+                elif pulser_channel.startswith('a'):
+                    delay_gate_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                        voltage=self.analog_trigger_voltage
+                    )        
+                return delay_gate_element
+
+    
     ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
+
+    def generate_bd_pulsed_rabi(self, name='pulsed_rabi', tau_start=10.0e-9, tau_step=10.0e-9,
+                            num_of_points=50, always_on_channel='REQUIRED', pulser_channel='REQUIRED',
+                            duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+        # ---- existing elements ----
+        falling_element = self._get_pulser_off_idle_element(
+            length=falling_time, increment=0, always_on_channel=always_on_channel)
+        mw_element = self._get_pulser_off_mw_element(
+            length=tau_start, increment=tau_step,
+            amp=self.microwave_amplitude, freq=self.microwave_frequency, phase=0,
+            always_on_channel=always_on_channel)
+        rising_element = self._get_pulser_on_idle_element(
+            length=rising_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_element = self._get_pulser_on_idle_element(
+            length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        laser_element = self._get_pulser_on_laser_gate_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element = self._get_pulser_on_delay_gate_element(
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+        # ---- compute current on/off totals over the full scan ----
+        t_delay = delay_element.init_length_s
+        T_on_per_rep = rising_time + self.laser_length + t_delay + self.wait_time
+        total_on = num_of_points * T_on_per_rep
+
+        tau_sum = tau_array.sum()
+        total_off = num_of_points * falling_time + tau_sum
+
+        total_all = total_on + total_off
+        p_on = total_on / total_all
+
+        # ---- compute corrective idle element ----
+        correction_element = None
+        if duty_cycle > p_on:
+            L = (duty_cycle * total_all - total_on) / (1.0 - duty_cycle)
+            if L > 0:
+                correction_element = self._get_pulser_on_idle_element(
+                    length=L, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        elif duty_cycle < p_on:
+            L = total_on / duty_cycle - total_all
+            if L > 0:
+                correction_element = self._get_pulser_off_idle_element(
+                    length=L, increment=0, always_on_channel=always_on_channel)
+        # else: duty_cycle == p_on -> no correction needed
+
+        # Create block and append to created_blocks list
+        rabi_block = PulseBlock(name=name)
+        rabi_block.append(falling_element)
+        rabi_block.append(mw_element)
+        rabi_block.append(rising_element)
+        rabi_block.append(laser_element)
+        rabi_block.append(delay_element)
+        rabi_block.append(waiting_element)
+        created_blocks.append(rabi_block)
+
+        # Create block ensemble
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
+
+        # Insert the one-shot duty-cycle correction *before* the repeated block
+        if correction_element is not None:
+            correction_block = PulseBlock(name=name + '_duty_correction')
+            correction_block.append(correction_element)
+            created_blocks.append(correction_block)
+            block_ensemble.append((correction_block.name, 0))   # plays exactly once
+
+        block_ensemble.append((rabi_block.name, num_of_points - 1))
+
+        # add metadata to invoke settings later on
+        block_ensemble.measurement_information['alternating'] = False
+        block_ensemble.measurement_information['laser_ignore_list'] = list()
+        block_ensemble.measurement_information['controlled_variable'] = tau_array
+        block_ensemble.measurement_information['units'] = ('s', '')
+        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
+        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+            ensemble=block_ensemble, created_blocks=created_blocks)
+
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
 
     def generate_bd_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
         """Generates a Rabi pulse block ensemble where the pulse length is varied linearly.

@@ -162,127 +162,10 @@ simulate_drift_test(reference_scan, shift_pixels=(3, -5))
 # %%
 import time
 import numpy as np
+import matplotlib.pyplot as plt
+from IPython.display import display, clear_output
 from skimage.registration import phase_cross_correlation
 from qudi.logic.scanning_optimize_logic import OptimizationType, OptimizationMethod
-
-
-def _to_float(value):
-    """Coerce a numpy/pint/other numeric type into a plain Python float."""
-    if hasattr(value, 'magnitude'):
-        value = value.magnitude
-    return float(value)
-
-
-def _to_plain_array(data):
-    """Convert to a plain float ndarray, working around array-likes
-    (e.g. pint Quantities) whose __array__() doesn't support the
-    NumPy 2.0 dtype/copy keyword protocol."""
-    if hasattr(data, 'magnitude'):
-        data = data.magnitude  # strip pint units if present
-    arr = np.array(data)       # no dtype/copy kwargs here -> avoids the warning
-    return arr.astype(float, copy=False)
-
-
-def _estimate_scan_duration(axes):
-    """Estimate scan duration (seconds) from currently configured
-    resolution/frequency for the given axes."""
-    resolution = scanning_probe_logic.scan_resolution
-    frequency = scanning_probe_logic.scan_frequency
-
-    fast_axis = axes[0]
-    line_time = resolution[fast_axis] / frequency[fast_axis]
-
-    if len(axes) > 1:
-        n_lines = resolution[axes[1]]
-    else:
-        n_lines = 1
-
-    return line_time * n_lines
-
-
-def _run_scan_and_wait(axes, timeout=None, poll_interval=0.2, safety_factor=12.0, min_timeout=10.0):
-    """
-    Start a scan on the given axes and block until finished.
-    Verifies that a NEW scan actually ran (by checking the timestamp AND
-    that the returned data isn't just NaN placeholder data), retrying if not.
-    """
-    if timeout is None:
-        estimated = _estimate_scan_duration(axes)
-        timeout = max(min_timeout, estimated * safety_factor)
-        scanning_probe_logic.log.debug(
-            f'Estimated scan duration for axes {axes}: {estimated:.1f} s; '
-            f'using timeout {timeout:.1f} s.'
-        )
-
-    prev_data = scanning_probe_logic.scan_data
-    prev_timestamp = prev_data.timestamp if prev_data is not None else None
-
-    for attempt in range(3):
-        t_call = time.time()
-        scanning_probe_logic.start_scan(axes)
-
-        t_start = time.time()
-        while scanning_probe_logic.module_state() != 'idle':
-            if time.time() - t_start > timeout:
-                scanning_probe_logic.log.error(
-                    f'Scan on axes {axes} timed out after {timeout:.1f} s. '
-                    f'module_state={scanning_probe_logic.module_state()}, '
-                    f'scanner_state={scanning_probe_logic._scanner().module_state()}'
-                )
-                raise TimeoutError(f'Scan on axes {axes} timed out.')
-            time.sleep(poll_interval)
-
-        elapsed = time.time() - t_call
-        new_data = scanning_probe_logic.scan_data
-
-        if new_data is None:
-            scanning_probe_logic.log.warning(
-                f'Scan on axes {axes} returned no data (attempt {attempt + 1}). Retrying...'
-            )
-            time.sleep(0.5)
-            continue
-
-        if prev_timestamp is not None and new_data.timestamp == prev_timestamp:
-            scanning_probe_logic.log.warning(
-                f'Scan on axes {axes} did not produce new data (stale timestamp, '
-                f'attempt {attempt + 1}). Retrying after a short delay...'
-            )
-            time.sleep(0.5)
-            continue
-
-        # Check that the data actually contains real values, not just the
-        # NaN placeholder buffer created at the start of a (possibly failed) scan.
-        channel = next(iter(new_data.channel_units))
-        arr = _to_plain_array(new_data.data[channel])
-        n_nan = int(np.isnan(arr).sum())
-        n_total = arr.size
-
-        scanning_probe_logic.log.debug(
-            f'Scan on axes {axes} finished in {elapsed:.2f} s, '
-            f'{n_nan}/{n_total} NaN pixels.'
-        )
-
-        if n_nan == n_total:
-            scanning_probe_logic.log.warning(
-                f'Scan on axes {axes} returned an all-NaN buffer (attempt {attempt + 1}). '
-                f'This means start_scan() likely failed silently on the hardware side. '
-                f'Elapsed time was only {elapsed:.2f} s. Retrying...'
-            )
-            time.sleep(0.5)
-            continue
-
-        if n_nan > 0:
-            scanning_probe_logic.log.warning(
-                f'Scan on axes {axes} completed with {n_nan}/{n_total} NaN pixels '
-                f'(partial data). Proceeding anyway, but this may indicate an issue.'
-            )
-
-        return new_data.copy()
-
-    raise RuntimeError(
-        f'Scan on axes {axes} failed to produce valid data after retrying. '
-        f'Check the qudi log for hardware errors (e.g. "Could not start scan").'
-    )
 
 
 class DriftCorrector:
@@ -336,22 +219,132 @@ class DriftCorrector:
 
         self.total_drift = {ax: 0.0 for ax in (*xy_axes, z_axis)}
 
-    # ------------------------------------------------------------------
-    def set_reference(self, xy_scan, z_scan, target_position):
-        """
-        Call once at the start, right after acquiring the initial xy and z
-        reference scans, with the target sitting on the structure/NV of
-        interest (assumed to already be at the brightness-optimal z).
-        """
-        self.reference_xy_scan = xy_scan.copy()
-        self.reference_z_scan = z_scan.copy()
-        self.reference_target = dict(target_position)
-        self.total_drift = {ax: 0.0 for ax in self.total_drift}
-
-        ref_img = _to_plain_array(self.reference_xy_scan.data[self.channel])
-        self._check_image_quality(ref_img, label='reference xy scan')
+        # history of (timestamp, {axis: position}) tuples, populated by
+        # correct_drift(); used by plot_position_history()/track_drift()
+        self.position_history = []
 
     # ------------------------------------------------------------------
+    # -------------------------- helper methods --------------------------
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _to_float(value):
+        """Coerce a numpy/pint/other numeric type into a plain Python float."""
+        if hasattr(value, 'magnitude'):
+            value = value.magnitude
+        return float(value)
+
+    @staticmethod
+    def _to_plain_array(data):
+        """Convert to a plain float ndarray, working around array-likes
+        (e.g. pint Quantities) whose __array__() doesn't support the
+        NumPy 2.0 dtype/copy keyword protocol."""
+        if hasattr(data, 'magnitude'):
+            data = data.magnitude  # strip pint units if present
+        arr = np.array(data)       # no dtype/copy kwargs here -> avoids the warning
+        return arr.astype(float, copy=False)
+
+    @staticmethod
+    def _estimate_scan_duration(axes):
+        """Estimate scan duration (seconds) from currently configured
+        resolution/frequency for the given axes."""
+        resolution = scanning_probe_logic.scan_resolution
+        frequency = scanning_probe_logic.scan_frequency
+
+        fast_axis = axes[0]
+        line_time = resolution[fast_axis] / frequency[fast_axis]
+
+        if len(axes) > 1:
+            n_lines = resolution[axes[1]]
+        else:
+            n_lines = 1
+
+        return line_time * n_lines
+
+    def _run_scan_and_wait(self, axes, timeout=None, poll_interval=0.2,
+                            safety_factor=12.0, min_timeout=10.0):
+        """
+        Start a scan on the given axes and block until finished.
+        Verifies that a NEW scan actually ran (by checking the timestamp AND
+        that the returned data isn't just NaN placeholder data), retrying if not.
+        """
+        if timeout is None:
+            estimated = self._estimate_scan_duration(axes)
+            timeout = max(min_timeout, estimated * safety_factor)
+            scanning_probe_logic.log.debug(
+                f'Estimated scan duration for axes {axes}: {estimated:.1f} s; '
+                f'using timeout {timeout:.1f} s.'
+            )
+
+        prev_data = scanning_probe_logic.scan_data
+        prev_timestamp = prev_data.timestamp if prev_data is not None else None
+
+        for attempt in range(3):
+            t_call = time.time()
+            scanning_probe_logic.start_scan(axes)
+
+            t_start = time.time()
+            while scanning_probe_logic.module_state() != 'idle':
+                if time.time() - t_start > timeout:
+                    scanning_probe_logic.log.error(
+                        f'Scan on axes {axes} timed out after {timeout:.1f} s. '
+                        f'module_state={scanning_probe_logic.module_state()}, '
+                        f'scanner_state={scanning_probe_logic._scanner().module_state()}'
+                    )
+                    raise TimeoutError(f'Scan on axes {axes} timed out.')
+                time.sleep(poll_interval)
+
+            elapsed = time.time() - t_call
+            new_data = scanning_probe_logic.scan_data
+
+            if new_data is None:
+                scanning_probe_logic.log.warning(
+                    f'Scan on axes {axes} returned no data (attempt {attempt + 1}). Retrying...'
+                )
+                time.sleep(0.5)
+                continue
+
+            if prev_timestamp is not None and new_data.timestamp == prev_timestamp:
+                scanning_probe_logic.log.warning(
+                    f'Scan on axes {axes} did not produce new data (stale timestamp, '
+                    f'attempt {attempt + 1}). Retrying after a short delay...'
+                )
+                time.sleep(0.5)
+                continue
+
+            # Check that the data actually contains real values, not just the
+            # NaN placeholder buffer created at the start of a (possibly failed) scan.
+            channel = next(iter(new_data.channel_units))
+            arr = self._to_plain_array(new_data.data[channel])
+            n_nan = int(np.isnan(arr).sum())
+            n_total = arr.size
+
+            scanning_probe_logic.log.debug(
+                f'Scan on axes {axes} finished in {elapsed:.2f} s, '
+                f'{n_nan}/{n_total} NaN pixels.'
+            )
+
+            if n_nan == n_total:
+                scanning_probe_logic.log.warning(
+                    f'Scan on axes {axes} returned an all-NaN buffer (attempt {attempt + 1}). '
+                    f'This means start_scan() likely failed silently on the hardware side. '
+                    f'Elapsed time was only {elapsed:.2f} s. Retrying...'
+                )
+                time.sleep(0.5)
+                continue
+
+            if n_nan > 0:
+                scanning_probe_logic.log.warning(
+                    f'Scan on axes {axes} completed with {n_nan}/{n_total} NaN pixels '
+                    f'(partial data). Proceeding anyway, but this may indicate an issue.'
+                )
+
+            return new_data.copy()
+
+        raise RuntimeError(
+            f'Scan on axes {axes} failed to produce valid data after retrying. '
+            f'Check the qudi log for hardware errors (e.g. "Could not start scan").'
+        )
+
     def _full_z_range(self):
         if self.z_axis not in self.position_bounds:
             raise ValueError(
@@ -361,7 +354,7 @@ class DriftCorrector:
         return tuple(self.position_bounds[self.z_axis])
 
     def _clip_position(self, ax, value):
-        value = _to_float(value)
+        value = self._to_float(value)
         if ax in self.position_bounds:
             lo, hi = self.position_bounds[ax]
             clipped = float(np.clip(value, lo, hi))
@@ -374,9 +367,9 @@ class DriftCorrector:
         return value
 
     def _clip_range_shift(self, ref_range, drift, ax):
-        width = _to_float(ref_range[1]) - _to_float(ref_range[0])
-        shifted_min = _to_float(ref_range[0]) + _to_float(drift)
-        shifted_max = _to_float(ref_range[1]) + _to_float(drift)
+        width = self._to_float(ref_range[1]) - self._to_float(ref_range[0])
+        shifted_min = self._to_float(ref_range[0]) + self._to_float(drift)
+        shifted_max = self._to_float(ref_range[1]) + self._to_float(drift)
 
         if ax in self.position_bounds:
             lo, hi = self.position_bounds[ax]
@@ -409,7 +402,6 @@ class DriftCorrector:
             return False
         return True
 
-    # ------------------------------------------------------------------
     def _optimize_z(self, timeout=None):
         """
         Run a 1D optimize scan along z (covering the full configured z
@@ -425,7 +417,7 @@ class DriftCorrector:
         z_center = (full_z_range[0] + full_z_range[1]) / 2.0
 
         z_res = self.reference_z_scan.settings.resolution[0]
-        z_freq = _to_float(self.reference_z_scan.settings.frequency)
+        z_freq = self._to_float(self.reference_z_scan.settings.frequency)
 
         # Temporarily center the z target so that the optimizer's centered
         # scan window (target +/- range/2) covers exactly the full z range.
@@ -433,7 +425,7 @@ class DriftCorrector:
         temp_target = dict(current_target)
         temp_target[z_axis] = z_center
         scanning_probe_logic.set_target_position(
-            {ax: _to_float(v) for ax, v in temp_target.items()}, move_blocking=True
+            {ax: self._to_float(v) for ax, v in temp_target.items()}, move_blocking=True
         )
 
         scanning_optimize_logic.set_optimize_settings(
@@ -449,7 +441,7 @@ class DriftCorrector:
         scanning_optimize_logic.start_optimize()
 
         if timeout is None:
-            timeout = max(10.0, _estimate_scan_duration((z_axis,)) * 12.0)
+            timeout = max(10.0, self._estimate_scan_duration((z_axis,)) * 12.0)
 
         t_start = time.time()
         while scanning_optimize_logic.module_state() != 'idle':
@@ -464,9 +456,26 @@ class DriftCorrector:
                 'Check the qudi log for details.'
             )
 
-        return _to_float(optimal[z_axis])
+        return self._to_float(optimal[z_axis])
 
     # ------------------------------------------------------------------
+    # --------------------------- public API ---------------------------
+    # ------------------------------------------------------------------
+    def set_reference(self, xy_scan, z_scan, target_position):
+        """
+        Call once at the start, right after acquiring the initial xy and z
+        reference scans, with the target sitting on the structure/NV of
+        interest (assumed to already be at the brightness-optimal z).
+        """
+        self.reference_xy_scan = xy_scan.copy()
+        self.reference_z_scan = z_scan.copy()
+        self.reference_target = dict(target_position)
+        self.total_drift = {ax: 0.0 for ax in self.total_drift}
+        self.position_history = []
+
+        ref_img = self._to_plain_array(self.reference_xy_scan.data[self.channel])
+        self._check_image_quality(ref_img, label='reference xy scan')
+
     def correct_drift(self, move=True):
         """
         Perform one drift-correction cycle:
@@ -475,8 +484,7 @@ class DriftCorrector:
           2. move target's x/y to the corrected position
           3. z optimization over the FULL configured z range at that xy
              position, via ScanningOptimizeLogic (Gaussian fit)
-          4. return the total accumulated drift and the resulting target
-             position
+          4. record the resulting target position in position_history
 
         Returns (total_drift, new_target).
         """
@@ -495,10 +503,10 @@ class DriftCorrector:
             scanning_probe_logic.set_scan_range(ax, shifted_range)
             scanning_probe_logic.set_scan_resolution(ax, ref_xy_res[i])
 
-        new_xy_scan = _run_scan_and_wait(xy_axes)
+        new_xy_scan = self._run_scan_and_wait(xy_axes)
 
-        ref_img = _to_plain_array(self.reference_xy_scan.data[self.channel])
-        new_img = _to_plain_array(new_xy_scan.data[self.channel])
+        ref_img = self._to_plain_array(self.reference_xy_scan.data[self.channel])
+        new_img = self._to_plain_array(new_xy_scan.data[self.channel])
 
         ref_ok = self._check_image_quality(ref_img, label='reference xy scan')
         new_ok = self._check_image_quality(new_img, label='new xy scan')
@@ -573,7 +581,7 @@ class DriftCorrector:
         }
         target_pos = dict(scanning_probe_logic.scanner_target)
         target_pos.update(xy_target)
-        target_pos = {ax: _to_float(val) for ax, val in target_pos.items()}
+        target_pos = {ax: self._to_float(val) for ax, val in target_pos.items()}
         scanning_probe_logic.set_target_position(target_pos, move_blocking=True)
 
         # ---------- 3. z optimization (full range, via ScanningOptimizeLogic) ----------
@@ -588,13 +596,91 @@ class DriftCorrector:
             new_target[z_axis] = clipped_z
             if move:
                 scanning_probe_logic.set_target_position(
-                    {ax: _to_float(v) for ax, v in new_target.items()}, move_blocking=True
+                    {ax: self._to_float(v) for ax, v in new_target.items()}, move_blocking=True
                 )
 
-        new_target = {ax: _to_float(val) for ax, val in new_target.items()}
+        new_target = {ax: self._to_float(val) for ax, val in new_target.items()}
         scanning_probe_logic.log.info(f'Corrected target position: {new_target}')
 
+        # ---------- record history ----------
+        self.position_history.append({'time': time.time(), **new_target})
+
         return dict(self.total_drift), new_target
+
+    # ------------------------------------------------------------------
+    # ------------------------- plotting methods -------------------------
+    # ------------------------------------------------------------------
+    def plot_position_history(self, ax=None):
+        """
+        Plot the recorded target x, y, z positions (from position_history)
+        as a function of elapsed time. If `ax` (an iterable of 3
+        matplotlib Axes) is provided, plot into those axes and redraw;
+        otherwise create a new figure.
+        """
+        if not self.position_history:
+            print('No position history recorded yet. Call correct_drift() first.')
+            return
+
+        t0 = self.position_history[0]['time']
+        times_min = [(rec['time'] - t0) / 60.0 for rec in self.position_history]
+
+        axes_names = (*self.xy_axes, self.z_axis)
+
+        if ax is None:
+            fig, ax = plt.subplots(len(axes_names), 1, sharex=True, figsize=(7, 6))
+        else:
+            fig = ax[0].figure
+
+        for a, name in zip(ax, axes_names):
+            a.clear()
+            values = [rec.get(name, np.nan) for rec in self.position_history]
+            a.plot(times_min, values, marker='o')
+            a.set_ylabel(f'{name} (µm)')
+            a.grid(True)
+
+        ax[-1].set_xlabel('Elapsed time (min)')
+        fig.suptitle('Target position over time')
+        fig.tight_layout()
+        return fig, ax
+
+    def track_drift(self, interval=60.0, n_iterations=None, move=True):
+        """
+        Continually call correct_drift() every `interval` seconds, and
+        live-update a plot of the target's x, y, z positions vs. time in
+        the notebook. Runs until `n_iterations` cycles have completed, or
+        indefinitely if n_iterations is None (interrupt the notebook cell
+        / raise KeyboardInterrupt to stop).
+
+        Parameters
+        ----------
+        interval : float
+            Time (seconds) to wait between successive correct_drift() calls.
+        n_iterations : int, optional
+            Number of correction cycles to run. Runs forever if None.
+        move : bool
+            Passed through to correct_drift(); whether to actually move
+            the scanner target to the corrected position each cycle.
+        """
+        fig, ax = plt.subplots(len(self.xy_axes) + 1, 1, sharex=True, figsize=(7, 6))
+
+        iteration = 0
+        try:
+            while n_iterations is None or iteration < n_iterations:
+                drift, new_target = self.correct_drift(move=move)
+
+                clear_output(wait=True)
+                self.plot_position_history(ax=ax)
+                display(fig)
+
+                print(f'Iteration {iteration + 1}: drift = {drift}')
+
+                iteration += 1
+                if n_iterations is None or iteration < n_iterations:
+                    time.sleep(interval)
+        except KeyboardInterrupt:
+            scanning_probe_logic.log.info('Drift tracking stopped by user (KeyboardInterrupt).')
+        finally:
+            plt.close(fig)
 
 
 # %%
@@ -684,5 +770,59 @@ except Exception as e:
 # %%
 print(scanning_probe_logic._scanner().module_state())
 print(scanning_probe_logic._scanner().constraints)
+
+# %% [markdown]
+# # Testing tracking with pulsing field from miniAWG
+
+# %%
+finalCoilValues = np.array([2.2381, 2.7976, 2.7976, 2.2381])
+
+# %%
+testFactor = 1
+
+testCoilValues = testFactor*finalCoilValues
+
+channels = ['ao0', 'ao1', 'ao2', 'ao3']
+for ch in range(4):
+    daq_1.set_activity_state(channels[ch], True)
+    daq_1.set_setpoint(channels[ch], testCoilValues[ch])
+
+# %%
+drift_corrector = DriftCorrector(
+    xy_axes=('x', 'y'),
+    z_axis='z',
+    channel='Sum',
+    position_bounds={'x': (10, 90), 'y': (10, 90), 'z': (0, 6.2)},
+    max_xy_correlation_error=0.5,
+    max_xy_shift=10.0,
+)
+
+# %%
+scanning_probe_logic.set_scan_range('x', (41, 58))
+scanning_probe_logic.set_scan_range('y', (31, 48))
+scanning_probe_logic.set_scan_resolution('x', 50)
+scanning_probe_logic.set_scan_resolution('y', 50)
+reference_xy_scan = drift_corrector._run_scan_and_wait(('x', 'y'))
+
+# %%
+scanning_probe_logic.set_scan_range('z', (0, 6.2))
+scanning_probe_logic.set_scan_resolution('z', 100)
+reference_z_scan = drift_corrector._run_scan_and_wait(('z',))
+
+# %%
+drift_corrector.set_reference(reference_xy_scan, reference_z_scan,
+                               scanning_probe_logic.scanner_target)
+
+# %%
+signal_generator_33250a.write('*RST')
+signal_generator_33250a.write('OUTP OFF')
+signal_generator_33250a.write('FUNC:SHAP SQU')
+signal_generator_33250a.write('FREQ 100')
+signal_generator_33250a.write('VOLT:HIGH 1')
+signal_generator_33250a.write('VOLT:LOW 0')
+signal_generator_33250a.write('FUNC:SQU:DCYC 20')
+
+# %%
+drift_corrector.track_drift(interval=60.0)
 
 # %%
