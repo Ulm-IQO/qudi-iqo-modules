@@ -61,7 +61,8 @@ connected photon_counter module is called to drive a scan line:
         GCS TriggerMode 0, "Position Distance") whose trigger fires once
         per real physical step of motion rather than at a fixed rate --
         see NIXSeriesCounter's module docstring, "POSITION-DISTANCE
-        TRIGGER ACQUISITION MODE", for the acquisition model this uses.
+        TRIGGER ACQUISITION MODE" and "EXPECTATION-BASED EDGE MATCHING",
+        for the acquisition model this uses.
 
 Both method pairs are expected to exist together on the connected
 photon_counter module (see ni_x_series_counter.py) -- this option only
@@ -90,6 +91,15 @@ image's axis labels/extent always honestly reflect what was actually
 scanned -- never a silent mismatch between displayed axes and real
 motion.
 
+This range narrowing is NOT related to, and is not made unnecessary by,
+NIXSeriesCounter's expectation-based edge matching (see that module's
+docstring) -- padding protects against a scan producing ZERO real trigger
+edges at all (following error at motion start with no ramp), a failure
+that no downstream edge-matching logic can recover from, since there is
+no real signal to match against in that case. See PIE727Scanner's module
+docstring, "MINIMUM TRIGGER STEP -- REMOVED", for the direct statement of
+why these are independent concerns.
+
 Clamping behavior (see _clamp_axis_range()):
     - if the requested window already fits inside the safe range: no
       change.
@@ -105,25 +115,6 @@ This is duck-typed via getattr() -- PIE710Scanner (E-710 rig) has no
 padding concept and therefore no get_scan_safe_range() method, so this
 clamping is skipped entirely for that scanner, exactly reproducing this
 interfuse's original, unmodified behavior for that setup.
-
-Scan resolution vs. minimum trigger step
---------------------------------------------
-If the connected scanner module exposes get_max_resolution_for_span(span)
-(e.g. PIE727Scanner, whose real per-pixel trigger step is span/resolution
--- see that module's docstring, "MINIMUM TRIGGER STEP", for why an
-overly-fine step is unreliable), configure_scan() below reduces the
-REQUESTED resolution for any scanned axis whose implied step is smaller
-than that scanner's configured minimum, logging a clear warning showing
-what was requested vs. what will actually be scanned. This is checked
-AFTER range clamping, so it is always evaluated against the range that
-will actually be scanned -- keeping it self-consistent with what the scan
-will actually do, the same reasoning as the range-clamping section above.
-
-This is duck-typed via getattr(), exactly like get_scan_safe_range() --
-PIE710Scanner has no min-step concept and therefore no
-get_max_resolution_for_span() method, so this clamping is skipped
-entirely for that scanner, exactly reproducing this interfuse's original,
-unmodified behavior for that setup.
 
 YAML configuration:
     interfuse:
@@ -194,12 +185,6 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         requirements". Controlled entirely by whether the connected
         scanner module exposes get_scan_safe_range(); dispatched via
         _clamp_scan_settings_to_safe_range() below.
-
-    Scan resolution clamping:
-        See module docstring, "Scan resolution vs. minimum trigger step".
-        Controlled entirely by whether the connected scanner module
-        exposes get_max_resolution_for_span(); dispatched via
-        _clamp_resolution_to_min_step() below.
     """
 
     _scanner = Connector(name='scanner',        interface='PIE710ScannerInterface')
@@ -418,73 +403,6 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         return lo, hi, True
 
     # =========================================================================
-    # Scan resolution clamping -- see module docstring, "Scan resolution
-    # vs. minimum trigger step"
-    # =========================================================================
-
-    def _clamp_resolution_to_min_step(self, settings: ScanSettings) -> ScanSettings:
-        """
-        Returns settings unchanged if the connected scanner has no
-        get_max_resolution_for_span() method (e.g. PIE710Scanner -- no
-        min-step concept, nothing to clamp), or if that method returns
-        None for every scanned axis (min_trig_step_um disabled on that
-        scanner), or if the requested resolution for every scanned axis
-        already implies a real trigger step at or above the configured
-        minimum.
-
-        Otherwise returns a NEW ScanSettings with the offending axis/axes'
-        RESOLUTION reduced to the largest value get_max_resolution_for_span()
-        reports as safe for that axis' (possibly already range-clamped)
-        span, after logging a clear warning per affected axis explaining
-        what resolution was requested vs. what will actually be scanned.
-
-        See module docstring, "Scan resolution vs. minimum trigger step".
-        """
-        scanner = self._scanner()
-        getter = getattr(scanner, 'get_max_resolution_for_span', None)
-        if getter is None:
-            return settings
-
-        new_resolution: List[int] = []
-        clamped_any = False
-
-        for axis_idx, (axis_name, (lo, hi)) in enumerate(
-                zip(settings.axes, settings.range)):
-            req_res = int(settings.resolution[axis_idx])
-            span = float(hi) - float(lo)
-            max_res = getter(span)
-
-            if max_res is None or req_res <= max_res:
-                new_resolution.append(req_res)
-                continue
-
-            clamped_any = True
-            implied_step_nm = (span / req_res) * 1e3 if req_res > 0 else float('inf')
-            actual_step_nm  = (span / max_res) * 1e3 if max_res > 0 else float('inf')
-            self.log.warning(
-                f'Requested resolution {req_res} for axis "{axis_name}" '
-                f'over range [{lo:.4f}, {hi:.4f}] um implies a real '
-                f'trigger step of {implied_step_nm:.4f} nm, smaller than '
-                f'this scanner\'s configured minimum trigger step. '
-                f'Reducing resolution to {max_res} '
-                f'(step={actual_step_nm:.4f} nm) instead -- the resulting '
-                f'image reflects this actual, real resolution, not the '
-                f'originally requested one.'
-            )
-            new_resolution.append(max_res)
-
-        if not clamped_any:
-            return settings
-
-        return ScanSettings(
-            channels   = settings.channels,
-            axes       = settings.axes,
-            range      = settings.range,
-            resolution = tuple(new_resolution),
-            frequency  = settings.frequency,
-        )
-
-    # =========================================================================
     # Scan settings properties
     # =========================================================================
 
@@ -518,7 +436,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             # Validated against the scanner's REAL, full travel range --
             # see _build_constraints(). A request within true travel
             # limits always passes this, even if it will go on to be
-            # clamped below for padding/min-step reasons.
+            # clamped below for padding reasons.
             self._constraints.check_settings(settings)
 
             supported = {
@@ -536,22 +454,13 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             # get_scan_safe_range() (e.g. PIE710Scanner).
             settings = self._clamp_scan_settings_to_safe_range(settings)
 
-            # See module docstring, "Scan resolution vs. minimum trigger
-            # step" -- no-op for scanners without
-            # get_max_resolution_for_span() (e.g. PIE710Scanner). Checked
-            # AFTER range clamping above, since the min-step requirement
-            # is naturally in terms of the range that will actually be
-            # scanned, not necessarily what was originally requested.
-            settings = self._clamp_resolution_to_min_step(settings)
-
             self._scan_settings = settings
             self._scan_data = ScanData.from_constraints(
                 settings=settings, constraints=self._constraints)
 
             # Matching default back scan so logic validation always passes.
             # Built from the (possibly clamped) forward settings, so back
-            # scan range/resolution always matches what will actually be
-            # scanned.
+            # scan range always matches what will actually be scanned.
             default_back = ScanSettings(
                 channels   = settings.channels,
                 axes       = settings.axes,
@@ -575,29 +484,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         independent clamping of the back scan's range risks landing on a
         very slightly different window than the forward scan's already-
         clamped one (e.g. different edge-case rounding), which would then
-        fail that very check.
-
-        The back scan's SLOW-axis resolution(s) (every axis except the
-        first/fast one) are likewise always forced to match the forward
-        scan's actual resolution for that axis -- this is required for
-        the same reason as the range, and became necessary once
-        configure_scan() started possibly REDUCING forward resolution
-        via _clamp_resolution_to_min_step() (see module docstring, "Scan
-        resolution vs. minimum trigger step"): qudi's scanning_probe_logic
-        builds back scan settings independently, with no knowledge that
-        the forward scan's resolution may have been silently reduced, so
-        it can request a back scan whose slow-axis resolution still
-        reflects the ORIGINAL, un-clamped request. check_back_scan_settings()
-        hard-enforces "back scan slow-axis resolution == forward scan
-        slow-axis resolution" unconditionally, so passing the back
-        scan's request straight through in that case fails that check.
-        Forcing it here, exactly like range, keeps this self-consistent
-        automatically regardless of what the caller sends.
-
-        Only the FAST (first) axis resolution -- the true "back scan
-        resolution" concept, e.g. for a coarser or finer retrace -- is
-        taken from the given settings as-is; only frequency is otherwise
-        independent of the forward scan.
+        fail that very check. Only resolution/frequency are genuinely
+        independent of the forward scan and are taken from the given
+        settings as-is.
         """
         with self._lock:
             if self.module_state() == 'locked':
@@ -607,16 +496,11 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 self.log.error('Configure forward scan before back scan.')
                 return
 
-            fwd = self._scan_settings
-            new_resolution = list(settings.resolution)
-            for idx in range(1, len(new_resolution)):
-                new_resolution[idx] = fwd.resolution[idx]
-
             settings = ScanSettings(
                 channels   = settings.channels,
                 axes       = settings.axes,
-                range      = fwd.range,
-                resolution = tuple(new_resolution),
+                range      = self._scan_settings.range,
+                resolution = settings.resolution,
                 frequency  = settings.frequency,
             )
             self._constraints.check_back_scan_settings(settings, self._scan_settings)

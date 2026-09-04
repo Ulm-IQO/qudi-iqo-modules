@@ -36,7 +36,11 @@ alone. Confirmed on real hardware, in this order of discovery:
      The counting side (NIXSeriesCounter.arm_position_trigger()/
      read_position_trigger()) hardware-counts EVERY one of these pulses
      via a dedicated counter's CI count-edges channel, not just the
-     first -- see that module's docstring for the acquisition model.
+     first -- see that module's docstring for the acquisition model,
+     including its EXPECTATION-BASED EDGE MATCHING, which is the actual
+     fix for spurious extra real trigger edges at fine step sizes (see
+     "MINIMUM TRIGGER STEP -- REMOVED" below for why this module no
+     longer tries to prevent that condition pre-emptively).
 
   3. The waveform is a SINGLE ONE-WAY ramp per line, NOT a forward+
      backward triangle. WGO(...,0) explicitly STOPS the generator after
@@ -104,6 +108,17 @@ knob to hand-tune per scan:
       slow scan that the acceleration limit alone would otherwise let
       run with almost no padding at all.
 
+      IMPORTANT: this is the reason padding cannot simply be removed now
+      that NIXSeriesCounter.read_position_trigger() gained expectation-
+      based edge matching (see that module's docstring). That change
+      fixes a DIFFERENT failure mode -- real, genuine EXTRA trigger
+      edges getting matched/discarded correctly -- but it can only work
+      with edges that actually exist. A scan with no padding at all can
+      produce ZERO real edges, and no downstream matching logic can
+      recover a signal that was never generated. Padding therefore stays
+      a real, physical requirement of this technique, independent of
+      anything done on the counting/matching side.
+
       NOT CALIBRATED against real hardware the way max_acceleration_um_s2
       is -- we only know that a ZERO-length ramp can fail; we do not have
       a real measurement of the true minimum ramp time this stage needs.
@@ -113,15 +128,6 @@ knob to hand-tune per scan:
       the acceleration limit, is the binding constraint), raise this
       value and re-test; if you confirm it can be lowered without
       trigger issues, that is useful data for tightening the default.
-
-      NOTE: setting this to a value that is technically positive but far
-      too small to matter (e.g. 5e-18) is NOT the same as disabling it --
-      it still contributes a ratio very close to 1.0 (i.e. "almost no
-      padding needed") to the min() in _effective_ratio(), silently
-      weakening whatever padding max_acceleration_um_s2 alone would have
-      produced. To genuinely disable this constraint, set it to exactly
-      0 or None -- only those values are excluded from the min()
-      altogether (see _effective_ratio() below).
 
 For a given scan (t_pixel, n_points, amp_true), the padding fraction
 actually used is derived as follows. The linear (triggered) region's
@@ -180,55 +186,46 @@ range (never narrowed), since qudi's own scanning_probe_logic and
 scanning_optimize_logic both reuse those bounds for ordinary absolute-
 position validation completely independent of scanning.
 
-MINIMUM TRIGGER STEP (min_trig_step_um)
--------------------------------------------
-A scan's real per-pixel trigger step is trig_step = amp_true / n_points
-(the exact value scan_axis() programs into CTO param 1). If a scan's
-requested span and resolution together imply a trig_step too small for
-this stage/controller to reliably resolve as distinct triggered steps
-(as opposed to, e.g., noise/settling ripple around a single physical
-position repeatedly re-crossing an overly-fine threshold), real trigger
-behavior degrades -- extra or missing edges, run-to-run variability at
-the same nominal settings.
+MINIMUM TRIGGER STEP -- REMOVED
+------------------------------------
+An earlier version of this module added a min_trig_step_um ConfigOption
+and a get_max_resolution_for_span() method, specifically to pre-emptively
+CAP scan resolution so that the real per-pixel trigger step never got
+"too small," based on real hardware measurements showing that fine steps
+could produce EXTRA, spurious real trigger edges (confirmed via gap-
+histogram analysis to be genuine electrical transitions, not a software
+artifact -- root physical cause never conclusively isolated to one
+mechanism).
 
-min_trig_step_um (ConfigOption, default 0.05):
-    The smallest real trigger step this module will program without
-    either erroring out (scan_axis(), as a hard safety net for any
-    caller bypassing the interfuse) or -- the intended, normal path --
-    having the caller pre-emptively reduce resolution to fit.
+That mechanism has been REMOVED. The problem it existed to prevent --
+real, extra trigger edges beyond n_pixels + 1 -- is now handled
+correctly downstream, in NIXSeriesCounter.read_position_trigger(), via
+EXPECTATION-BASED EDGE MATCHING (see that module's docstring): every
+real edge detected is matched against where a pixel boundary is
+EXPECTED to be (from the scan's own real t_pixel), and anything extra is
+discarded. This works correctly regardless of how many spurious edges
+occur, without needing to guess a safe minimum step size in advance, and
+without narrowing scan resolution pre-emptively. Pre-emptively capping
+resolution is therefore no longer necessary, and no longer done here.
 
-    NOT CALIBRATED against real hardware -- this is a conservative
-    placeholder (50 nm), not a confirmed physical limit of this specific
-    stage/controller. If you see real edge-count mismatches at a given
-    span/resolution combination that this default does NOT catch, raise
-    it and re-test; if you confirm finer real steps than this default
-    trigger reliably, that is useful data for tightening it. Set to 0 or
-    None to disable this check entirely (not recommended without having
-    independently confirmed your scan's implied step is safe).
-
-get_max_resolution_for_span(span_um) computes, in closed form, the
-largest n_points that keeps span_um / n_points >= min_trig_step_um for a
-scan of that span. PIE710CounterInterfuse uses this (via getattr, since
-PIE710Scanner has no min-step concept) to automatically reduce a
-requested scan's RESOLUTION, with a clear warning, to whatever this
-returns -- checked AFTER range clamping, so it is always evaluated
-against the range that will actually be scanned. This is the intended,
-normal path: a well-behaved caller going through the interfuse should
-never actually trigger scan_axis()'s own hard error below.
-
-scan_axis() ALSO independently checks its own trig_step against
-min_trig_step_um and raises PIE727Error if it is too small -- this is a
-defensive last-resort check, not the primary mechanism, in case
-scan_axis() is ever called directly (bypassing the interfuse's
-resolution auto-adjustment) with parameters that violate this limit.
+This does NOT change anything about the padding requirements above
+(max_acceleration_um_s2, min_speedup_time_s) or the scan-range narrowing
+that follows from them -- those protect against a different, still-real
+failure mode (ZERO real trigger edges when there is no ramp at all),
+which no downstream edge-matching logic can recover from, since there is
+no signal to match against. See min_speedup_time_s's docstring above for
+the direct statement of why these two fixes are independent.
 
 STILL NOT INDEPENDENTLY VERIFIED ON THIS SPECIFIC UNIT: whether the
 constant-acceleration ramp approximation underlying max_acceleration_um_s2
 is a good match to PI's real internal speed-up curve shape (likely an
-S-curve or similar easing, not literally constant acceleration), the real
-minimum speed-up time this stage needs (min_speedup_time_s's actual
-calibrated value), and the real minimum reliable trigger step
-(min_trig_step_um's actual calibrated value). Treat all three as useful,
+S-curve or similar easing, not literally constant acceleration), and the
+real minimum speed-up time this stage needs (min_speedup_time_s's actual
+calibrated value). Real hardware gap-timing measurements (see
+NIXSeriesCounter's docstring) additionally showed the "linear" region is
+not perfectly constant-velocity -- small (few-percent) systematic
+deviations were measured, in different shapes at different scan
+geometries. Treat max_acceleration_um_s2/min_speedup_time_s as useful,
 conservative TUNING KNOBS confirmed to correctly predict the DIRECTION of
 the real effect, not as first-principles-exact models of this
 controller's real dynamics.
@@ -263,7 +260,6 @@ YAML configuration:
                 wave_generator_rate_hz: 20000.0   # confirmed -- see module docstring
                 max_acceleration_um_s2: 3000.0    # calibrated from real hardware -- see module docstring
                 min_speedup_time_s: 0.005         # conservative, UNCALIBRATED default -- see module docstring
-                min_trig_step_um: 0.05            # conservative, UNCALIBRATED default -- see module docstring
 """
 
 import ctypes
@@ -325,9 +321,6 @@ class PIE727Controller:
         # limits combined automatically, per scan, in _effective_ratio().
         self.max_acceleration_um_s2: Optional[float] = None
         self.min_speedup_time_s: Optional[float] = None
-
-        # See module docstring, "MINIMUM TRIGGER STEP".
-        self.min_trig_step_um: Optional[float] = None
 
         # Cached parameters from the most recent scan_axis() call, so
         # retrigger_line() can repeat the exact same line.
@@ -753,28 +746,6 @@ class PIE727Controller:
         self.set_trigger_param(trigger_output_id, 8, trig_start)
         self.set_trigger_param(trigger_output_id, 9, trig_stop)
 
-    # ── Minimum trigger step ────────────────────────────────────────────────────
-
-    def get_max_resolution_for_step(self, span_um: float) -> Optional[int]:
-        """
-        Returns the largest number of scan points (resolution) that keeps
-        the real per-pixel trigger step -- span_um / n_points, the exact
-        formula scan_axis() uses to program CTO param 1 -- at or above
-        min_trig_step_um, for a scan spanning span_um.
-
-        Returns None if min_trig_step_um is not configured (None or
-        <= 0), meaning no minimum-step limit is enforced at all, or if
-        span_um is not positive.
-
-        See module docstring, "MINIMUM TRIGGER STEP".
-        """
-        if self.min_trig_step_um is None or self.min_trig_step_um <= 0:
-            return None
-        span = abs(span_um)
-        if span <= 0:
-            return None
-        return max(1, int(np.floor(span / self.min_trig_step_um)))
-
     # ── Automatic padding computation ──────────────────────────────────────────
 
     def _effective_ratio(self, t_pixel: float, n_points: int, amp_true: float) -> float:
@@ -838,30 +809,6 @@ class PIE727Controller:
         n_points = len(positions)
         start, stop = positions[0], positions[-1]
         amp_true = stop - start
-        trig_step = amp_true / n_points
-
-        # See module docstring, "MINIMUM TRIGGER STEP". This is a
-        # defensive last-resort check -- a well-behaved caller going
-        # through PIE710CounterInterfuse.configure_scan() should have
-        # already reduced n_points (via get_max_resolution_for_span())
-        # so this never actually fires.
-        if self.min_trig_step_um is not None and self.min_trig_step_um > 0:
-            if abs(trig_step) < self.min_trig_step_um - 1e-9:
-                raise PIE727Error(
-                    f"scan_axis: real trigger step {abs(trig_step)*1e3:.4f} nm "
-                    f"(n_points={n_points}, span={amp_true:.4f} um) is smaller "
-                    f"than the configured minimum trigger step "
-                    f"min_trig_step_um={self.min_trig_step_um:.6f} um -- see "
-                    f"module docstring, 'MINIMUM TRIGGER STEP'. Reduce "
-                    f"n_points (or increase span) before calling scan_axis(). "
-                    f"Callers going through PIE710CounterInterfuse."
-                    f"configure_scan() should never see this: that path "
-                    f"auto-adjusts resolution to fit before this hardware "
-                    f"call is ever reached -- if you ARE seeing this via "
-                    f"that path, PIE727Scanner.get_max_resolution_for_span() "
-                    f"and this check have gone out of sync and need "
-                    f"reconciling."
-                )
 
         ratio = self._effective_ratio(t_pixel, n_points, amp_true)
         servo_pt = 1.0 / wave_generator_rate_hz
@@ -932,6 +879,7 @@ class PIE727Controller:
         )
         self.wave_select([axis_num], [axis_num])
 
+        trig_step = amp_true / n_points
         trig_start = start
         trig_stop = trig_start + amp_true + trig_step * 0.5
         self.configure_position_distance_trigger(
@@ -996,7 +944,6 @@ class PIE727Scanner(PIE710ScannerInterface):
     _wave_generator_rate_hz = ConfigOption('wave_generator_rate_hz', default=20000.0)
     _max_acceleration_um_s2 = ConfigOption('max_acceleration_um_s2', default=3000.0)
     _min_speedup_time_s     = ConfigOption('min_speedup_time_s', default=0.005)
-    _min_trig_step_um       = ConfigOption('min_trig_step_um', default=0.05)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1054,19 +1001,17 @@ class PIE727Scanner(PIE710ScannerInterface):
                 float(self._min_speedup_time_s)
                 if self._min_speedup_time_s is not None else None
             )
-            self._ctrl.min_trig_step_um = (
-                float(self._min_trig_step_um)
-                if self._min_trig_step_um is not None else None
-            )
 
             self.log.info(
                 f"Automatic scan padding active: "
                 f"max_acceleration_um_s2={self._ctrl.max_acceleration_um_s2}  "
                 f"min_speedup_time_s={self._ctrl.min_speedup_time_s}  "
-                f"min_trig_step_um={self._ctrl.min_trig_step_um}  "
-                f"-- padding/resolution limits are computed fresh per "
-                f"scan; see module docstring for what each protects "
-                f"against."
+                f"-- padding is computed fresh per scan; see module "
+                f"docstring for what each limit protects against. "
+                f"No minimum-trigger-step restriction is applied -- "
+                f"spurious extra trigger edges at fine step sizes are "
+                f"handled downstream by NIXSeriesCounter's expectation-"
+                f"based edge matching."
             )
         except Exception as exc:
             if self._ctrl is not None:
@@ -1114,10 +1059,10 @@ class PIE727Scanner(PIE710ScannerInterface):
 
         Pass the ACTUAL t_pixel/n_points of the scan being planned --
         PIE710CounterInterfuse does this at configure_scan() time. This
-        is required for a self-consistent answer: since padding is now
+        is required for a self-consistent answer: since padding is
         computed per-scan (see module docstring, "AUTOMATIC SPEED-UP/
-        SLOW-DOWN PADDING"), there is no longer a single, parameter-
-        independent padding fraction to assume.
+        SLOW-DOWN PADDING"), there is no single, parameter-independent
+        padding fraction to assume.
 
         If t_pixel/n_points are omitted, this CANNOT compute a real
         margin and returns the full, real travel range UNCHANGED (logging
@@ -1127,6 +1072,12 @@ class PIE727Scanner(PIE710ScannerInterface):
         Does NOT affect move_absolute()/get_position()/etc. -- ordinary,
         non-scanning motion always uses the full real x_range/y_range/
         z_range; only scan-range clamping (in the interfuse) uses this.
+
+        This range narrowing exists to keep padding overshoot within
+        real travel limits (see module docstring, "SCAN RANGE VS.
+        PADDING") -- it is unrelated to, and unaffected by, the removal
+        of the old min_trig_step_um resolution cap (see module docstring,
+        "MINIMUM TRIGGER STEP -- REMOVED").
         """
         full = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
         lo, hi = full
@@ -1148,27 +1099,6 @@ class PIE727Scanner(PIE710ScannerInterface):
             margin = amp_true * (1.0 - ratio) / 2.0
 
         return [round(lo + margin, 6), round(hi - margin, 6)]
-
-    # ── Minimum-resolution (min-step-aware) ─────────────────────────────────────
-
-    def get_max_resolution_for_span(self, span_um: float) -> Optional[int]:
-        """
-        Returns the largest scan resolution (number of points) that keeps
-        the real per-pixel trigger step at or above min_trig_step_um for
-        a scan spanning span_um, or None if min_trig_step_um is not
-        configured (disabled). See module docstring, "MINIMUM TRIGGER
-        STEP".
-
-        PIE710CounterInterfuse uses this (via getattr, since PIE710Scanner
-        has no min-step concept and therefore no need for this method) to
-        automatically reduce a requested scan's resolution, with a clear
-        warning, to whatever this returns -- BEFORE the scan actually
-        runs, rather than letting a too-small step reach real hardware,
-        where scan_axis() would otherwise reject it with a hard error.
-        """
-        if self._ctrl is None:
-            return None
-        return self._ctrl.get_max_resolution_for_step(span_um)
 
     # ── Motion ────────────────────────────────────────────────────────────────
 

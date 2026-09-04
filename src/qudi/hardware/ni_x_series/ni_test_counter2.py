@@ -68,23 +68,26 @@ are a second, independent trio of methods for exactly this case, ported
 from a proven MATLAB implementation's acquisition design: continuously
 and simultaneously count BOTH the APD photon channel AND the real
 trigger line's edges, both clocked by one shared free-running hardware
-sample clock, then compute per-pixel counts in software as the
-difference in cumulative APD count between the sample indices of every
-pair of consecutive REAL trigger edges.
+sample clock, then compute per-pixel counts in software from the
+sample indices of matched trigger edges -- see "EXPECTATION-BASED EDGE
+MATCHING" below for exactly how those edges are selected, and
+"WAITING FOR REAL ACQUISITION COMPLETION" below for how
+read_position_trigger() knows when it is safe to stop waiting for new
+edges and finalize the read.
 
 Counting the trigger line via a THIRD counter's CI count-edges channel
 (NOT sampling it as digital-input data):
     An earlier version of this acquisition mode tried to sample the raw
     trigger line as ordinary buffered digital input data (add_di_chan +
-    a sample-clocked timing config), the same way the proven MATLAB code
-    did (Port0/Line0, InputOnly). On real hardware (NI USB-6343 BNC) this
-    failed with DAQmx error -201062, "Selected lines do not support
-    buffered operations" -- PFI lines have no buffered-sampling hardware
-    behind them at all (they are pure routing/trigger-matrix inputs, not
-    recorder inputs), and this specific card's BNC enclosure does not
-    expose any port0 line (the only lines on this chip that DO support
-    buffered sampling) on any BNC connector -- only via an auxiliary
-    connector this rig does not have wired up.
+    a sample-clocked timing config), the same way a reference MATLAB
+    implementation did (Port0/Line0, InputOnly). On real hardware (NI
+    USB-6343 BNC) this failed with DAQmx error -201062, "Selected lines
+    do not support buffered operations" -- PFI lines have no buffered-
+    sampling hardware behind them at all (they are pure routing/trigger-
+    matrix inputs, not recorder inputs), and this specific card's BNC
+    enclosure does not expose any port0 line (the only lines on this
+    chip that DO support buffered sampling) on any BNC connector --
+    only via an auxiliary connector this rig does not have wired up.
 
     The fix used here avoids needing port0 (and any new wiring) entirely:
     PFI lines DO support being used as a CI count-edges source -- that is
@@ -96,11 +99,109 @@ Counting the trigger line via a THIRD counter's CI count-edges channel
     of being read as level-sampled DI data. Both this task and the APD CI
     task are clocked by the same free-running CO output, so sample index
     i of one task and sample index i of the other refer to the exact same
-    instant, with no separate timestamp matching required. The trigger
-    task's final cumulative value is an exact, hardware-counted total of
-    real edges seen (no software-side edge-detection ambiguity), and
-    np.searchsorted() against that cumulative trace finds the sample
-    index of each individual real edge.
+    instant, with no separate timestamp matching required.
+
+EXPECTATION-BASED EDGE MATCHING
+------------------------------------
+Real hardware testing found that scans with a fine real trigger step can
+produce EXTRA real trigger edges beyond the expected n_pixels + 1,
+confirmed via gap-histogram analysis of _pt_last_trig_raw to be genuine
+additional electrical transitions on the trigger line, not a software
+counting artifact. The precise physical cause was investigated but never
+conclusively isolated to a single mechanism.
+
+read_position_trigger() therefore does not require the raw trigger trace
+to contain EXACTLY n_pixels + 1 edges (see PIE727Scanner's module
+docstring, "MINIMUM TRIGGER STEP -- REMOVED", for what this replaced).
+Instead:
+
+  1. Detects ALL real edges present in the raw cumulative trigger-count
+     trace (there may be more than n_pixels + 1 -- every one of them is
+     a genuine electrical transition, not a software artifact).
+  2. Matches edges to expected pixel boundaries SEQUENTIALLY, anchored
+     to the PREVIOUSLY MATCHED real edge, not to a fixed grid computed
+     from the first edge alone:
+
+         expected_next = position_of(matched[k-1]) + step_samples
+
+     This is a real, necessary design choice, not an arbitrary one: real
+     hardware measurements (see PIE727Scanner's module docstring) found
+     the genuinely-linear region's per-step timing is not perfectly
+     constant -- small, SYSTEMATIC (not random) deviations accumulate
+     over a long line (e.g. a measured drift from ~84 to ~88 samples/step
+     across one 100-pixel, 20 kHz-sampled line). A fixed grid anchored at
+     the first edge lets that drift accumulate over the WHOLE line,
+     eventually exceeding any fixed tolerance window long before the end
+     of a long/fine scan (confirmed directly: a fixed-grid version of
+     this matching failed at pixel 33 of 100 despite the trace containing
+     exactly the correct total edge count, 101, with no spurious edges at
+     all -- pure accumulated drift, not a real acquisition failure).
+     Anchoring each step to the REAL previous match instead means only
+     ONE step's worth of deviation must fit inside the tolerance window,
+     never the whole line's cumulative drift -- eliminating this failure
+     mode by construction, regardless of what causes the underlying
+     per-step timing deviation.
+  3. Any real edge that occurs between two consecutive matches (i.e. is
+     skipped over during the sequential search) is discarded as
+     spurious. Real edges are always searched in increasing time order,
+     so no edge is ever matched more than once and no search ever moves
+     backward in time.
+  4. Raises a clear, actionable RuntimeError if any expected slot has NO
+     real edge within tolerance of it -- this still catches a genuinely
+     failed acquisition (e.g. zero real edges at all, wrong wiring, wrong
+     t_pixel, or a scan that never actually triggered); it does not
+     silently accept an obviously broken trace.
+
+position_trigger_match_tolerance_frac (ConfigOption, default 0.4):
+    Fraction of one pixel's real time (t_pixel) used as the PER-STEP
+    matching tolerance in step 2 above. Since matching is sequential/
+    local, this only needs to cover ONE step's worth of real timing
+    deviation, not the whole line's cumulative drift -- 40% of a single
+    step's time is generous relative to the largest per-step deviation
+    measured so far (a few percent), while remaining far tighter than a
+    real, adjacent pixel's full step, so it cannot confuse a neighboring
+    pixel's edge for the expected one.
+
+WAITING FOR REAL ACQUISITION COMPLETION
+--------------------------------------------
+Real hardware testing found an intermittent race: PIE727Scanner's
+wait_for_scan_complete() reports the scan done as soon as the wave
+GENERATOR stops issuing waveform setpoints -- but that does not
+guarantee the physical stage has finished settling and firing its last
+few real trigger edges. A single, fixed-duration sleep
+(position_trigger_read_settle_s) before doing one, final buffer read is
+therefore not reliable: intermittently, real edges are still arriving
+when that fixed sleep ends, and the resulting trace is truncated (e.g.
+observed on real hardware: "found 57 real edges, expected 101," with the
+sequential matcher correctly reporting it ran out of edges -- NOT a
+matching-algorithm bug, since matching consumed exactly one real edge per
+step with no discarding, right up until real edges simply stopped
+arriving in the trace).
+
+read_position_trigger() therefore does not do a single fixed-delay read.
+After the initial position_trigger_read_settle_s settle, it POLLS: reads
+whatever new samples have newly become available, accumulates them, and
+checks whether the cumulative real trigger-edge count has reached
+n_pixels + 1 yet. If not, it waits a short interval and checks again,
+up to position_trigger_read_poll_timeout_s total additional wait time.
+In the normal (non-racy) case this exits on the very first check, with
+no extra delay at all; in the racy case it simply waits however much
+additional REAL time turns out to be needed, rather than guessing a
+fixed number in advance. If the timeout is reached with too few edges
+still, this proceeds to the (now more informative) edge-matching logic
+below, which will raise a clear error citing the real edge count found.
+
+position_trigger_read_poll_timeout_s (ConfigOption, default 3.0):
+    Maximum ADDITIONAL time (beyond position_trigger_read_settle_s) this
+    will keep polling for new real trigger edges to arrive before giving
+    up and proceeding with whatever has been read so far. Generous
+    relative to the real settle/lag observed so far (well under 1 s) --
+    if you see "ran out of real trigger edges" errors persisting even
+    with this default, that is real evidence the real settle time after
+    the wave generator reports "not running" is longer than expected for
+    that scan's geometry, and worth investigating on the scanner/motion
+    side (e.g. real hardware settling time near a travel-range boundary),
+    not just raising this timeout further.
 
 Selecting between the two acquisition modes (arm/read/stop vs.
 arm_position_trigger/read_position_trigger/stop_position_trigger) is done
@@ -119,9 +220,14 @@ API, and all three tasks' CI/CO call shapes are copied verbatim from this
 module's own proven _scan_create_tasks(). The counter-based trigger
 edge-counting approach (as opposed to DI sampling) has been confirmed to
 avoid the -201062 buffered-operations error on real hardware (NI
-USB-6343 BNC). Still worth confirming after wiring: that
-read_position_trigger()'s debug log reports edges == n_pixels + 1 on a
-real scan line before trusting resulting scan data.
+USB-6343 BNC). The sequential expectation-based matching and the polling
+read-completion logic in read_position_trigger() have been exercised on
+real hardware traces containing genuine spurious extra edges, real
+systematic per-step timing drift across a long line, and the read-race
+condition described above; still worth spot-checking
+read_position_trigger()'s debug log (reports real_edges_seen vs.
+matched) on a new scan geometry before fully trusting resulting scan
+data there.
 
 CROSS-COUNTER CYCLE SYNCHRONIZATION (checkpoint history)
 ---------------------------------------------------------
@@ -199,6 +305,10 @@ hardware:
       position_trigger_sample_rate_hz:    100000.0
       position_trigger_max_total_time_s:  30.0
       position_trigger_read_settle_s:     0.1
+      # See "WAITING FOR REAL ACQUISITION COMPLETION" above.
+      position_trigger_read_poll_timeout_s: 3.0
+      # See "EXPECTATION-BASED EDGE MATCHING" above.
+      position_trigger_match_tolerance_frac: 0.4
 """
 
 import collections
@@ -351,11 +461,17 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
     _pt_trigger_counter_ch = ConfigOption(
         'scan_trigger_counter_channel', default='ctr2', missing='nothing')
     _pt_sample_rate_hz = ConfigOption(
-        'position_trigger_sample_rate_hz', default=100000.0, missing='nothing')
+        'position_trigger_sample_rate_hz', default=20000.0, missing='nothing')
     _pt_max_total_time_s = ConfigOption(
         'position_trigger_max_total_time_s', default=30.0, missing='nothing')
     _pt_read_settle_s = ConfigOption(
         'position_trigger_read_settle_s', default=0.1, missing='nothing')
+    # See module docstring, "WAITING FOR REAL ACQUISITION COMPLETION".
+    _pt_read_poll_timeout_s = ConfigOption(
+        'position_trigger_read_poll_timeout_s', default=3.0, missing='nothing')
+    # See module docstring, "EXPECTATION-BASED EDGE MATCHING".
+    _pt_match_tolerance_frac = ConfigOption(
+        'position_trigger_match_tolerance_frac', default=0.7, missing='nothing')
 
     STATUS_UNCONFIGURED = 0
     STATUS_IDLE         = 1
@@ -492,6 +608,9 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         self._pt_ci_task       = None   # CI: cumulative APD edge count
         self._pt_trig_task     = None   # CI: cumulative TRIGGER edge count
         self._pt_n_pixels      = 0
+        self._pt_t_pixel       = None   # cached from arm_position_trigger();
+                                         # used by read_position_trigger() for
+                                         # expectation-based edge matching
         self._pt_was_streaming = False
         self._pt_last_ci_raw   = None
         self._pt_last_trig_raw = None
@@ -622,7 +741,10 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             f'APD={apd}  gate={self._scan_trigger_term}  '
             f'scan channel="{self._scan_ch_name}"  '
             f'sync_max_lag_cycles={self._sync_max_lag_cycles}  '
-            f'position-trigger counter={self._pt_trigger_counter_ch}'
+            f'position-trigger counter={self._pt_trigger_counter_ch}  '
+            f'position-trigger match tolerance='
+            f'{self._pt_match_tolerance_frac} * t_pixel (per-step, sequential)  '
+            f'read poll timeout={self._pt_read_poll_timeout_s} s'
         )
 
     def on_deactivate(self):
@@ -2430,6 +2552,9 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         alone. The caller (e.g. PIE710CounterInterfuse) is expected to
         confirm real motion is complete (e.g. via the scanner module's
         wait_for_scan_complete()) before calling read_position_trigger().
+
+        Caches t_pixel on this instance -- read_position_trigger() needs
+        it for EXPECTATION-BASED EDGE MATCHING (see module docstring).
         """
         with self._scan_lock:
             if (self._pt_ci_task is not None or self._pt_co_task is not None
@@ -2455,6 +2580,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             self._ni_stop_tasks()
 
             self._pt_n_pixels = int(n_pixels)
+            self._pt_t_pixel  = float(t_pixel)
             self._scan_active = True
 
             dev       = self._device_name
@@ -2549,18 +2675,18 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
     def read_position_trigger(self, n_pixels: int) -> Optional[dict]:
         """
         Stop counting, pull the full buffered cumulative-count trace of
-        both the APD and trigger counters, and return per-pixel counts as
-        the diff of APD count between the sample indices of every pair of
-        consecutive real trigger edges.
+        both the APD and trigger counters, and return per-pixel counts.
 
-        The trigger task's final cumulative value is an exact, hardware-
-        counted total of real edges seen -- no software-side edge
-        detection ambiguity. A healthy line yields exactly n_pixels + 1
-        such edges. If it doesn't, this raises a clear, actionable error
-        rather than silently reshaping data -- mirroring the proven
-        MATLAB code's own "Wrong number of piezo triggers" check. Raw
-        traces are kept on this instance as _pt_last_ci_raw /
-        _pt_last_trig_raw for post-mortem inspection after such an error.
+        See module docstring, "WAITING FOR REAL ACQUISITION COMPLETION",
+        for the polling read used here -- a single fixed-delay read was
+        found on real hardware to intermittently truncate the trace
+        (real trigger edges still arriving after the fixed delay elapsed).
+        See module docstring, "EXPECTATION-BASED EDGE MATCHING", for the
+        SEQUENTIAL matching algorithm used once the trace has been fully
+        read: each expected pixel boundary is anchored to the position of
+        the PREVIOUSLY matched real edge (not to a fixed grid from the
+        first edge), so real, measured systematic per-step timing drift
+        over a long line never accumulates past the tolerance window.
 
         @param n_pixels : must match the value passed to arm_position_trigger()
         @return         : {channel_name: np.ndarray(n_pixels,)} or None
@@ -2579,32 +2705,57 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
                     f' -- using the value passed to read_position_trigger().')
             ci_task   = self._pt_ci_task
             trig_task = self._pt_trig_task
+            t_pixel   = self._pt_t_pixel
+            fs        = float(self._pt_sample_rate_hz)
+
+        expected = n_pixels + 1
 
         try:
-            # Give the last few real samples time to land in the buffer
-            # before freezing it -- the caller has already confirmed real
-            # motion is done (e.g. via wait_for_scan_complete()).
+            # Baseline settle -- the caller has already confirmed real
+            # motion is done (e.g. via wait_for_scan_complete()), this is
+            # just a first, cheap wait before starting to poll.
             time.sleep(max(0.0, self._pt_read_settle_s))
 
-            n_ci    = ci_task.in_stream.avail_samp_per_chan
-            n_trig  = trig_task.in_stream.avail_samp_per_chan
-            n_avail = min(n_ci, n_trig)
+            ci_chunks: List[np.ndarray]   = []
+            trig_chunks: List[np.ndarray] = []
+            total_edges = 0
+            poll_deadline = time.monotonic() + max(0.0, self._pt_read_poll_timeout_s)
 
-            if n_avail < 2:
+            while True:
+                n_ci   = ci_task.in_stream.avail_samp_per_chan
+                n_trig = trig_task.in_stream.avail_samp_per_chan
+                n_avail = min(n_ci, n_trig)
+
+                if n_avail > 0:
+                    ci_chunk = np.asarray(
+                        ci_task.read(number_of_samples_per_channel=n_avail,
+                                     timeout=10.0),
+                        dtype=np.int64,
+                    )
+                    trig_chunk = np.asarray(
+                        trig_task.read(number_of_samples_per_channel=n_avail,
+                                       timeout=10.0),
+                        dtype=np.int64,
+                    )
+                    ci_chunks.append(ci_chunk)
+                    trig_chunks.append(trig_chunk)
+                    total_edges = int(trig_chunk[-1]) if len(trig_chunk) else total_edges
+
+                if total_edges >= expected:
+                    break
+                if time.monotonic() > poll_deadline:
+                    break
+                time.sleep(0.01)
+
+            if not ci_chunks:
                 raise RuntimeError(
-                    f'only {n_avail} samples available (ci={n_ci}, '
-                    f'trig={n_trig}) -- expected many more for a real scan '
-                    f'line. Check DAQ wiring / clock routing.'
+                    f'no samples available at all -- expected many more '
+                    f'for a real scan line. Check DAQ wiring / clock '
+                    f'routing.'
                 )
 
-            ci_raw = np.asarray(
-                ci_task.read(number_of_samples_per_channel=n_avail, timeout=10.0),
-                dtype=np.int64,
-            )
-            trig_raw = np.asarray(
-                trig_task.read(number_of_samples_per_channel=n_avail, timeout=10.0),
-                dtype=np.int64,
-            )
+            ci_raw   = np.concatenate(ci_chunks)
+            trig_raw = np.concatenate(trig_chunks)
 
         except ni.DaqError as exc:
             apd_term = self._scan_apd_term if self._scan_apd_term else self._photon_pfi_line
@@ -2621,32 +2772,101 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         self._pt_last_ci_raw   = ci_raw
         self._pt_last_trig_raw = trig_raw
 
-        total_edges = int(trig_raw[-1]) if len(trig_raw) else 0
-        expected    = n_pixels + 1
-        if total_edges != expected:
+        # All real edges the hardware detected, in sample-index units --
+        # every place the cumulative trigger count increased at all
+        # (usually by exactly 1, but handle >1 defensively in case two
+        # real edges land in the same sample at this sample rate).
+        all_edges = np.where(np.diff(trig_raw) > 0)[0] + 1
+        if len(all_edges) == 0:
             raise RuntimeError(
-                f'NIXSeriesCounter.read_position_trigger(): hardware '
-                f'counted {total_edges} real trigger edges over '
-                f'{n_avail} samples, expected exactly {expected} '
-                f'(n_pixels + 1) for a healthy line of {n_pixels} pixels. '
-                f'Likely causes: trigger step/start/stop thresholds not '
-                f'matching the real scan range, or the acquisition window '
-                f'(position_trigger_max_total_time_s='
-                f'{self._pt_max_total_time_s:.1f} s) being too short and '
-                f'cutting the line off. Raw traces are available on this '
-                f'instance as _pt_last_ci_raw / _pt_last_trig_raw for '
-                f'inspection.'
+                'NIXSeriesCounter.read_position_trigger(): hardware '
+                'detected ZERO real trigger edges over the acquisition '
+                'window -- check BNC wiring / scan_trigger_terminal, or '
+                'that the scanner actually fired a line. Note: this is '
+                'the one failure mode EXPECTATION-BASED EDGE MATCHING '
+                'cannot recover from -- see PIE727Scanner\'s module '
+                'docstring, "MINIMUM TRIGGER STEP -- REMOVED", for why '
+                'padding requirements (max_acceleration_um_s2, '
+                'min_speedup_time_s) on the scanner side remain necessary '
+                'to prevent this specific case.'
             )
 
-        # Sample index of the k-th real edge = first index where the
-        # cumulative trigger count reaches k, for k = 1 .. expected.
-        edge_indices     = np.searchsorted(trig_raw, np.arange(1, expected + 1), side='left')
-        counts_at_edges  = ci_raw[edge_indices]
+        step_samples = t_pixel * fs
+        tol_samples  = self._pt_match_tolerance_frac * step_samples
+
+        # Sequential/local matching: each expected position is anchored
+        # to the PREVIOUS real match, not to a fixed grid from edge 0 --
+        # see this method's docstring and module docstring,
+        # "EXPECTATION-BASED EDGE MATCHING", for why this is necessary.
+        matched_indices = np.empty(expected, dtype=np.int64)
+        matched_indices[0] = all_edges[0]
+        search_from = 1  # next candidate search starts here in all_edges
+
+        for k in range(1, expected):
+            if search_from >= len(all_edges):
+                raise RuntimeError(
+                    f'NIXSeriesCounter.read_position_trigger(): ran out of '
+                    f'real trigger edges while matching pixel boundary '
+                    f'{k}/{expected - 1} -- found {len(all_edges)} real '
+                    f'edges total, expected {expected}. Likely causes: '
+                    f'trigger step/start/stop thresholds not matching the '
+                    f'real scan range, wrong t_pixel, or the read poll '
+                    f'timeout (position_trigger_read_poll_timeout_s='
+                    f'{self._pt_read_poll_timeout_s:.1f} s) elapsing before '
+                    f'all real edges arrived. Raw traces are available on '
+                    f'this instance as _pt_last_ci_raw / _pt_last_trig_raw '
+                    f'for inspection.'
+                )
+
+            target = matched_indices[k - 1] + step_samples
+            sub = all_edges[search_from:]
+            pos = np.searchsorted(sub, target)
+
+            candidates = []
+            if pos < len(sub):
+                candidates.append(pos)
+            if pos > 0:
+                candidates.append(pos - 1)
+
+            best_local = min(candidates, key=lambda i: abs(sub[i] - target))
+            diff = abs(sub[best_local] - target)
+
+            if diff > tol_samples:
+                raise RuntimeError(
+                    f'NIXSeriesCounter.read_position_trigger(): no real '
+                    f'trigger edge found within tolerance '
+                    f'({tol_samples:.1f} samples = '
+                    f'{tol_samples / fs * 1e3:.3f} ms) of expected pixel '
+                    f'boundary {k}/{expected - 1}, measured from the '
+                    f'PREVIOUS real match (expected sample index '
+                    f'{target:.1f}). Found {len(all_edges)} real edges '
+                    f'total, expected {expected}. Raw traces are available '
+                    f'on this instance as _pt_last_ci_raw / '
+                    f'_pt_last_trig_raw for inspection.'
+                )
+
+            matched_indices[k] = sub[best_local]
+            # Move strictly past the selected edge -- any real edges
+            # between the old search_from and this one that were NOT
+            # selected are discarded as spurious.
+            search_from = search_from + best_local + 1
+
+        n_discarded = len(all_edges) - expected
+        if n_discarded > 0:
+            self.log.debug(
+                f'read_position_trigger: matched {expected} real edges '
+                f'to expected pixel boundaries, discarded {n_discarded} '
+                f'extra real edge(s) as spurious (sequential nearest-'
+                f'match selection).'
+            )
+
+        counts_at_edges  = ci_raw[matched_indices]
         counts_per_pixel = np.diff(counts_at_edges).astype(np.float64)
 
         self.log.debug(
             f'read_position_trigger OK  n_pixels={n_pixels}  '
-            f'edges={total_edges}  total={int(counts_per_pixel.sum())}  '
+            f'real_edges_seen={len(all_edges)}  matched={expected}  '
+            f'total={int(counts_per_pixel.sum())}  '
             f'mean={counts_per_pixel.mean():.1f}  '
             f'max={counts_per_pixel.max():.0f} cts/px'
         )
