@@ -40,19 +40,23 @@ retrigger_line() -- a single short command instead of a full
 reconfiguration, substantially reducing dead time between lines. See
 PIE710Scanner.retrigger_line() (and the underlying
 PIE710Controller.retrigger_line()) for the exact mechanism and a caveat
-about the assumption it relies on.
+about the assumption it relies on. This applies to the 'clock' and
+'position_distance' counter_trigger_modes only -- see "Counter trigger
+mode" below for the third, 'point_by_point' mode, which does not use
+continuous ramps or retriggering at all.
 
 Counter trigger mode
 ---------------------
-The counter_trigger_mode ConfigOption selects which pair of methods on the
-connected photon_counter module is called to drive a scan line:
+The counter_trigger_mode ConfigOption selects which trio of methods on the
+connected photon_counter module drives scan acquisition:
 
     'clock' (default):
         counter.arm(n_pixels, t_pixel) / counter.read(n_pixels) /
         counter.stop(). Assumes the scan trigger is a fixed-rate clock --
         this is the ORIGINAL behavior of this interfuse, unchanged, and
         remains the default for any existing config that does not set
-        counter_trigger_mode at all.
+        counter_trigger_mode at all. Uses the scanner's continuous-ramp
+        start_scan()/retrigger_line() mechanism.
 
     'position_distance':
         counter.arm_position_trigger(n_pixels, t_pixel) /
@@ -61,12 +65,35 @@ connected photon_counter module is called to drive a scan line:
         GCS TriggerMode 0, "Position Distance") whose trigger fires once
         per real physical step of motion rather than at a fixed rate --
         see NIXSeriesCounter's module docstring, "POSITION-DISTANCE
-        TRIGGER ACQUISITION MODE" and "EXPECTATION-BASED EDGE MATCHING",
-        for the acquisition model this uses.
+        TRIGGER ACQUISITION MODE" and "EXPECTATION-BASED EDGE MATCHING".
+        Also uses the scanner's continuous-ramp mechanism. Real hardware
+        testing found this mode has a genuine resolution floor (real
+        position noise during continuous motion becomes comparable to a
+        sufficiently fine requested step, at any practical scan speed --
+        see that module's docstring, "REAL HARDWARE LIMIT ON HOW FINE A
+        STEP THIS MODE CAN RESOLVE") -- for scans needing finer
+        resolution than this mode can reliably support, use
+        'point_by_point' below instead.
 
-Both method pairs are expected to exist together on the connected
+    'point_by_point':
+        counter.arm_point_scan() / counter.count_point(t_pixel) [called
+        once per pixel, AFTER moving to that pixel's exact position] /
+        counter.disarm_point_scan(). Does NOT use the scanner's
+        continuous-ramp mechanism at all -- every pixel (fast AND slow
+        axis together, in 2D) is visited by an explicit, individually-
+        commanded move_absolute(..., blocking=True) call, which already
+        waits for the controller's own genuine on-target confirmation
+        (qONT) before this interfuse counts anything. Has no dependency
+        on continuous-motion threshold crossing, and therefore no
+        resolution floor from that source at all -- at the cost of being
+        slower per-pixel than the other two modes (pays a real move+
+        settle time per point instead of amortizing motion across a
+        whole line). See NIXSeriesCounter's module docstring,
+        "POINT-BY-POINT (STEP-AND-SETTLE) ACQUISITION MODE".
+
+All three method trios are expected to exist together on the connected
 photon_counter module (see ni_x_series_counter.py) -- this option only
-selects which pair this interfuse calls; it does not change what the
+selects which trio this interfuse calls; it does not change what the
 counter module itself supports.
 
 Scan range vs. scanner padding requirements
@@ -79,26 +106,27 @@ absolute-position validation (crosshair moves, optimizer sub-scan widths,
 etc.), completely independent of scanning -- narrowing them broke real,
 non-scanning positioning near the edges of true travel range.
 
-Instead, if the connected scanner module exposes get_scan_safe_range(axis)
-(e.g. PIE727Scanner, whose automatic speed-up/slow-down padding requires
+Instead, for the 'clock' and 'position_distance' counter_trigger_modes,
+if the connected scanner module exposes get_scan_safe_range(axis) (e.g.
+PIE727Scanner, whose automatic speed-up/slow-down padding requires
 overshoot room beyond [start, stop] that can exceed real travel limits
 near the edges of a large scan -- see that module's docstring, "SCAN
 RANGE VS. PADDING"), configure_scan() below clamps the REQUESTED scan
 range into that safe sub-range before actually running the scan, logging
 a clear warning explaining what was requested vs. what will actually be
-scanned. The resulting ScanData is built from the CLAMPED range, so the
-image's axis labels/extent always honestly reflect what was actually
-scanned -- never a silent mismatch between displayed axes and real
-motion.
+scanned.
 
-This range narrowing is NOT related to, and is not made unnecessary by,
-NIXSeriesCounter's expectation-based edge matching (see that module's
-docstring) -- padding protects against a scan producing ZERO real trigger
-edges at all (following error at motion start with no ramp), a failure
-that no downstream edge-matching logic can recover from, since there is
-no real signal to match against in that case. See PIE727Scanner's module
-docstring, "MINIMUM TRIGGER STEP -- REMOVED", for the direct statement of
-why these are independent concerns.
+For 'point_by_point' mode, this clamping is SKIPPED entirely -- that mode
+never uses a continuous ramp or any padding, so there is nothing to clamp
+for; the full, real travel range (already enforced by
+move_absolute()'s own np.clip()) applies directly, exactly like
+PIE710Scanner's original, unmodified behavior.
+
+This clamping is duck-typed via getattr() -- PIE710Scanner (E-710 rig)
+has no padding concept and therefore no get_scan_safe_range() method, so
+this clamping is skipped entirely for that scanner too, exactly
+reproducing this interfuse's original, unmodified behavior for that
+setup.
 
 Clamping behavior (see _clamp_axis_range()):
     - if the requested window already fits inside the safe range: no
@@ -111,11 +139,6 @@ Clamping behavior (see _clamp_axis_range()):
       even a window starting at the very edge of the safe range cannot be
       wider than the safe range itself).
 
-This is duck-typed via getattr() -- PIE710Scanner (E-710 rig) has no
-padding concept and therefore no get_scan_safe_range() method, so this
-clamping is skipped entirely for that scanner, exactly reproducing this
-interfuse's original, unmodified behavior for that setup.
-
 YAML configuration:
     interfuse:
         confocal_scanner:
@@ -124,7 +147,7 @@ YAML configuration:
                 scanner:        'my_pi_scanner'
                 photon_counter: 'my_counter'
             options:
-                counter_trigger_mode: 'clock'   # or 'position_distance'
+                counter_trigger_mode: 'clock'   # 'clock', 'position_distance', or 'point_by_point'
 """
 
 import threading
@@ -176,14 +199,15 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
     Counter trigger mode:
         See module docstring, "Counter trigger mode". Controlled by the
-        counter_trigger_mode ConfigOption ('clock' default, or
-        'position_distance'); dispatched via _counter_arm() /
-        _counter_read() / _counter_stop() below.
+        counter_trigger_mode ConfigOption ('clock' default,
+        'position_distance', or 'point_by_point'); dispatched in
+        _scan_worker() below.
 
     Scan range clamping:
         See module docstring, "Scan range vs. scanner padding
-        requirements". Controlled entirely by whether the connected
-        scanner module exposes get_scan_safe_range(); dispatched via
+        requirements". Controlled by whether the connected scanner module
+        exposes get_scan_safe_range() AND whether counter_trigger_mode is
+        'point_by_point' (never clamped in that mode); dispatched via
         _clamp_scan_settings_to_safe_range() below.
     """
 
@@ -212,10 +236,10 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
     def on_activate(self) -> None:
         mode = self._counter_trigger_mode
-        if mode not in ('clock', 'position_distance'):
+        if mode not in ('clock', 'position_distance', 'point_by_point'):
             raise ValueError(
                 f'Invalid counter_trigger_mode "{mode}" -- must be '
-                f'"clock" or "position_distance".'
+                f'"clock", "position_distance", or "point_by_point".'
             )
         self._constraints = self._build_constraints()
         self.log.info(
@@ -247,6 +271,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         counter = self._counter()
         if self._counter_trigger_mode == 'position_distance':
             counter.stop_position_trigger()
+        elif self._counter_trigger_mode == 'point_by_point':
+            counter.disarm_point_scan()
         else:
             counter.stop()
 
@@ -314,16 +340,23 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
     def _clamp_scan_settings_to_safe_range(self, settings: ScanSettings) -> ScanSettings:
         """
-        Returns settings unchanged if the connected scanner has no
-        get_scan_safe_range() method (e.g. PIE710Scanner -- no padding
-        concept, nothing to clamp), or if the requested range already
-        fits inside the safe range for every scanned axis.
+        Returns settings unchanged if:
+          - counter_trigger_mode is 'point_by_point' (no ramp/padding
+            concept at all in that mode -- see module docstring), or
+          - the connected scanner has no get_scan_safe_range() method
+            (e.g. PIE710Scanner -- no padding concept, nothing to
+            clamp), or
+          - the requested range already fits inside the safe range for
+            every scanned axis.
 
         Otherwise returns a NEW ScanSettings with the offending axis/axes'
         range replaced by the clamped window (see _clamp_axis_range()),
         after logging a clear warning per affected axis explaining what
         was requested vs. what will actually be scanned.
         """
+        if self._counter_trigger_mode == 'point_by_point':
+            return settings
+
         scanner = self._scanner()
         getter = getattr(scanner, 'get_scan_safe_range', None)
         if getter is None:
@@ -436,7 +469,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             # Validated against the scanner's REAL, full travel range --
             # see _build_constraints(). A request within true travel
             # limits always passes this, even if it will go on to be
-            # clamped below for padding reasons.
+            # clamped below for padding reasons (skipped entirely in
+            # 'point_by_point' mode).
             self._constraints.check_settings(settings)
 
             supported = {
@@ -450,8 +484,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 )
 
             # See module docstring, "Scan range vs. scanner padding
-            # requirements" -- no-op for scanners without
-            # get_scan_safe_range() (e.g. PIE710Scanner).
+            # requirements" -- no-op for 'point_by_point' mode, and for
+            # scanners without get_scan_safe_range() (e.g. PIE710Scanner).
             settings = self._clamp_scan_settings_to_safe_range(settings)
 
             self._scan_settings = settings
@@ -580,7 +614,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         self._stop_event.set()
         self._scanner().halt_generators()
-        self._counter_stop()   # aborts CO + CI (+ trigger-counter) tasks
+        self._counter_stop()   # aborts scan-mode counter tasks
 
         thread = self._scan_thread
         if thread and thread.is_alive():
@@ -617,30 +651,51 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
     def _scan_worker(self) -> None:
         """
-        Background thread. Dispatches to 1D or 2D handler.
-        finally block ALWAYS unlocks module_state so the logic detects completion.
+        Background thread. Dispatches to the appropriate scan method
+        based on counter_trigger_mode and number of scanned axes.
+        finally block ALWAYS unlocks module_state so the logic detects
+        completion.
         """
         try:
             s       = self._scan_settings
             t_pixel = 1.0 / s.frequency
 
-            if len(s.axes) == 1:
-                self._run_1d_scan(
-                    axis       = s.axes[0],
-                    scan_range = s.range[0],
-                    n_pts      = s.resolution[0],
-                    t_pixel    = t_pixel,
-                )
-            elif len(s.axes) == 2:
-                self._run_2d_scan_line_by_line(
-                    fast_axis  = s.axes[0],
-                    slow_axis  = s.axes[1],
-                    fast_range = s.range[0],
-                    slow_range = s.range[1],
-                    n_fast     = s.resolution[0],
-                    n_slow     = s.resolution[1],
-                    t_pixel    = t_pixel,
-                )
+            if self._counter_trigger_mode == 'point_by_point':
+                if len(s.axes) == 1:
+                    self._run_1d_scan_point_by_point(
+                        axis       = s.axes[0],
+                        scan_range = s.range[0],
+                        n_pts      = s.resolution[0],
+                        t_pixel    = t_pixel,
+                    )
+                elif len(s.axes) == 2:
+                    self._run_2d_scan_point_by_point(
+                        fast_axis  = s.axes[0],
+                        slow_axis  = s.axes[1],
+                        fast_range = s.range[0],
+                        slow_range = s.range[1],
+                        n_fast     = s.resolution[0],
+                        n_slow     = s.resolution[1],
+                        t_pixel    = t_pixel,
+                    )
+            else:
+                if len(s.axes) == 1:
+                    self._run_1d_scan(
+                        axis       = s.axes[0],
+                        scan_range = s.range[0],
+                        n_pts      = s.resolution[0],
+                        t_pixel    = t_pixel,
+                    )
+                elif len(s.axes) == 2:
+                    self._run_2d_scan_line_by_line(
+                        fast_axis  = s.axes[0],
+                        slow_axis  = s.axes[1],
+                        fast_range = s.range[0],
+                        slow_range = s.range[1],
+                        n_fast     = s.resolution[0],
+                        n_slow     = s.resolution[1],
+                        t_pixel    = t_pixel,
+                    )
         except Exception as exc:
             self.log.exception(f'Scan worker unhandled exception: {exc}')
         finally:
@@ -648,7 +703,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 self.module_state.unlock()
 
     # =========================================================================
-    # 1D scan
+    # 1D scan -- ramp-based ('clock' / 'position_distance' modes)
     # =========================================================================
 
     def _run_1d_scan(
@@ -715,7 +770,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         self._scanner().sync_position()
 
     # =========================================================================
-    # 2D scan -- line by line
+    # 2D scan -- line by line, ramp-based ('clock' / 'position_distance' modes)
     # =========================================================================
 
     def _run_2d_scan_line_by_line(
@@ -828,6 +883,117 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             self._write_2d_scan_data(data_accum, channels, t_pixel)
 
         # Final write
+        self._write_2d_scan_data(data_accum, channels, t_pixel)
+        self._scanner().sync_position()
+
+    # =========================================================================
+    # 1D scan -- point-by-point (step-and-settle) mode
+    # =========================================================================
+
+    def _run_1d_scan_point_by_point(
+        self,
+        axis:       str,
+        scan_range: Tuple[float, float],
+        n_pts:      int,
+        t_pixel:    float,
+    ) -> None:
+        """
+        For each pixel: move_absolute(..., blocking=True) [which already
+        waits for real qONT on-target settling] to that pixel's exact
+        position, then count_point(t_pixel) real APD edges. No ramp, no
+        triggering, no padding -- see NIXSeriesCounter's module
+        docstring, "POINT-BY-POINT (STEP-AND-SETTLE) ACQUISITION MODE".
+        """
+        pos_array   = np.linspace(scan_range[0], scan_range[1], n_pts).tolist()
+        current_pos = self._scanner().get_target()
+        channels    = self._scan_settings.channels
+
+        try:
+            self._counter().arm_point_scan()
+        except Exception as exc:
+            self.log.error(f'Counter arm_point_scan failed: {exc}')
+            return
+
+        counts = np.zeros(n_pts, dtype=float)
+        try:
+            for i, val in enumerate(pos_array):
+                if self._stop_event.is_set():
+                    break
+                target = dict(current_pos)
+                target[axis] = val
+                self._scanner().move_absolute(target, blocking=True)
+                try:
+                    counts[i] = self._counter().count_point(t_pixel)
+                except Exception as exc:
+                    self.log.error(f'count_point failed at pixel {i}: {exc}')
+                    counts[i] = 0.0
+        finally:
+            self._counter().disarm_point_scan()
+
+        counts_dict = {ch: counts for ch in channels}
+        self._store_1d(counts_dict=counts_dict, n_pts=n_pts, t_pixel=t_pixel)
+        self._scanner().sync_position()
+
+    # =========================================================================
+    # 2D scan -- point-by-point (step-and-settle) mode
+    # =========================================================================
+
+    def _run_2d_scan_point_by_point(
+        self,
+        fast_axis:  str,
+        slow_axis:  str,
+        fast_range: Tuple[float, float],
+        slow_range: Tuple[float, float],
+        n_fast:     int,
+        n_slow:     int,
+        t_pixel:    float,
+    ) -> None:
+        """
+        For each pixel (both axes together): move_absolute(..., blocking=True)
+        [both axes combined into a single MOV, waiting for real qONT
+        on-target settling] to that exact (fast, slow) position, then
+        count_point(t_pixel) real APD edges. No ramp, no triggering, no
+        padding, no retrigger_line() -- structurally independent of the
+        continuous-ramp mechanism used by the 'clock'/'position_distance'
+        modes. See NIXSeriesCounter's module docstring, "POINT-BY-POINT
+        (STEP-AND-SETTLE) ACQUISITION MODE".
+        """
+        fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
+        slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
+        channels = self._scan_settings.channels
+
+        data_accum = {
+            ch: np.zeros((n_fast, n_slow), dtype=float) for ch in channels
+        }
+
+        try:
+            self._counter().arm_point_scan()
+        except Exception as exc:
+            self.log.error(f'Counter arm_point_scan failed: {exc}')
+            return
+
+        try:
+            for i_slow, slow_val in enumerate(slow_pos):
+                if self._stop_event.is_set():
+                    break
+                for i_fast, fast_val in enumerate(fast_pos):
+                    if self._stop_event.is_set():
+                        break
+                    target = {fast_axis: fast_val, slow_axis: slow_val}
+                    self._scanner().move_absolute(target, blocking=True)
+                    try:
+                        count = self._counter().count_point(t_pixel)
+                    except Exception as exc:
+                        self.log.error(
+                            f'count_point failed at '
+                            f'(fast={i_fast}, slow={i_slow}): {exc}')
+                        count = 0.0
+                    for ch in channels:
+                        data_accum[ch][i_fast, i_slow] = count
+                self._write_2d_scan_data(data_accum, channels, t_pixel)
+        finally:
+            self._counter().disarm_point_scan()
+
         self._write_2d_scan_data(data_accum, channels, t_pixel)
         self._scanner().sync_position()
 
