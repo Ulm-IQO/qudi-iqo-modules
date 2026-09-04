@@ -60,12 +60,6 @@ redeclared below with missing='nothing' -- silencing that noise
 explicitly, rather than leaving it as an unexplained wall of irrelevant
 warnings on every activation.
 
-If you would rather fix this at the root -- by loosening
-PIE710CounterInterfuse's own connector declaration instead of subclassing
-here -- that is a legitimate alternative; it just requires reviewing that
-file's actual connector declaration and every call site using it, which
-has not been done here.
-
 ------------------------------------------------------------------------
 
 OVERVIEW
@@ -86,11 +80,49 @@ provides:
      'sum_rate_all_hz', 'sum_rate_gated_hz', and 'sum_digital_hz' -- see
      "SUM CHANNELS" below.
 
-  3. Scanning-counter protocol (channel_names, channel_units, arm, read,
-     stop) -- used by PIE710CounterInterfuse's counter connector. Reports
-     only ONE channel: the elementwise sum of every connected counter's
-     raw per-pixel counts (confirmed requirement -- individual per-APD
-     scan channels are not needed for this setup).
+  3. Scanning-counter protocol -- used by PIE710CounterInterfuse's
+     counter connector. Fans out to whichever trio the caller uses (see
+     "SCANNING TRIGGER MODES" below), summing every connected counter's
+     raw per-pixel counts into ONE reported channel. All three trios are
+     implemented here, unconditionally, mirroring NIXSeriesCounter's own
+     design -- this module has no notion of "current mode" either; the
+     caller decides which trio to call.
+
+------------------------------------------------------------------------
+
+SCANNING TRIGGER MODES
+
+Mirrors NIXSeriesCounter's own three mutually-exclusive scan trios (see
+that module's docstring for the full acquisition details of each) -- this
+interfuse simply fans each one out to every connected sub-counter and
+combines the result:
+
+  'clock'             : arm() / read() / stop()
+                        Summed per-pixel across all sub-counters.
+
+  'position_distance' : arm_position_trigger() / read_position_trigger()
+                        / stop_position_trigger()
+                        Summed per-pixel across all sub-counters.
+                        read_position_trigger() runs every sub-counter's
+                        read in its own thread (each one polls/blocks
+                        independently), so combined latency is that of
+                        the SLOWEST sub-counter, not their sum.
+
+  'point_by_point'    : arm_point_scan() / count_point(duration_s) /
+                        disarm_point_scan()
+                        count_point() MUST run every sub-counter's own
+                        count_point() call CONCURRENTLY (via threads) --
+                        each sub-counter's count_point() internally does
+                        its own start -> sleep(duration_s) -> read ->
+                        stop, so calling them one after another would
+                        have each card count over a DIFFERENT real time
+                        window instead of the same one, silently
+                        producing an uncorrelated sum. Threaded exactly
+                        like read()/read_position_trigger() above.
+
+The caller (e.g. PIE710CounterInterfuse) picks which trio to call --
+this module does not read or care about counter_trigger_mode itself; all
+three trios are always available, on every connected sub-counter.
 
 ------------------------------------------------------------------------
 
@@ -101,10 +133,7 @@ Matching NIXSeriesCounter's own default behavior exactly
 interfuse's default active-channel set is EVERY channel of EVERY
 connected counter (all built-in rate channels, all configured digital
 sources, all configured analog sources), plus all three derived sum
-channels. An earlier version of this interfuse incorrectly defaulted to
-only the two built-in rate channels, silently dropping any configured
-digital_sources/analog_sources from the default view -- that bug is fixed
-here.
+channels.
 
 ------------------------------------------------------------------------
 
@@ -132,9 +161,7 @@ public constraints.channel_units property: any channel reporting unit
 (rate_all_hz, rate_gated_hz) is treated as a digital source channel. This
 avoids reaching into any sub-counter's private attributes.
 
-Analog (voltage) channels are deliberately NOT summed across counters --
-see the original combination-rules discussion for why a cross-card sum of
-arbitrary analog signals is not generally physically meaningful.
+Analog (voltage) channels are deliberately NOT summed across counters.
 
 ------------------------------------------------------------------------
 
@@ -202,6 +229,10 @@ class NICounterStackInterfuse(NIXSeriesCounter):
 
     None of NIXSeriesCounter's own hardware logic is ever executed on an
     instance of this class -- every method below is a full override.
+
+    Implements all three scanning trigger-mode trios (see module
+    docstring, "SCANNING TRIGGER MODES") by fanning each one out to
+    every connected sub-counter and summing the per-pixel result.
     """
 
     counter1 = Connector(interface=NIXSeriesCounter, optional=True)
@@ -239,6 +270,13 @@ class NICounterStackInterfuse(NIXSeriesCounter):
     _scan_apd_term         = ConfigOption('scan_apd_terminal',    None,   missing='nothing')
     _scan_ch_name          = ConfigOption('scan_channel_name',    'APD1', missing='nothing')
     _scan_rw_timeout       = ConfigOption('scan_read_timeout',    30.0,   missing='nothing')
+    _sync_max_lag_cycles    = ConfigOption('sync_max_lag_cycles', 2000,   missing='nothing')
+    _pt_trigger_counter_ch  = ConfigOption('scan_trigger_counter_channel', 'ctr2', missing='nothing')
+    _pt_sample_rate_hz      = ConfigOption('position_trigger_sample_rate_hz', 100000.0, missing='nothing')
+    _pt_max_total_time_s    = ConfigOption('position_trigger_max_total_time_s', 30.0, missing='nothing')
+    _pt_read_settle_s       = ConfigOption('position_trigger_read_settle_s', 0.1, missing='nothing')
+    _pt_read_poll_timeout_s = ConfigOption('position_trigger_read_poll_timeout_s', 3.0, missing='nothing')
+    _pt_match_tolerance_frac = ConfigOption('position_trigger_match_tolerance_frac', 0.4, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -327,6 +365,107 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         except Exception as exc:
             self.log.warning(f'NICounterStackInterfuse: stop_stream() warning during deactivation: {exc}')
         self.stop()
+        self.stop_position_trigger()
+        self.disarm_point_scan()
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Generic fan-out helpers, shared by all three scanning trios
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def _fan_out_arm(self, method_name, rollback_method_name, *args, **kwargs):
+        """ Calls counter.<method_name>(*args, **kwargs) on every
+        connected sub-counter, in order. On failure, calls
+        counter.<rollback_method_name>() on every counter armed so far,
+        then re-raises. Shared by arm()/arm_position_trigger()/
+        arm_point_scan().
+        """
+        armed = []
+        try:
+            for counter in self._counters:
+                getattr(counter, method_name)(*args, **kwargs)
+                armed.append(counter)
+        except Exception:
+            self.log.error(
+                f'NICounterStackInterfuse: {method_name}() failed on '
+                f'counter index {len(armed)} of {len(self._counters)}. '
+                f'Rolling back {len(armed)} already-armed counter(s).'
+            )
+            for counter in armed:
+                try:
+                    getattr(counter, rollback_method_name)()
+                except Exception as exc:
+                    self.log.warning(
+                        f'NICounterStackInterfuse: error while rolling '
+                        f'back an already-armed counter: {exc}'
+                    )
+            raise
+
+    def _fan_out_stop(self, method_name):
+        """ Calls counter.<method_name>() on every connected sub-counter.
+        Never raises -- logs a warning per failing counter. Shared by
+        stop()/stop_position_trigger()/disarm_point_scan().
+        """
+        for i, counter in enumerate(self._counters):
+            try:
+                getattr(counter, method_name)()
+            except Exception as exc:
+                self.log.warning(
+                    f'NICounterStackInterfuse: {method_name}() warning on '
+                    f'counter index {i}: {exc}'
+                )
+
+    def _fan_out_parallel(self, method_name, *args, **kwargs):
+        """ Calls counter.<method_name>(*args, **kwargs) on every
+        connected sub-counter CONCURRENTLY, in its own thread, and waits
+        for all to finish. Required whenever the call blocks for a real
+        amount of time on hardware (read/count) -- running sequentially
+        would either add up latencies (read) or count over
+        non-overlapping time windows (count_point), see module docstring,
+        "SCANNING TRIGGER MODES".
+
+        Returns a list of per-counter results (None on that counter's
+        failure), and a parallel list of exceptions (None on success).
+        """
+        results = [None] * len(self._counters)
+        errors  = [None] * len(self._counters)
+
+        def _call_one(index, counter):
+            try:
+                results[index] = getattr(counter, method_name)(*args, **kwargs)
+            except Exception as exc:
+                errors[index] = exc
+
+        threads = [
+            threading.Thread(target=_call_one, args=(i, counter), daemon=True)
+            for i, counter in enumerate(self._counters)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        return results, errors
+
+    def _sum_pixel_dicts(self, results, n_pixels, method_name):
+        """ Sums a list of {channel_name: np.ndarray(n_pixels,)} dicts
+        (one per sub-counter) into a single {sum_channel_name: array}
+        dict. Returns None (logging an error) if any result is missing.
+        Shared by read()/read_position_trigger().
+        """
+        for i, result in enumerate(results):
+            if result is None:
+                self.log.error(
+                    f'NICounterStackInterfuse: {method_name}() returned '
+                    f'None from counter index {i}. Aborting combined read.'
+                )
+                return None
+
+        total = np.zeros(n_pixels, dtype=np.float64)
+        for result in results:
+            for array in result.values():
+                total += array
+
+        return {self._sum_channel_name: total}
 
     # ══════════════════════════════════════════════════════════════════════════
     #  FastCounterInterface
@@ -395,28 +534,7 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         return first
 
     def start_measure(self):
-        started = []
-        try:
-            for counter in self._counters:
-                counter.start_measure()
-                started.append(counter)
-        except Exception:
-            self.log.error(
-                'NICounterStackInterfuse: start_measure() failed on '
-                'counter index {0} of {1}. Rolling back {2} '
-                'already-started counter(s).'.format(
-                    len(started), len(self._counters), len(started)
-                )
-            )
-            for counter in started:
-                try:
-                    counter.stop_measure()
-                except Exception as exc:
-                    self.log.warning(
-                        f'NICounterStackInterfuse: error while rolling '
-                        f'back an already-started counter: {exc}'
-                    )
-            raise
+        self._fan_out_arm('start_measure', 'stop_measure')
 
     def stop_measure(self):
         """ Stops every connected counter's fast-counter role, logging a
@@ -438,48 +556,13 @@ class NICounterStackInterfuse(NIXSeriesCounter):
             'elapsed_sweeps per counter: {0}.'.format(final_sweeps)
         )
 
-        for i, counter in enumerate(self._counters):
-            try:
-                counter.stop_measure()
-            except Exception as exc:
-                self.log.warning(
-                    f'NICounterStackInterfuse: stop_measure() warning on '
-                    f'counter index {i}: {exc}'
-                )
+        self._fan_out_stop('stop_measure')
 
     def pause_measure(self):
-        for i, counter in enumerate(self._counters):
-            try:
-                counter.pause_measure()
-            except Exception as exc:
-                self.log.warning(
-                    f'NICounterStackInterfuse: pause_measure() warning on '
-                    f'counter index {i}: {exc}'
-                )
+        self._fan_out_stop('pause_measure')
 
     def continue_measure(self):
-        continued = []
-        try:
-            for counter in self._counters:
-                counter.continue_measure()
-                continued.append(counter)
-        except Exception:
-            self.log.error(
-                'NICounterStackInterfuse: continue_measure() failed on '
-                'counter index {0} of {1}. Rolling back {2} '
-                'already-continued counter(s).'.format(
-                    len(continued), len(self._counters), len(continued)
-                )
-            )
-            for counter in continued:
-                try:
-                    counter.pause_measure()
-                except Exception as exc:
-                    self.log.warning(
-                        f'NICounterStackInterfuse: error while rolling '
-                        f'back an already-continued counter: {exc}'
-                    )
-            raise
+        self._fan_out_arm('continue_measure', 'pause_measure')
 
     def is_gated(self):
         values = [c.is_gated() for c in self._counters]
@@ -509,12 +592,12 @@ class NICounterStackInterfuse(NIXSeriesCounter):
 
         Any counter that is currently ahead has its excess, not-yet-matched
         cycles held back (via get_data_trace_up_to()) rather than summed
-        in immediately -- see module docstring, "STRICT CROSS-COUNTER
-        CYCLE SYNCHRONIZATION". This makes the combined result always
-        internally consistent: every contribution corresponds to the same
-        (or, due to checkpoint rounding, a slightly smaller) number of
-        completed cycles, never a mix of "5165 cycles from counter A" and
-        "5162 cycles from counter B" summed together as if they matched.
+        in immediately -- see module docstring, "CROSS-COUNTER CYCLE
+        SYNCHRONIZATION" in NIXSeriesCounter. This makes the combined
+        result always internally consistent: every contribution
+        corresponds to the same (or, due to checkpoint rounding, a
+        slightly smaller) number of completed cycles, never a mix of
+        differing per-counter cycle counts summed together as if matched.
         """
         # First pass: full, untruncated reads, to discover each counter's
         # true current elapsed_sweeps. For any counter already at (or
@@ -773,38 +856,10 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         self._channel_buffer_size = int(channel_buffer_size)
 
     def start_stream(self):
-        started = []
-        try:
-            for counter in self._counters:
-                counter.start_stream()
-                started.append(counter)
-        except Exception:
-            self.log.error(
-                'NICounterStackInterfuse: start_stream() failed on '
-                'counter index {0} of {1}. Rolling back {2} '
-                'already-started counter(s).'.format(
-                    len(started), len(self._counters), len(started)
-                )
-            )
-            for counter in started:
-                try:
-                    counter.stop_stream()
-                except Exception as exc:
-                    self.log.warning(
-                        f'NICounterStackInterfuse: error while rolling '
-                        f'back an already-started stream: {exc}'
-                    )
-            raise
+        self._fan_out_arm('start_stream', 'stop_stream')
 
     def stop_stream(self):
-        for i, counter in enumerate(self._counters):
-            try:
-                counter.stop_stream()
-            except Exception as exc:
-                self.log.warning(
-                    f'NICounterStackInterfuse: stop_stream() warning on '
-                    f'counter index {i}: {exc}'
-                )
+        self._fan_out_stop('stop_stream')
 
     def read_data_into_buffer(self, data_buffer, samples_per_channel,
                               timestamp_buffer=None):
@@ -868,7 +923,7 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         return buf, None
 
     # ══════════════════════════════════════════════════════════════════════════
-    #  Scanning-counter protocol
+    #  Scanning-counter protocol -- 'clock' trigger mode
     # ══════════════════════════════════════════════════════════════════════════
 
     @property
@@ -880,46 +935,10 @@ class NICounterStackInterfuse(NIXSeriesCounter):
         return {self._sum_channel_name: 'counts/s'}
 
     def arm(self, n_pixels, t_pixel):
-        armed = []
-        try:
-            for counter in self._counters:
-                counter.arm(n_pixels, t_pixel)
-                armed.append(counter)
-        except Exception:
-            self.log.error(
-                'NICounterStackInterfuse: arm() failed on counter index '
-                '{0} of {1}. Rolling back {2} already-armed counter(s).'
-                ''.format(len(armed), len(self._counters), len(armed))
-            )
-            for counter in armed:
-                try:
-                    counter.stop()
-                except Exception as exc:
-                    self.log.warning(
-                        f'NICounterStackInterfuse: error while rolling '
-                        f'back an already-armed counter: {exc}'
-                    )
-            raise
+        self._fan_out_arm('arm', 'stop', n_pixels, t_pixel)
 
     def read(self, n_pixels):
-        results = [None] * len(self._counters)
-        errors  = [None] * len(self._counters)
-
-        def _read_one(index, counter):
-            try:
-                results[index] = counter.read(n_pixels)
-            except Exception as exc:
-                errors[index] = exc
-
-        threads = [
-            threading.Thread(target=_read_one, args=(i, counter), daemon=True)
-            for i, counter in enumerate(self._counters)
-        ]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
+        results, errors = self._fan_out_parallel('read', n_pixels)
         for i, exc in enumerate(errors):
             if exc is not None:
                 self.log.error(
@@ -927,27 +946,75 @@ class NICounterStackInterfuse(NIXSeriesCounter):
                     f'index {i}: {exc}'
                 )
                 return None
-        for i, result in enumerate(results):
-            if result is None:
-                self.log.error(
-                    f'NICounterStackInterfuse: read() returned None from '
-                    f'counter index {i}. Aborting combined read.'
-                )
-                return None
-
-        total = np.zeros(n_pixels, dtype=np.float64)
-        for result in results:
-            for array in result.values():
-                total += array
-
-        return {self._sum_channel_name: total}
+        return self._sum_pixel_dicts(results, n_pixels, 'read')
 
     def stop(self):
-        for i, counter in enumerate(self._counters):
-            try:
-                counter.stop()
-            except Exception as exc:
-                self.log.warning(
-                    f'NICounterStackInterfuse: stop() warning on counter '
-                    f'index {i}: {exc}'
+        self._fan_out_stop('stop')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Scanning-counter protocol -- 'position_distance' trigger mode
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def arm_position_trigger(self, n_pixels, t_pixel):
+        """ Fans out to every connected sub-counter's own
+        arm_position_trigger(). See NIXSeriesCounter's module docstring
+        for the acquisition model this drives on each card.
+        """
+        self._fan_out_arm(
+            'arm_position_trigger', 'stop_position_trigger',
+            n_pixels=n_pixels, t_pixel=t_pixel,
+        )
+
+    def read_position_trigger(self, n_pixels):
+        """ Runs every sub-counter's own read_position_trigger()
+        CONCURRENTLY (each one polls/blocks independently until its own
+        edge-matching completes), then sums the per-pixel result. See
+        module docstring, "SCANNING TRIGGER MODES".
+        """
+        results, errors = self._fan_out_parallel(
+            'read_position_trigger', n_pixels)
+        for i, exc in enumerate(errors):
+            if exc is not None:
+                self.log.error(
+                    f'NICounterStackInterfuse: read_position_trigger() '
+                    f'failed on counter index {i}: {exc}'
                 )
+                return None
+        return self._sum_pixel_dicts(results, n_pixels, 'read_position_trigger')
+
+    def stop_position_trigger(self):
+        self._fan_out_stop('stop_position_trigger')
+
+    # ══════════════════════════════════════════════════════════════════════════
+    #  Scanning-counter protocol -- 'point_by_point' trigger mode
+    # ══════════════════════════════════════════════════════════════════════════
+
+    def arm_point_scan(self):
+        """ Fans out to every connected sub-counter's own
+        arm_point_scan(). Call ONCE before a sequence of count_point()
+        calls, exactly like the single-counter case.
+        """
+        self._fan_out_arm('arm_point_scan', 'disarm_point_scan')
+
+    def count_point(self, duration_s):
+        """ Runs every sub-counter's own count_point(duration_s)
+        CONCURRENTLY, so all cards count over the SAME real time window,
+        then sums the resulting per-pixel counts. Running these
+        sequentially instead would have each card count over a
+        DIFFERENT window -- see module docstring, "SCANNING TRIGGER
+        MODES" -- so this must stay threaded.
+
+        @param duration_s : real time to count for, in seconds
+        @return           : summed real edge count across all counters
+        """
+        results, errors = self._fan_out_parallel('count_point', duration_s)
+        for i, exc in enumerate(errors):
+            if exc is not None:
+                self.log.error(
+                    f'NICounterStackInterfuse: count_point() failed on '
+                    f'counter index {i}: {exc}. Treating as 0 counts.'
+                )
+        return float(sum(r for r in results if r is not None))
+
+    def disarm_point_scan(self):
+        self._fan_out_stop('disarm_point_scan')
