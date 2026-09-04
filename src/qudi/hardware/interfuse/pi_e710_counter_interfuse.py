@@ -9,6 +9,11 @@ Combines:
 
 Together they satisfy the complete Qudi ScanningProbeInterface.
 
+Units: all scanner-facing positions/ranges here are SI meters (Qudi's
+native unit) -- this interfuse does not assume any particular scale.
+Scanner hardware modules are responsible for converting to/from their
+own native units (e.g. micrometers) at their own public boundary.
+
 Scan execution
 --------------
 1D scan:
@@ -67,13 +72,9 @@ connected photon_counter module drives scan acquisition:
         see NIXSeriesCounter's module docstring, "POSITION-DISTANCE
         TRIGGER ACQUISITION MODE" and "EXPECTATION-BASED EDGE MATCHING".
         Also uses the scanner's continuous-ramp mechanism. Real hardware
-        testing found this mode has a genuine resolution floor (real
-        position noise during continuous motion becomes comparable to a
-        sufficiently fine requested step, at any practical scan speed --
-        see that module's docstring, "REAL HARDWARE LIMIT ON HOW FINE A
-        STEP THIS MODE CAN RESOLVE") -- for scans needing finer
-        resolution than this mode can reliably support, use
-        'point_by_point' below instead.
+        testing found this mode has a genuine resolution floor -- for
+        scans needing finer resolution than this mode can reliably
+        support, use 'point_by_point' below instead.
 
     'point_by_point':
         counter.arm_point_scan() / counter.count_point(t_pixel) [called
@@ -83,50 +84,39 @@ connected photon_counter module drives scan acquisition:
         axis together, in 2D) is visited by an explicit, individually-
         commanded move_absolute(..., blocking=True) call, which already
         waits for the controller's own genuine on-target confirmation
-        (qONT) before this interfuse counts anything. Has no dependency
-        on continuous-motion threshold crossing, and therefore no
-        resolution floor from that source at all -- at the cost of being
-        slower per-pixel than the other two modes (pays a real move+
-        settle time per point instead of amortizing motion across a
-        whole line). See NIXSeriesCounter's module docstring,
-        "POINT-BY-POINT (STEP-AND-SETTLE) ACQUISITION MODE".
+        before this interfuse counts anything. No resolution floor from
+        continuous-motion triggering, at the cost of being slower
+        per-pixel than the other two modes. See NIXSeriesCounter's
+        module docstring, "POINT-BY-POINT (STEP-AND-SETTLE) ACQUISITION
+        MODE".
 
 All three method trios are expected to exist together on the connected
-photon_counter module (see ni_x_series_counter.py) -- this option only
-selects which trio this interfuse calls; it does not change what the
-counter module itself supports.
+photon_counter module -- this option only selects which trio this
+interfuse calls; it does not change what the counter module supports.
 
 Scan range vs. scanner padding requirements
 ----------------------------------------------
 axis.position bounds (built in _build_constraints() below) are always the
-scanner's REAL, full travel range -- narrowing them to anything less was
-tried and reverted, because qudi's scanning_probe_logic and
-scanning_optimize_logic both reuse axis.position bounds for ordinary
-absolute-position validation (crosshair moves, optimizer sub-scan widths,
-etc.), completely independent of scanning -- narrowing them broke real,
-non-scanning positioning near the edges of true travel range.
+scanner's REAL, full travel range -- narrowing them was tried and
+reverted, because qudi's scanning_probe_logic and scanning_optimize_logic
+both reuse axis.position bounds for ordinary absolute-position
+validation, independent of scanning.
 
 Instead, for the 'clock' and 'position_distance' counter_trigger_modes,
 if the connected scanner module exposes get_scan_safe_range(axis) (e.g.
 PIE727Scanner, whose automatic speed-up/slow-down padding requires
 overshoot room beyond [start, stop] that can exceed real travel limits
-near the edges of a large scan -- see that module's docstring, "SCAN
-RANGE VS. PADDING"), configure_scan() below clamps the REQUESTED scan
-range into that safe sub-range before actually running the scan, logging
-a clear warning explaining what was requested vs. what will actually be
-scanned.
+near the edges of a large scan), configure_scan() below clamps the
+REQUESTED scan range into that safe sub-range before actually running
+the scan, logging a clear warning explaining what was requested vs. what
+will actually be scanned.
 
 For 'point_by_point' mode, this clamping is SKIPPED entirely -- that mode
-never uses a continuous ramp or any padding, so there is nothing to clamp
-for; the full, real travel range (already enforced by
-move_absolute()'s own np.clip()) applies directly, exactly like
-PIE710Scanner's original, unmodified behavior.
+never uses a continuous ramp or any padding.
 
-This clamping is duck-typed via getattr() -- PIE710Scanner (E-710 rig)
-has no padding concept and therefore no get_scan_safe_range() method, so
-this clamping is skipped entirely for that scanner too, exactly
-reproducing this interfuse's original, unmodified behavior for that
-setup.
+This clamping is duck-typed via getattr() -- scanners with no padding
+concept (e.g. PIE710Scanner) have no get_scan_safe_range() method, so
+clamping is skipped for them too.
 
 Clamping behavior (see _clamp_axis_range()):
     - if the requested window already fits inside the safe range: no
@@ -135,9 +125,7 @@ Clamping behavior (see _clamp_axis_range()):
       window itself is positioned partly/fully outside it: the window is
       SHIFTED into the safe range, preserving the requested width exactly.
     - if the requested window's WIDTH itself is wider than the safe
-      range: it is clipped down to the full safe range (unavoidable --
-      even a window starting at the very edge of the safe range cannot be
-      wider than the safe range itself).
+      range: it is clipped down to the full safe range.
 
 YAML configuration:
     interfuse:
@@ -168,8 +156,6 @@ from qudi.interface.scanning_probe_interface import (
     ScanningProbeInterface,
 )
 
-# from qudi.hardware.pi_e710_scanning_probe import PIE710ScannerInterface
-
 
 class PIE710CounterInterfuse(ScanningProbeInterface):
     """
@@ -191,6 +177,11 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     Back scan:
         Accepted so logic validation passes.
         Always returns NaN -- PI gate only active on forward sweep.
+
+    Units: all axis ranges/positions exchanged with Qudi (constraints,
+    move_absolute, scan settings, etc.) are meters -- see module
+    docstring. Scanner hardware modules handle any unit conversion of
+    their own internally.
 
     Scan state tracking:
         Uses Qudi module_state ('locked' / 'idle').
@@ -277,13 +268,14 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             counter.stop()
 
     # =========================================================================
-    # Constraints -- always the scanner's REAL, full travel range.
+    # Constraints -- always the scanner's REAL, full travel range (meters).
     # See module docstring, "Scan range vs. scanner padding requirements",
     # for why this is intentional and must not be narrowed here.
     # =========================================================================
 
     def _build_constraints(self) -> ScanConstraints:
-        """Build ScanConstraints from scanner travel limits and counter channels."""
+        """Build ScanConstraints from scanner travel limits (meters) and
+        counter channels."""
         scanner = self._scanner()
         counter = self._counter()
 
@@ -297,15 +289,24 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         )
 
         def _make_axis(name: str, lo: float, hi: float) -> ScannerAxis:
-            span = float(hi - lo)
+            lo, hi = float(lo), float(hi)
+            span = hi - lo
+            # Step bounds/default scale with the axis' own span, so this
+            # works regardless of the scanner's real travel magnitude
+            # (meters here) -- fixed absolute literals (e.g. 0.1, 1e-3)
+            # only made sense back when ranges were in micrometers.
+            step_max     = span if span > 0 else 1.0
+            step_min     = step_max * 1e-6
+            step_default = step_max / 1000.0
             return ScannerAxis(
                 name=name,
-                unit='um',
+                unit='m',
                 position=ScalarConstraint(
-                    default=round((lo + hi) / 2.0, 3),
-                    bounds=(float(lo), float(hi)),
+                    default=(lo + hi) / 2.0,
+                    bounds=(lo, hi),
                 ),
-                step=ScalarConstraint(default=0.1, bounds=(1e-3, span)),
+                step=ScalarConstraint(
+                    default=step_default, bounds=(step_min, step_max)),
                 resolution=ScalarConstraint(
                     default=100, bounds=(2, 2000), enforce_int=True),
                 frequency=ScalarConstraint(
@@ -335,24 +336,21 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
     # =========================================================================
     # Scan range clamping -- see module docstring, "Scan range vs. scanner
-    # padding requirements"
+    # padding requirements". All values here are meters; displayed as
+    # micrometers in the log message only, for readability.
     # =========================================================================
 
     def _clamp_scan_settings_to_safe_range(self, settings: ScanSettings) -> ScanSettings:
         """
         Returns settings unchanged if:
-          - counter_trigger_mode is 'point_by_point' (no ramp/padding
-            concept at all in that mode -- see module docstring), or
-          - the connected scanner has no get_scan_safe_range() method
-            (e.g. PIE710Scanner -- no padding concept, nothing to
-            clamp), or
+          - counter_trigger_mode is 'point_by_point', or
+          - the connected scanner has no get_scan_safe_range() method, or
           - the requested range already fits inside the safe range for
             every scanned axis.
 
         Otherwise returns a NEW ScanSettings with the offending axis/axes'
         range replaced by the clamped window (see _clamp_axis_range()),
-        after logging a clear warning per affected axis explaining what
-        was requested vs. what will actually be scanned.
+        after logging a clear warning per affected axis.
         """
         if self._counter_trigger_mode == 'point_by_point':
             return settings
@@ -374,16 +372,18 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 float(req_lo), float(req_hi), safe_lo, safe_hi)
             if changed:
                 clamped_any = True
+                # Displayed in um for readability; all values stay meters
+                # internally (new_range below).
                 self.log.warning(
                     f'Requested scan range for axis "{axis_name}" '
-                    f'[{req_lo:.4f}, {req_hi:.4f}] um exceeds the range '
-                    f'this scanner can safely trigger across with its '
-                    f'current padding configuration for this scan\'s '
+                    f'[{req_lo*1e6:.4f}, {req_hi*1e6:.4f}] um exceeds the '
+                    f'range this scanner can safely trigger across with '
+                    f'its current padding configuration for this scan\'s '
                     f'resolution/frequency '
-                    f'[{safe_lo:.4f}, {safe_hi:.4f}] um. Scanning '
-                    f'[{lo:.4f}, {hi:.4f}] um instead -- the resulting '
-                    f'image reflects this actual, real scanned range, '
-                    f'not the originally requested one.'
+                    f'[{safe_lo*1e6:.4f}, {safe_hi*1e6:.4f}] um. Scanning '
+                    f'[{lo*1e6:.4f}, {hi*1e6:.4f}] um instead -- the '
+                    f'resulting image reflects this actual, real scanned '
+                    f'range, not the originally requested one.'
                 )
             new_range.append((lo, hi))
 
@@ -411,9 +411,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
           fully outside [safe_lo, safe_hi]: SHIFTED into bounds, exact
           width preserved.
         - If its WIDTH itself exceeds (safe_hi - safe_lo): clipped down
-          to the full safe range (unavoidable -- even a window starting
-          at the very edge of the safe range cannot be wider than the
-          safe range itself).
+          to the full safe range.
         """
         span      = req_hi - req_lo
         safe_span = safe_hi - safe_lo
@@ -512,15 +510,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         The back scan's RANGE is always forced to exactly match the
         forward scan's range (self._scan_settings.range) -- never
-        independently re-clamped here. check_back_scan_settings() enforces
-        "back scan range == forward scan range" as a hard, unconditional
-        rule (unrelated to any scanner padding concerns), so any
-        independent clamping of the back scan's range risks landing on a
-        very slightly different window than the forward scan's already-
-        clamped one (e.g. different edge-case rounding), which would then
-        fail that very check. Only resolution/frequency are genuinely
-        independent of the forward scan and are taken from the given
-        settings as-is.
+        independently re-clamped here, since check_back_scan_settings()
+        requires an exact match. Only resolution/frequency are
+        genuinely independent and taken from the given settings as-is.
         """
         with self._lock:
             if self.module_state() == 'locked':
@@ -790,14 +782,12 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         before each sweep. After each line, ScanData is updated for live
         GUI display.
 
-        Only the FIRST line calls start_scan(), which performs the full
-        move + settle + segment/trigger/flag configuration on the PI
-        controller. Every subsequent line calls the lightweight
-        retrigger_line() instead, which re-fires the same already-configured
-        segment program with a single short command -- safe because the
-        fast-axis range, dwell time, and trigger mode are identical across
-        all lines of this scan. See PIE710Scanner.retrigger_line() for the
-        exact mechanism and its usage requirements.
+        Only the FIRST line calls start_scan() (full move + settle +
+        segment/trigger configuration). Every subsequent line calls the
+        lightweight retrigger_line() instead, re-firing the same
+        already-configured segment program -- safe since fast-axis
+        range, dwell time, and trigger mode are identical across all
+        lines of this scan.
         """
         fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
         slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
@@ -899,10 +889,9 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     ) -> None:
         """
         For each pixel: move_absolute(..., blocking=True) [which already
-        waits for real qONT on-target settling] to that pixel's exact
+        waits for real on-target settling] to that pixel's exact
         position, then count_point(t_pixel) real APD edges. No ramp, no
-        triggering, no padding -- see NIXSeriesCounter's module
-        docstring, "POINT-BY-POINT (STEP-AND-SETTLE) ACQUISITION MODE".
+        triggering, no padding.
         """
         pos_array   = np.linspace(scan_range[0], scan_range[1], n_pts).tolist()
         current_pos = self._scanner().get_target()
@@ -950,13 +939,10 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
     ) -> None:
         """
         For each pixel (both axes together): move_absolute(..., blocking=True)
-        [both axes combined into a single MOV, waiting for real qONT
-        on-target settling] to that exact (fast, slow) position, then
-        count_point(t_pixel) real APD edges. No ramp, no triggering, no
-        padding, no retrigger_line() -- structurally independent of the
-        continuous-ramp mechanism used by the 'clock'/'position_distance'
-        modes. See NIXSeriesCounter's module docstring, "POINT-BY-POINT
-        (STEP-AND-SETTLE) ACQUISITION MODE".
+        to that exact (fast, slow) position, then count_point(t_pixel)
+        real APD edges. No ramp, no triggering, no padding, no
+        retrigger_line() -- structurally independent of the
+        continuous-ramp mechanism used by the other two modes.
         """
         fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
         slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
