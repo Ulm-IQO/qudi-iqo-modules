@@ -1595,6 +1595,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             DAQmx_Val_Rising, DAQmx_Val_ContSamps,
             ctypes.c_uint64(buffer_size)))
         self._check(self._nidaq.DAQmxSetArmStartTrigType(h, DAQmx_Val_DigEdge))
+        self._check(self._nidaq.DAQmxSetDigEdgeArmStartTrigSrc(h, start_trigger))
         self._check(self._nidaq.DAQmxSetDigEdgeArmStartTrigEdge(
             h, DAQmx_Val_Rising))
         return h
