@@ -127,6 +127,57 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                     )        
                 return delay_gate_element
 
+    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel):
+        """
+        Given a PulseBlock with its "real" elements already appended, measure
+        its EXACT sample count via analyze_block_ensemble() (same rounding
+        logic the sampler itself uses), then append an idle pad element
+        (state = on/off, as specified) so the block's total length is both
+        >= the pulse generator's minimum waveform length AND an exact
+        multiple of its granularity step.
+
+        This prevents SequenceGeneratorLogic.sample_pulse_block_ensemble()
+        from later silently appending its OWN idle_extension block to fix
+        granularity -- which forces ALL digital channels LOW (including any
+        channel that must stay continuously HIGH, e.g. a PB "always on"
+        channel) and whose length isn't known until AFTER sampling, making
+        any duty-cycle calculation done ahead of time wrong.
+
+        @return (float, float): (pad_length_s added, final total length_s of
+                                the block including the pad)
+        """
+        self.save_block(block)
+        temp_ensemble = PulseBlockEnsemble(name='__tmp_granularity_check__', rotating_frame=False)
+        temp_ensemble.append((block.name, 0))
+
+        info = self.analyze_block_ensemble(temp_ensemble)
+        nominal_samples = int(info['number_of_samples'])
+
+        sample_rate  = self.pulse_generator_settings['sample_rate']
+        min_samples  = int(self.pulse_generator_constraints.waveform_length.min)
+        step_samples = int(self.pulse_generator_constraints.waveform_length.step)
+
+        target_samples = max(nominal_samples, min_samples)
+        remainder = target_samples % step_samples
+        if remainder != 0:
+            target_samples += step_samples - remainder
+        pad_samples = target_samples - nominal_samples
+
+        pad_length_s = 0.0
+        if pad_samples > 0:
+            pad_length_s = pad_samples / sample_rate
+            if on:
+                pad_element = self._get_pulser_on_idle_element(
+                    length=pad_length_s, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                pad_element = self._get_pulser_off_idle_element(
+                    length=pad_length_s, increment=0, always_on_channel=always_on_channel)
+            block.append(pad_element)
+            self.save_block(block)
+
+        total_length_s = target_samples / sample_rate
+        return pad_length_s, total_length_s
     
     ################################################################################################
     # Pulsed Sequences                                
@@ -356,27 +407,250 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     #     created_sequences.append(rabi_sequence)
     #     return created_blocks, created_ensembles, created_sequences
 
+    # def generate_bd_pulsed_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9,
+    #                     num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
+    #                     duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
+    #     """
+    #     Sequence-mode Rabi: only a handful of SHORT waveforms are ever
+    #     uploaded to the AWG (trigger, falling, rising, readout, optional
+    #     duty-cycle correction, plus one small MW element per tau point).
+    #     The long ramps (rising_time/falling_time) and the readout block are
+    #     uploaded ONCE and reused across all tau points via sequence steps --
+    #     this avoids exhausting AWG waveform memory, which happens if every
+    #     tau point's full falling+mw+rising+laser+delay+wait content is
+    #     uploaded as its own large unique waveform (as in the single-segment
+    #     waveform-mode version of this method).
+
+    #     Only the MW element genuinely varies per point (its length is tau
+    #     itself), so it is the only thing uploaded once per point. Since tau
+    #     can be shorter than the AWG's minimum waveform length, a FIXED idle
+    #     pad (same length for every point) is prepended to every MW element
+    #     so that even the shortest tau clears the minimum -- this does not
+    #     disturb the initial state or introduce any tau-dependent timing
+    #     offset, since the pad is identical and fixed for all points.
+    #     """
+    #     created_blocks = list()
+    #     created_ensembles = list()
+    #     created_sequences = list()
+
+    #     tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+    #     # ---- shared elements, each uploaded exactly ONCE as its own small
+    #     # waveform, then reused across many sequence steps via repetitions.
+    #     # AWG memory cost: one copy of each, regardless of num_of_points. ----
+    #     falling_element = self._get_pulser_off_idle_element(
+    #         length=falling_time, increment=0, always_on_channel=always_on_channel)
+    #     rising_element = self._get_pulser_on_idle_element(
+    #         length=rising_time, increment=0,
+    #         always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+    #     waiting_element = self._get_pulser_on_idle_element(
+    #         length=self.wait_time, increment=0,
+    #         always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+    #     laser_element = self._get_pulser_on_laser_gate_element(
+    #         length=self.laser_length, increment=0,
+    #         always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+    #     delay_element = self._get_pulser_on_delay_gate_element(
+    #         always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+    #     # ---- duty-cycle correction: expressed as repetitions of a SHORT
+    #     # base idle element instead of one giant unique waveform. ----
+    #     t_delay = delay_element.init_length_s
+    #     T_on_per_rep = rising_time + self.laser_length + t_delay + self.wait_time
+    #     total_on = num_of_points * T_on_per_rep
+
+    #     tau_sum = tau_array.sum()
+    #     total_off = num_of_points * falling_time + tau_sum
+
+    #     total_all = total_on + total_off
+    #     p_on = total_on / total_all
+
+    #     # correction_on: True -> pulser-on idle needed, False -> pulser-off idle
+    #     # needed, None -> duty_cycle already matches, no correction needed.
+    #     correction_on = None
+    #     correction_length = 0.0
+    #     if duty_cycle > p_on:
+    #         L = (duty_cycle * total_all - total_on) / (1.0 - duty_cycle)
+    #         if L > 0:
+    #             correction_on = True
+    #             correction_length = L
+    #     elif duty_cycle < p_on:
+    #         L = total_on / duty_cycle - total_all
+    #         if L > 0:
+    #             correction_on = False
+    #             correction_length = L
+
+    #     # ---- MW elements are lower-bounded by the AWG's minimum waveform
+    #     # length. Since tau_array is increasing, tau_start is the shortest.
+    #     # Compute one FIXED pad length, added in front of EVERY mw element,
+    #     # sized so that even tau_start clears both the minimum length and
+    #     # the granularity (step) requirement. All longer tau values then
+    #     # automatically clear the minimum too. ----
+    #     sample_rate    = self.pulse_generator_settings['sample_rate']
+    #     awg_min_samples = self.pulse_generator_constraints.waveform_length.min
+    #     awg_step_samples = self.pulse_generator_constraints.waveform_length.step
+
+    #     shortest_tau_samples = int(round(tau_start * sample_rate))
+    #     total_min_samples = max(awg_min_samples, shortest_tau_samples)
+    #     # round up to the next valid granularity step
+    #     total_min_samples = int(np.ceil(total_min_samples / awg_step_samples) * awg_step_samples)
+
+    #     pad_samples = max(0, total_min_samples - shortest_tau_samples)
+    #     pad_length = pad_samples / sample_rate
+
+    #     mw_pad_element = None
+    #     if pad_length > 0:
+    #         mw_pad_element = self._get_pulser_off_idle_element(
+    #             length=pad_length, increment=0, always_on_channel=always_on_channel)
+
+    #     # =========================================================================
+    #     # BLOCK AND ENSEMBLE CREATION
+    #     # =========================================================================
+
+    #     # ── 1. Trigger ensemble (sequence step 1, TWAIT=ON set by interfuse) ─────
+    #     sync_element = self._get_sync_element()
+
+    #     trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+    #     trigger_block.append(sync_element)
+    #     created_blocks.append(trigger_block)
+
+    #     trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+    #     trigger_ensemble.append((trigger_block.name, 0))
+    #     created_ensembles.append(trigger_ensemble)
+
+    #     # ── 2. Shared "ramp down" ensemble, reused every point ────────────────
+    #     falling_block = PulseBlock(name='{0}_falling'.format(name))
+    #     falling_block.append(falling_element)
+    #     created_blocks.append(falling_block)
+
+    #     falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+    #     falling_ensemble.append((falling_block.name, 0))
+    #     created_ensembles.append(falling_ensemble)
+
+    #     # ── 3. Shared "ramp up" ensemble, reused every point ──────────────────
+    #     rising_block = PulseBlock(name='{0}_rising'.format(name))
+    #     rising_block.append(rising_element)
+    #     created_blocks.append(rising_block)
+
+    #     rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
+    #     rising_ensemble.append((rising_block.name, 0))
+    #     created_ensembles.append(rising_ensemble)
+
+    #     # ── 4. Shared "readout" ensemble (laser + delay + wait), reused every point ──
+    #     readout_block = PulseBlock(name='{0}_readout'.format(name))
+    #     readout_block.append(laser_element)
+    #     readout_block.append(delay_element)
+    #     readout_block.append(waiting_element)
+    #     created_blocks.append(readout_block)
+
+    #     readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+    #     readout_ensemble.append((readout_block.name, 0))
+    #     created_ensembles.append(readout_ensemble)
+
+    #     # ── 5. One small unique MW ensemble per tau point, each prefixed with
+    #     # the SAME fixed-length pad so every waveform clears the AWG minimum ──
+    #     mw_ensembles = dict()
+    #     for kk, tau in enumerate(tau_array):
+    #         mw_element = self._get_pulser_off_mw_element(
+    #             length=tau, increment=0,
+    #             amp=self.microwave_amplitude, freq=self.microwave_frequency, phase=0,
+    #             always_on_channel=always_on_channel)
+
+    #         mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+    #         if mw_pad_element is not None:
+    #             mw_block.append(mw_pad_element)   # fixed-length, identical for every point
+    #         mw_block.append(mw_element)
+    #         created_blocks.append(mw_block)
+
+    #         mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
+    #         mw_ensembles[kk].append((mw_block.name, 0))
+    #         created_ensembles.append(mw_ensembles[kk])
+
+    #     # ── 6. Optional duty-cycle correction: small base idle element,
+    #     # looped via repetitions to reach the required total length. ─────────
+    #     correction_ensemble = None
+    #     correction_base_length = None
+    #     if correction_on is not None:
+    #         if correction_on:
+    #             correction_base_length = self.wait_time
+    #             corr_element = self._get_pulser_on_idle_element(
+    #                 length=correction_base_length, increment=0,
+    #                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+    #         else:
+    #             correction_base_length = falling_time
+    #             corr_element = self._get_pulser_off_idle_element(
+    #                 length=correction_base_length, increment=0,
+    #                 always_on_channel=always_on_channel)
+
+    #         correction_block = PulseBlock(name=name + '_duty_corr')
+    #         correction_block.append(corr_element)
+    #         created_blocks.append(correction_block)
+
+    #         correction_ensemble = PulseBlockEnsemble(name=name + '_duty_corr', rotating_frame=False)
+    #         correction_ensemble.append((correction_block.name, 0))
+    #         created_ensembles.append(correction_ensemble)
+
+    #     # =========================================================================
+    #     # SEQUENCE CONSTRUCTION
+    #     # =========================================================================
+
+    #     rabi_sequence = PulseSequence(name=name, rotating_frame=False)
+
+    #     # Step 1: trigger
+    #     rabi_sequence.append(trigger_ensemble.name)
+    #     rabi_sequence[-1].repetitions = 0
+
+    #     # Per tau point: falling -> mw (unique, pre-padded) -> rising -> readout.
+    #     # falling/rising/readout each reuse the SAME already-uploaded waveform.
+    #     for kk, tau in enumerate(tau_array):
+    #         rabi_sequence.append(falling_ensemble.name)
+    #         rabi_sequence[-1].repetitions = 0
+
+    #         rabi_sequence.append(mw_ensembles[kk].name)
+    #         rabi_sequence[-1].repetitions = 0
+
+    #         rabi_sequence.append(rising_ensemble.name)
+    #         rabi_sequence[-1].repetitions = 0
+
+    #         rabi_sequence.append(readout_ensemble.name)
+    #         rabi_sequence[-1].repetitions = 0
+
+    #     # Optional final step: duty-cycle correction, looped via repetitions
+    #     # to reach correction_length. qudi's "repetitions" = additional
+    #     # repeats beyond the first play, so subtract 1 from the ceil'd count.
+    #     if correction_ensemble is not None:
+    #         reps = max(0, int(np.ceil(correction_length / correction_base_length)) - 1)
+    #         rabi_sequence.append(correction_ensemble.name)
+    #         rabi_sequence[-1].repetitions = reps
+
+    #     # After the last step: loop back to the trigger step, wait for next PB trigger
+    #     rabi_sequence[-1].go_to = 1
+
+    #     # ── Finalise ──────────────────────────────────────────────────────────
+    #     rabi_sequence.refresh_parameters()
+
+    #     rabi_sequence.measurement_information['alternating'] = False
+    #     rabi_sequence.measurement_information['laser_ignore_list'] = list()
+    #     rabi_sequence.measurement_information['controlled_variable'] = tau_array
+    #     rabi_sequence.measurement_information['units'] = ('s', '')
+    #     rabi_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
+    #     rabi_sequence.measurement_information['number_of_lasers'] = num_of_points
+    #     rabi_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
+
+    #     created_sequences.append(rabi_sequence)
+    #     return created_blocks, created_ensembles, created_sequences
+
     def generate_bd_pulsed_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9,
                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                         duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
         """
-        Sequence-mode Rabi: only a handful of SHORT waveforms are ever
-        uploaded to the AWG (trigger, falling, rising, readout, optional
-        duty-cycle correction, plus one small MW element per tau point).
-        The long ramps (rising_time/falling_time) and the readout block are
-        uploaded ONCE and reused across all tau points via sequence steps --
-        this avoids exhausting AWG waveform memory, which happens if every
-        tau point's full falling+mw+rising+laser+delay+wait content is
-        uploaded as its own large unique waveform (as in the single-segment
-        waveform-mode version of this method).
-
-        Only the MW element genuinely varies per point (its length is tau
-        itself), so it is the only thing uploaded once per point. Since tau
-        can be shorter than the AWG's minimum waveform length, a FIXED idle
-        pad (same length for every point) is prepended to every MW element
-        so that even the shortest tau clears the minimum -- this does not
-        disturb the initial state or introduce any tau-dependent timing
-        offset, since the pad is identical and fixed for all points.
+        Sequence-mode Rabi. Every block that becomes its own AWG waveform is
+        explicitly padded to satisfy BOTH the AWG's minimum waveform length
+        AND the combined AWG/PB granularity step (constraints.waveform_length
+        .min / .step), measured precisely via analyze_block_ensemble(). This
+        guarantees SequenceGeneratorLogic never needs to silently append its
+        own idle_extension block afterward -- which would force ALL digital
+        channels LOW (breaking any "always on" channel) and whose length
+        can't be predicted ahead of time for duty-cycle accounting.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -384,9 +658,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         tau_array = tau_start + np.arange(num_of_points) * tau_step
 
-        # ---- shared elements, each uploaded exactly ONCE as its own small
-        # waveform, then reused across many sequence steps via repetitions.
-        # AWG memory cost: one copy of each, regardless of num_of_points. ----
+        # ── Shared elements ─────────────────────────────────────────────────
         falling_element = self._get_pulser_off_idle_element(
             length=falling_time, increment=0, always_on_channel=always_on_channel)
         rising_element = self._get_pulser_on_idle_element(
@@ -401,20 +673,88 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         delay_element = self._get_pulser_on_delay_gate_element(
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
 
-        # ---- duty-cycle correction: expressed as repetitions of a SHORT
-        # base idle element instead of one giant unique waveform. ----
-        t_delay = delay_element.init_length_s
-        T_on_per_rep = rising_time + self.laser_length + t_delay + self.wait_time
-        total_on = num_of_points * T_on_per_rep
+        # =========================================================================
+        # BLOCK AND ENSEMBLE CREATION -- each padded to granularity immediately
+        # =========================================================================
 
-        tau_sum = tau_array.sum()
-        total_off = num_of_points * falling_time + tau_sum
+        # ── 1. Trigger ──────────────────────────────────────────────────────
+        sync_element = self._get_sync_element()
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(sync_element)
+        # ASSUMPTION: trigger channel(s) are idle/LOW again by the end of the
+        # sync pulse -- pad matches "off". Verify against _get_sync_element().
+        _, trigger_length_s = self._pad_ensemble_to_granularity(
+            trigger_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(trigger_block)
+
+        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        # ── 2. Falling (shared, off) ────────────────────────────────────────
+        falling_block = PulseBlock(name='{0}_falling'.format(name))
+        falling_block.append(falling_element)
+        _, falling_length_s = self._pad_ensemble_to_granularity(
+            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(falling_block)
+
+        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+        falling_ensemble.append((falling_block.name, 0))
+        created_ensembles.append(falling_ensemble)
+
+        # ── 3. Rising (shared, on) ──────────────────────────────────────────
+        rising_block = PulseBlock(name='{0}_rising'.format(name))
+        rising_block.append(rising_element)
+        _, rising_length_s = self._pad_ensemble_to_granularity(
+            rising_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(rising_block)
+
+        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
+        rising_ensemble.append((rising_block.name, 0))
+        created_ensembles.append(rising_ensemble)
+
+        # ── 4. Readout (shared, on) ─────────────────────────────────────────
+        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block.append(laser_element)
+        readout_block.append(delay_element)
+        readout_block.append(waiting_element)
+        _, readout_length_s = self._pad_ensemble_to_granularity(
+            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(readout_block)
+
+        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble.append((readout_block.name, 0))
+        created_ensembles.append(readout_ensemble)
+
+        # ── 5. One MW ensemble per tau (off), each padded individually ──────
+        mw_ensembles = dict()
+        mw_length_total_s = 0.0
+        for kk, tau in enumerate(tau_array):
+            mw_element = self._get_pulser_off_mw_element(
+                length=tau, increment=0,
+                amp=self.microwave_amplitude, freq=self.microwave_frequency, phase=0,
+                always_on_channel=always_on_channel)
+
+            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+            mw_block.append(mw_element)
+            _, mw_length_s = self._pad_ensemble_to_granularity(
+                mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            mw_length_total_s += mw_length_s
+            created_blocks.append(mw_block)
+
+            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
+            mw_ensembles[kk].append((mw_block.name, 0))
+            created_ensembles.append(mw_ensembles[kk])
+
+        # =========================================================================
+        # Duty-cycle math -- using MEASURED (post-padding) lengths throughout
+        # =========================================================================
+        total_on  = num_of_points * (rising_length_s + readout_length_s)
+        total_off = num_of_points * falling_length_s + mw_length_total_s + trigger_length_s
 
         total_all = total_on + total_off
         p_on = total_on / total_all
 
-        # correction_on: True -> pulser-on idle needed, False -> pulser-off idle
-        # needed, None -> duty_cycle already matches, no correction needed.
         correction_on = None
         correction_length = 0.0
         if duty_cycle > p_on:
@@ -428,113 +768,27 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 correction_on = False
                 correction_length = L
 
-        # ---- MW elements are lower-bounded by the AWG's minimum waveform
-        # length. Since tau_array is increasing, tau_start is the shortest.
-        # Compute one FIXED pad length, added in front of EVERY mw element,
-        # sized so that even tau_start clears both the minimum length and
-        # the granularity (step) requirement. All longer tau values then
-        # automatically clear the minimum too. ----
-        sample_rate    = self.pulse_generator_settings['sample_rate']
-        awg_min_samples = self.pulse_generator_constraints.waveform_length.min
-        awg_step_samples = self.pulse_generator_constraints.waveform_length.step
-
-        shortest_tau_samples = int(round(tau_start * sample_rate))
-        total_min_samples = max(awg_min_samples, shortest_tau_samples)
-        # round up to the next valid granularity step
-        total_min_samples = int(np.ceil(total_min_samples / awg_step_samples) * awg_step_samples)
-
-        pad_samples = max(0, total_min_samples - shortest_tau_samples)
-        pad_length = pad_samples / sample_rate
-
-        mw_pad_element = None
-        if pad_length > 0:
-            mw_pad_element = self._get_pulser_off_idle_element(
-                length=pad_length, increment=0, always_on_channel=always_on_channel)
-
-        # =========================================================================
-        # BLOCK AND ENSEMBLE CREATION
-        # =========================================================================
-
-        # ── 1. Trigger ensemble (sequence step 1, TWAIT=ON set by interfuse) ─────
-        sync_element = self._get_sync_element()
-
-        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
-        trigger_block.append(sync_element)
-        created_blocks.append(trigger_block)
-
-        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
-        trigger_ensemble.append((trigger_block.name, 0))
-        created_ensembles.append(trigger_ensemble)
-
-        # ── 2. Shared "ramp down" ensemble, reused every point ────────────────
-        falling_block = PulseBlock(name='{0}_falling'.format(name))
-        falling_block.append(falling_element)
-        created_blocks.append(falling_block)
-
-        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
-        falling_ensemble.append((falling_block.name, 0))
-        created_ensembles.append(falling_ensemble)
-
-        # ── 3. Shared "ramp up" ensemble, reused every point ──────────────────
-        rising_block = PulseBlock(name='{0}_rising'.format(name))
-        rising_block.append(rising_element)
-        created_blocks.append(rising_block)
-
-        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
-        rising_ensemble.append((rising_block.name, 0))
-        created_ensembles.append(rising_ensemble)
-
-        # ── 4. Shared "readout" ensemble (laser + delay + wait), reused every point ──
-        readout_block = PulseBlock(name='{0}_readout'.format(name))
-        readout_block.append(laser_element)
-        readout_block.append(delay_element)
-        readout_block.append(waiting_element)
-        created_blocks.append(readout_block)
-
-        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
-        readout_ensemble.append((readout_block.name, 0))
-        created_ensembles.append(readout_ensemble)
-
-        # ── 5. One small unique MW ensemble per tau point, each prefixed with
-        # the SAME fixed-length pad so every waveform clears the AWG minimum ──
-        mw_ensembles = dict()
-        for kk, tau in enumerate(tau_array):
-            mw_element = self._get_pulser_off_mw_element(
-                length=tau, increment=0,
-                amp=self.microwave_amplitude, freq=self.microwave_frequency, phase=0,
-                always_on_channel=always_on_channel)
-
-            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
-            if mw_pad_element is not None:
-                mw_block.append(mw_pad_element)   # fixed-length, identical for every point
-            mw_block.append(mw_element)
-            created_blocks.append(mw_block)
-
-            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
-            mw_ensembles[kk].append((mw_block.name, 0))
-            created_ensembles.append(mw_ensembles[kk])
-
-        # ── 6. Optional duty-cycle correction: small base idle element,
-        # looped via repetitions to reach the required total length. ─────────
+        # ── 6. Optional duty-cycle correction, padded, reps computed from its
+        # ACTUAL (post-pad) base length ──────────────────────────────────────
         correction_ensemble = None
-        correction_base_length = None
+        correction_base_length_actual = None
         if correction_on is not None:
             if correction_on:
-                correction_base_length = self.wait_time
                 corr_element = self._get_pulser_on_idle_element(
-                    length=correction_base_length, increment=0,
+                    length=self.wait_time, increment=0,
                     always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             else:
-                correction_base_length = falling_time
                 corr_element = self._get_pulser_off_idle_element(
-                    length=correction_base_length, increment=0,
-                    always_on_channel=always_on_channel)
+                    length=falling_time, increment=0, always_on_channel=always_on_channel)
 
-            correction_block = PulseBlock(name=name + '_duty_corr')
+            correction_block = PulseBlock(name=name + '_duty_correction')
             correction_block.append(corr_element)
+            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
+                correction_block, on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             created_blocks.append(correction_block)
 
-            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_corr', rotating_frame=False)
+            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
             correction_ensemble.append((correction_block.name, 0))
             created_ensembles.append(correction_ensemble)
 
@@ -544,12 +798,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         rabi_sequence = PulseSequence(name=name, rotating_frame=False)
 
-        # Step 1: trigger
         rabi_sequence.append(trigger_ensemble.name)
         rabi_sequence[-1].repetitions = 0
 
-        # Per tau point: falling -> mw (unique, pre-padded) -> rising -> readout.
-        # falling/rising/readout each reuse the SAME already-uploaded waveform.
         for kk, tau in enumerate(tau_array):
             rabi_sequence.append(falling_ensemble.name)
             rabi_sequence[-1].repetitions = 0
@@ -563,18 +814,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             rabi_sequence.append(readout_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
-        # Optional final step: duty-cycle correction, looped via repetitions
-        # to reach correction_length. qudi's "repetitions" = additional
-        # repeats beyond the first play, so subtract 1 from the ceil'd count.
         if correction_ensemble is not None:
-            reps = max(0, int(np.ceil(correction_length / correction_base_length)) - 1)
+            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
             rabi_sequence.append(correction_ensemble.name)
             rabi_sequence[-1].repetitions = reps
 
-        # After the last step: loop back to the trigger step, wait for next PB trigger
         rabi_sequence[-1].go_to = 1
 
-        # ── Finalise ──────────────────────────────────────────────────────────
         rabi_sequence.refresh_parameters()
 
         rabi_sequence.measurement_information['alternating'] = False
