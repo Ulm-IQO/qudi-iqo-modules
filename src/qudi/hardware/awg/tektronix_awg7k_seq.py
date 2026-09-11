@@ -62,6 +62,11 @@ class AWG7k(PulserInterface):
             # trigger_level: 0.5       # detection threshold in Volts
             # trigger_slope: 'POS'     # 'POS' rising edge  |  'NEG' falling edge
             # trigger_impedance: '50OHM'  # '50OHM'  |  '1KOHM'
+
+            clear_device_before_upload: False  # if True, wipe all waveforms
+            # and sequences from AWG memory before uploading a new
+            # waveform/sequence batch (once per upload batch, re-armed after
+            # load_waveform()/load_sequence()).
     """
 
     # config options
@@ -78,6 +83,7 @@ class AWG7k(PulserInterface):
     _trigger_level = ConfigOption(name='trigger_level', default=0.5, missing='nothing')
     _trigger_slope = ConfigOption(name='trigger_slope', default='POS', missing='nothing')
     _trigger_impedance = ConfigOption(name='trigger_impedance', default='50OHM', missing='nothing')
+    _clear_device_before_upload = ConfigOption(name='clear_device_before_upload', default=False, missing='nothing')
 
     # The AWG7000 series has no SCPI query to list or identify sequences
     # (unlike waveforms, which support WLIS:NAME?/WLIS:SIZE? -- a genuine
@@ -99,6 +105,7 @@ class AWG7k(PulserInterface):
             'a_ch1': False,
             'a_ch2': False,
         }
+        self._pending_clear_before_upload = True
         #self._written_sequences = []
         #self._loaded_sequences = []
         self._marker_byte_dict = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03'}
@@ -536,6 +543,10 @@ class AWG7k(PulserInterface):
             )
             mode = 'CONT'
         self.set_mode(mode_map[mode])
+
+        # Re-arm the clear-before-upload flag
+        self._pending_clear_before_upload = True
+
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
@@ -553,6 +564,10 @@ class AWG7k(PulserInterface):
 
         self.set_mode('S')
         self._loaded_sequences = [sequence_name]
+
+        # Re-arm the clear-before-upload flag
+        self._pending_clear_before_upload = True
+
         return self.get_loaded_assets()[0]
 
     def get_loaded_assets(self):
@@ -940,6 +955,19 @@ class AWG7k(PulserInterface):
             self.log.error('No analog samples passed to write_waveform method in awg7k.')
             return -1, waveforms
 
+        # Config option: clear_device_before_upload.
+        # Wipe all waveforms/sequences on the AWG exactly once at the start
+        # of a new upload batch (see _pending_clear_before_upload docstring
+        # in __init__). Gated on is_first_chunk so a chunked upload of a
+        # single large waveform never gets wiped mid-way through.
+        if self._clear_device_before_upload and is_first_chunk and self._pending_clear_before_upload:
+            self.log.info(
+                'clear_device_before_upload enabled: clearing all waveforms '
+                'and sequences on AWG before uploading "{0}".'.format(name)
+            )
+            self.clear_all()
+            self._pending_clear_before_upload = False
+
         if total_number_of_samples < constraints.waveform_length.min:
             self.log.error('Unable to write waveform.\n'
                            'Number of samples to write ({0:d}) is '
@@ -1089,6 +1117,18 @@ class AWG7k(PulserInterface):
                 'Sequencer option not installed.'
             )
             return -1
+
+        # Config option: clear_device_before_upload.
+        # Only fires if no write_waveform() call already cleared the device
+        # for this batch (see _pending_clear_before_upload docstring).
+        if self._clear_device_before_upload and self._pending_clear_before_upload:
+            self.log.info(
+                'clear_device_before_upload enabled: clearing all waveforms '
+                'and sequences on AWG before uploading sequence "{0}".'
+                ''.format(name)
+            )
+            self.clear_all()
+            self._pending_clear_before_upload = False
 
         num_steps = len(sequence_parameter_list)
         max_steps = self.get_constraints().sequence_steps.max
