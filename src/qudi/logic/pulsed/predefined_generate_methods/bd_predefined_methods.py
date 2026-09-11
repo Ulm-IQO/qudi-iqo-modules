@@ -48,6 +48,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    # AWG hardware constraint: a given waveform can only be looped consecutively
+    # via a single sequence step fewer than 2**16 times.
+    _MAX_SEQUENCE_LOOP_COUNT = 2**16 - 1
+
     def _set_channel_high(self, element, channel):
         """Set a single channel (digital or analog) HIGH for the entire duration of `element`."""
         if channel is None:
@@ -63,9 +67,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Accepts either a single channel string OR a list/tuple of channel strings
         and sets ALL of them HIGH for the entire duration of `element`.
-        None or an empty list is a no-op. This lets a single "always_on_channel"
-        argument transparently carry both the classic single always-on channel
-        AND an additional gradient/mode channel that should behave identically.
+        None or an empty list is a no-op.
         """
         if always_on_channel is None:
             return
@@ -102,7 +104,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return delay_gate_element
 
     def _get_pulser_on_mw_laser_gate_element(self, length, increment, amp, freq, phase,
-                                        always_on_channel=None, pulser_channel=None):
+                                            always_on_channel=None, pulser_channel=None):
         """Same idea as _get_pulser_on_laser_gate_element, but for the combined
         mw+laser gate element used by CW ODMR (mw and laser simultaneously HIGH)."""
         mw_laser_element = self._get_mw_laser_gate_element(
@@ -111,7 +113,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_channel_high(mw_laser_element, pulser_channel)
         return mw_laser_element
 
-    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel):
+    def _get_pulser_on_laser_only_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+        """
+        Turns ON just the physical laser channel (self.laser_channel) for `length`
+        seconds, WITHOUT toggling the detector gate channel (unlike
+        _get_pulser_on_laser_gate_element / _get_mw_laser_gate_element, which
+        trigger a counted readout event). Used exclusively for laser warm-up
+        pulses that must NOT be seen by the pulsed-measurement analysis as an
+        additional data point -- so no laser_ignore_list / number_of_lasers
+        bookkeeping is required for it.
+        """
+        warmup_element = self._get_idle_element(length=length, increment=increment)
+        self._set_always_on_channels(warmup_element, always_on_channel)
+        self._set_channel_high(warmup_element, pulser_channel)
+        self._set_channel_high(warmup_element, self.laser_channel)
+        return warmup_element
+
+    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel,
+                                    extra_high_channels=None):
         """
         Given a PulseBlock with its "real" elements already appended, measure
         its EXACT sample count via analyze_block_ensemble() (same rounding
@@ -126,6 +145,17 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         channel that must stay continuously HIGH, e.g. a PB "always on"
         channel) and whose length isn't known until AFTER sampling, making
         any duty-cycle calculation done ahead of time wrong.
+
+        @param extra_high_channels: optional channel string, or list of channel
+            strings, that must ALSO be held HIGH throughout the pad element (in
+            addition to whichever of always_on_channel/pulser_channel apply from
+            `on`). Required whenever the block being padded contains a custom
+            element asserting a channel that _get_pulser_on_idle_element /
+            _get_pulser_off_idle_element don't know about (e.g. self.laser_channel
+            in a laser-only warm-up element) -- otherwise the pad would silently
+            drop that channel for its (possibly very short) duration, creating a
+            spurious high-frequency transition that can violate the pulse
+            generator's minimum instruction length.
 
         @return (float, float): (pad_length_s added, final total length_s of
                                 the block including the pad)
@@ -157,16 +187,81 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             else:
                 pad_element = self._get_pulser_off_idle_element(
                     length=pad_length_s, increment=0, always_on_channel=always_on_channel)
+
+            if extra_high_channels is not None:
+                channels = [extra_high_channels] if isinstance(extra_high_channels, str) else extra_high_channels
+                for ch in channels:
+                    self._set_channel_high(pad_element, ch)
+
             block.append(pad_element)
             self.save_block(block)
 
         total_length_s = target_samples / sample_rate
         return pad_length_s, total_length_s
 
+    def _build_duty_cycle_correction(self, name, correction_length, correction_on,
+                                    always_on_channel, pulser_channel,
+                                    preferred_base_length,
+                                    created_blocks, created_ensembles):
+        """
+        Build a duty-cycle correction PulseBlock/PulseBlockEnsemble whose base
+        element is looped via sequence-step `repetitions` to reach
+        `correction_length` in total (memory-efficient: a single small waveform
+        is uploaded, not one giant unique one).
+
+        If looping `preferred_base_length` enough times to reach
+        correction_length would require more than _MAX_SEQUENCE_LOOP_COUNT
+        consecutive plays -- exceeding the AWG's per-step loop-count limit --
+        the base element's length is instead increased just enough to bring the
+        required loop count back under the limit.
+
+        @return (PulseBlockEnsemble, int): the created correction ensemble, and
+            the `repetitions` value to use for it in the sequence step
+            (i.e. total plays = repetitions + 1).
+        """
+        def _make_block(length):
+            if correction_on:
+                element = self._get_pulser_on_idle_element(
+                    length=length, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                element = self._get_pulser_off_idle_element(
+                    length=length, increment=0, always_on_channel=always_on_channel)
+            block = PulseBlock(name=name + '_duty_correction')
+            block.append(element)
+            _, actual_length_s = self._pad_ensemble_to_granularity(
+                block, on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            return block, actual_length_s
+
+        correction_block, actual_base_length = _make_block(preferred_base_length)
+        n_plays_needed = max(1, int(np.ceil(correction_length / actual_base_length)))
+
+        if n_plays_needed > self._MAX_SEQUENCE_LOOP_COUNT:
+            self.log.warning(
+                'Duty-cycle correction for "{0}" would require {1} loops of a {2:.3e} s '
+                'base element, exceeding the AWG limit of {3}. Lengthening the base '
+                'element instead of the loop count.'.format(
+                    name, n_plays_needed, preferred_base_length, self._MAX_SEQUENCE_LOOP_COUNT))
+            required_base_length = correction_length / self._MAX_SEQUENCE_LOOP_COUNT
+            correction_block, actual_base_length = _make_block(required_base_length)
+            n_plays_needed = max(1, int(np.ceil(correction_length / actual_base_length)))
+            n_plays_needed = min(n_plays_needed, self._MAX_SEQUENCE_LOOP_COUNT)
+
+        created_blocks.append(correction_block)
+
+        correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
+        correction_ensemble.append((correction_block.name, 0))
+        created_ensembles.append(correction_ensemble)
+
+        reps = n_plays_needed - 1
+        return correction_ensemble, reps
+
     def generate_bd_cw_odmr_gradient(self, name='cw_odmr_gradient', freq_start=2.8e9, freq_stop=3e9,
                                     num_of_points=10, mw_amp=0.2, mw_length=1e-6,
                                     always_on_ch='d_ch15', gradient_mode=0, gradient_mode_ch='d_ch6',
-                                    pulser_ch='d_ch3', duty_cycle=0.2, rising_time=100e-9, falling_time=100e-9):
+                                    pulser_ch='d_ch3', duty_cycle=0.2, rising_time=100e-9, falling_time=100e-9,
+                                    laser_warmup_time=100e-6, laser_cooldown=10e-6):
         """
         CW ODMR sequence for combined AWG + PulseBlaster setup, extended with:
 
@@ -186,9 +281,30 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                             once and looped via sequence-step `repetitions` at
                             the very end of the sequence to hit this value as
                             closely as possible, WITHOUT uploading one large
-                            unique correction waveform (which would risk
-                            exhausting AWG waveform memory for long
-                            corrections).
+                            unique correction waveform. If the required loop
+                            count would exceed the AWG's per-step loop-count
+                            limit (_MAX_SEQUENCE_LOOP_COUNT), the base
+                            element's length is automatically increased instead
+                            of exceeding that limit.
+        - laser_warmup_time : length (s) of an extra laser-ON pulse inserted
+                            ONCE, immediately after the trigger step and before
+                            the first real frequency point, but ONLY if a
+                            duty-cycle correction block is being appended at
+                            the end of the sequence (i.e. only if there is a
+                            long idle stretch during which the laser goes dark
+                            every loop). This pulse fires ONLY the physical
+                            laser channel (self.laser_channel) -- it never
+                            toggles the detector gate channel, so it is never
+                            counted as a data point.
+        - laser_cooldown : length (s) of an extra idle period (pulser OFF,
+                            laser implicitly OFF) inserted immediately after
+                            the laser_warmup pulse and before the first real
+                            frequency point, but ONLY if a duty-cycle
+                            correction block (and therefore a warm-up pulse)
+                            exists. Gives the laser time to settle back to its
+                            normal OFF state after the warm-up pulse, rather
+                            than transitioning directly into the first point's
+                            rising ramp.
 
         Per-frequency-point block structure (pulser state noted in brackets):
 
@@ -204,8 +320,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         point's rising ramp. Consecutive points are therefore self-consistent:
         each one starts and ends in the OFF state.
 
-        Every block (trigger, each frequency point, and the duty-cycle
-        correction base element) is individually padded to the pulse
+        Every block (trigger, each frequency point, warm-up, cooldown, and the
+        duty-cycle correction base element) is individually padded to the pulse
         generator's minimum waveform length / granularity step via
         _pad_ensemble_to_granularity(), and the duty-cycle math uses the
         resulting MEASURED lengths -- exactly as in the sequence-mode
@@ -302,7 +418,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # =========================================================================
         # Duty-cycle correction -- small base element, looped via `repetitions`
         # in the sequence step (NOT one giant unique waveform), to avoid
-        # exhausting AWG waveform memory for long corrections.
+        # exhausting AWG waveform memory for long corrections, and automatically
+        # re-derived if the naive loop count would exceed the AWG's per-step
+        # loop-count limit.
         # =========================================================================
         total_all_s = total_on_s + total_off_s
         p_on = total_on_s / total_all_s if total_all_s > 0 else 0.0
@@ -322,32 +440,53 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # else: duty_cycle already matches p_on -> no correction needed
 
         correction_ensemble = None
-        correction_base_length_actual = None
+        correction_reps = 0
         if correction_on is not None:
-            # Base element is short and FIXED (independent of correction_length) --
-            # its actual (post-padding) length is measured once, then the sequence
-            # step simply repeats this one small waveform enough times to reach
-            # correction_length in total. This keeps AWG memory usage constant
-            # regardless of how large correction_length ends up being.
-            if correction_on:
-                corr_element = self._get_pulser_on_idle_element(
-                    length=self.wait_time, increment=0,
-                    always_on_channel=always_on_channels, pulser_channel=pulser_ch)
-            else:
-                corr_element = self._get_pulser_off_idle_element(
-                    length=falling_time, increment=0,
-                    always_on_channel=always_on_channels)
+            preferred_base_length = self.wait_time if correction_on else falling_time
+            correction_ensemble, correction_reps = self._build_duty_cycle_correction(
+                name=name, correction_length=correction_length, correction_on=correction_on,
+                always_on_channel=always_on_channels, pulser_channel=pulser_ch,
+                preferred_base_length=preferred_base_length,
+                created_blocks=created_blocks, created_ensembles=created_ensembles)
 
-            correction_block = PulseBlock(name=name + '_duty_correction')
-            correction_block.append(corr_element)
-            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
-                correction_block, on=correction_on,
+        # =========================================================================
+        # Laser warm-up + cooldown -- ONLY if a duty-cycle correction exists
+        # =========================================================================
+        warmup_ensemble = None
+        cooldown_ensemble = None
+        if correction_ensemble is not None:
+            warmup_element = self._get_pulser_on_laser_only_element(
+                length=laser_warmup_time, increment=0,
                 always_on_channel=always_on_channels, pulser_channel=pulser_ch)
-            created_blocks.append(correction_block)
 
-            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
-            correction_ensemble.append((correction_block.name, 0))
-            created_ensembles.append(correction_ensemble)
+            warmup_block = PulseBlock(name=name + '_laser_warmup')
+            warmup_block.append(warmup_element)
+            self._pad_ensemble_to_granularity(
+                warmup_block, on=True,
+                always_on_channel=always_on_channels, pulser_channel=pulser_ch,
+                extra_high_channels=self.laser_channel)
+            created_blocks.append(warmup_block)
+
+            warmup_ensemble = PulseBlockEnsemble(name=name + '_laser_warmup', rotating_frame=False)
+            warmup_ensemble.append((warmup_block.name, 0))
+            created_ensembles.append(warmup_ensemble)
+
+            # Cooldown: plain OFF idle -- laser_channel is not referenced, so it
+            # simply defaults low, same as falling_element/trigger_block. No
+            # extra_high_channels needed here.
+            cooldown_element = self._get_pulser_off_idle_element(
+                length=laser_cooldown, increment=0, always_on_channel=always_on_channels)
+
+            cooldown_block = PulseBlock(name=name + '_laser_cooldown')
+            cooldown_block.append(cooldown_element)
+            self._pad_ensemble_to_granularity(
+                cooldown_block, on=False,
+                always_on_channel=always_on_channels, pulser_channel=pulser_ch)
+            created_blocks.append(cooldown_block)
+
+            cooldown_ensemble = PulseBlockEnsemble(name=name + '_laser_cooldown', rotating_frame=False)
+            cooldown_ensemble.append((cooldown_block.name, 0))
+            created_ensembles.append(cooldown_ensemble)
 
         # =========================================================================
         # SEQUENCE CONSTRUCTION
@@ -357,17 +496,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         cw_odmr_sequence.append(trigger_ensemble.name)
         cw_odmr_sequence[-1].repetitions = 0
 
+        if warmup_ensemble is not None:
+            cw_odmr_sequence.append(warmup_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+        if cooldown_ensemble is not None:
+            cw_odmr_sequence.append(cooldown_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
         for kk, freq in enumerate(freq_array):
             cw_odmr_sequence.append(cw_odmr_ensembles[kk].name)
             cw_odmr_sequence[-1].repetitions = 0
 
         if correction_ensemble is not None:
-            # `repetitions` = additional repeats beyond the first play, so
-            # subtract 1 from the ceil'd repeat count needed to reach
-            # correction_length using only the small base waveform.
-            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
             cw_odmr_sequence.append(correction_ensemble.name)
-            cw_odmr_sequence[-1].repetitions = reps
+            cw_odmr_sequence[-1].repetitions = correction_reps
 
         cw_odmr_sequence[-1].go_to = 1
 
@@ -386,7 +529,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def generate_bd_pulsed_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9,
                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
-                        duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
+                        duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
+                        laser_warmup_time=100e-6, laser_cooldown=10e-6):
         """
         Sequence-mode Rabi. Every block that becomes its own AWG waveform is
         explicitly padded to satisfy BOTH the AWG's minimum waveform length
@@ -396,6 +540,22 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         own idle_extension block afterward -- which would force ALL digital
         channels LOW (breaking any "always on" channel) and whose length
         can't be predicted ahead of time for duty-cycle accounting.
+
+        The duty-cycle correction is realized as a single small base idle
+        element looped via sequence-step `repetitions`; if the required loop
+        count would exceed the AWG's per-step loop-count limit
+        (_MAX_SEQUENCE_LOOP_COUNT), the base element's length is automatically
+        increased instead (see _build_duty_cycle_correction).
+
+        laser_warmup_time : length (s) of an extra laser-ON pulse inserted ONCE,
+            immediately after the trigger step and before the first tau point,
+            but ONLY if a duty-cycle correction block is being appended. Fires
+            ONLY the physical laser channel (never the gate channel), so it is
+            never counted as a data point.
+        laser_cooldown : length (s) of an extra idle period (pulser OFF, laser
+            implicitly OFF) inserted immediately after laser_warmup_time and
+            before the first tau point, but ONLY if a duty-cycle correction
+            block exists.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -424,6 +584,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # ── 1. Trigger ──────────────────────────────────────────────────────
         sync_element = self._get_sync_element()
+        self._set_always_on_channels(sync_element, always_on_channel)
         trigger_block = PulseBlock(name='{0}_trigger'.format(name))
         trigger_block.append(sync_element)
         # ASSUMPTION: trigger channel(s) are idle/LOW again by the end of the
@@ -514,28 +675,53 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 correction_length = L
 
         # ── 6. Optional duty-cycle correction, padded, reps computed from its
-        # ACTUAL (post-pad) base length ──────────────────────────────────────
+        # ACTUAL (post-pad) base length, and re-derived if the naive loop count
+        # would exceed the AWG's per-step loop-count limit ───────────────────
         correction_ensemble = None
-        correction_base_length_actual = None
+        correction_reps = 0
         if correction_on is not None:
-            if correction_on:
-                corr_element = self._get_pulser_on_idle_element(
-                    length=self.wait_time, increment=0,
-                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            else:
-                corr_element = self._get_pulser_off_idle_element(
-                    length=falling_time, increment=0, always_on_channel=always_on_channel)
+            preferred_base_length = self.wait_time if correction_on else falling_time
+            correction_ensemble, correction_reps = self._build_duty_cycle_correction(
+                name=name, correction_length=correction_length, correction_on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+                preferred_base_length=preferred_base_length,
+                created_blocks=created_blocks, created_ensembles=created_ensembles)
 
-            correction_block = PulseBlock(name=name + '_duty_correction')
-            correction_block.append(corr_element)
-            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
-                correction_block, on=correction_on,
+        # =========================================================================
+        # Laser warm-up + cooldown -- only if a duty-cycle correction exists
+        # =========================================================================
+        warmup_ensemble = None
+        cooldown_ensemble = None
+        if correction_ensemble is not None:
+            warmup_element = self._get_pulser_on_laser_only_element(
+                length=laser_warmup_time, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            created_blocks.append(correction_block)
 
-            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
-            correction_ensemble.append((correction_block.name, 0))
-            created_ensembles.append(correction_ensemble)
+            warmup_block = PulseBlock(name=name + '_laser_warmup')
+            warmup_block.append(warmup_element)
+            self._pad_ensemble_to_granularity(
+                warmup_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+                extra_high_channels=self.laser_channel)
+            created_blocks.append(warmup_block)
+
+            warmup_ensemble = PulseBlockEnsemble(name=name + '_laser_warmup', rotating_frame=False)
+            warmup_ensemble.append((warmup_block.name, 0))
+            created_ensembles.append(warmup_ensemble)
+
+            cooldown_element = self._get_pulser_off_idle_element(
+                length=laser_cooldown, increment=0, always_on_channel=always_on_channel)
+
+            cooldown_block = PulseBlock(name=name + '_laser_cooldown')
+            cooldown_block.append(cooldown_element)
+            self._pad_ensemble_to_granularity(
+                cooldown_block, on=False,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(cooldown_block)
+
+            cooldown_ensemble = PulseBlockEnsemble(name=name + '_laser_cooldown', rotating_frame=False)
+            cooldown_ensemble.append((cooldown_block.name, 0))
+            created_ensembles.append(cooldown_ensemble)
 
         # =========================================================================
         # SEQUENCE CONSTRUCTION
@@ -545,6 +731,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         rabi_sequence.append(trigger_ensemble.name)
         rabi_sequence[-1].repetitions = 0
+
+        if warmup_ensemble is not None:
+            rabi_sequence.append(warmup_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+        if cooldown_ensemble is not None:
+            rabi_sequence.append(cooldown_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
 
         for kk, tau in enumerate(tau_array):
             rabi_sequence.append(falling_ensemble.name)
@@ -560,9 +754,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             rabi_sequence[-1].repetitions = 0
 
         if correction_ensemble is not None:
-            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
             rabi_sequence.append(correction_ensemble.name)
-            rabi_sequence[-1].repetitions = reps
+            rabi_sequence[-1].repetitions = correction_reps
 
         rabi_sequence[-1].go_to = 1
 
@@ -577,79 +770,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         rabi_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
 
         created_sequences.append(rabi_sequence)
-        return created_blocks, created_ensembles, created_sequences
-    
-    ################################################################################################
-    # Non-Pulsed Sequences                                
-    ################################################################################################
-
-    def generate_bd_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
-        """Generates a Rabi pulse block ensemble where the pulse length is varied linearly.
-
-        Parameters
-        ----------
-        name : str
-            Name of the PulseBlockEnsemble to be generated.
-        tau_start : float
-            Length of the first pulse in seconds.
-        tau_step : float
-            Increment of the pulse length in seconds.
-        num_of_points : int
-            Number of tau steps to be generated.
-
-        Returns
-        -------
-        created_blocks : list
-            List of PulseBlock objects created.
-        created_ensembles : list
-            List of PulseBlockEnsemble objects created.
-        created_sequences : list
-            List of PulseSequence objects created.
-        """
-        created_blocks = list()
-        created_ensembles = list()
-        created_sequences = list()
-
-        # get tau array for measurement ticks
-        tau_array = tau_start + np.arange(num_of_points) * tau_step
-
-        # create the laser_mw element
-        mw_element = self._get_mw_element(length=tau_start,
-                                          increment=tau_step,
-                                          amp=self.microwave_amplitude,
-                                          freq=self.microwave_frequency,
-                                          phase=0)
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
-
-        # Create block and append to created_blocks list
-        rabi_block = PulseBlock(name=name)
-        rabi_block.append(mw_element)
-        rabi_block.append(laser_element)
-        rabi_block.append(delay_element)
-        rabi_block.append(waiting_element)
-        created_blocks.append(rabi_block)
-
-        # Create block ensemble
-        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
-        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
-        block_ensemble.append((rabi_block.name, num_of_points - 1))
-
-        # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
-            ensemble=block_ensemble, created_blocks=created_blocks)
-
-        # Append ensemble to created_ensembles list
-        created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
     def generate_bd_pulsedodmr(self, name='pulsedODMR', freq_start=2870.0e6, freq_step=0.2e6, num_of_points=50):
@@ -2135,7 +2255,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             created_ensembles.append(block_ensemble)
             return created_blocks, created_ensembles, created_sequences
 
-    def generate_bd_cw_odmr(self, name='cw_odmr', freq_start=2.8e9, freq_stop=3e9, num_of_points=10, mw_amp=0.2, mw_length=1e-6):
+    def generate_bd_cw_odmr(self, name='cw_odmr', freq_start=2.8e9, freq_stop=3e9, num_of_points=10, mw_amp=0.2, mw_length=1e-6, test_time=1e-3):
             """
             CW ODMR sequence for combined AWG + PulseBlaster setup.
     
@@ -2210,6 +2330,18 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 cw_odmr_ensembles[kk].append((cw_odmr_blocks[kk].name, 0))
                 created_ensembles.append(cw_odmr_ensembles[kk])
 
+            test_block = PulseBlock(name='test')
+            test_element = self._get_idle_element(length=test_time, increment=0)
+            test_block.append(test_element)
+            created_blocks.append(test_block)
+
+            test_ensemble = PulseBlockEnsemble(
+                                name='test',
+                                rotating_frame=False
+                            )
+            test_ensemble.append((test_block.name, 0))
+            created_ensembles.append(test_ensemble)
+            
             # =========================================================================
             # SEQUENCE CONSTRUCTION
             # =========================================================================
@@ -2226,6 +2358,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 # Tau: free evolution for k * tau_start total
                 cw_odmr_sequence.append(cw_odmr_ensembles[kk].name)
                 cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(test_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
 
             # After last readout: return to trigger step and wait for next PB trigger
             cw_odmr_sequence[-1].go_to = 1
