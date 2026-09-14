@@ -177,6 +177,7 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
     # ── Original ConfigOptions ─────────────────────────────────────────────────
     _device_name          = ConfigOption('device_name',          'Dev2',           missing='warn')
+    _reset_device_on_activate_deactivate = ConfigOption('reset_device_on_activate_deactivate', default=True, missing='nothing')
     _photon_pfi_line      = ConfigOption('photon_pfi',           'PFI0',           missing='warn')
     _gate_pfi_line        = ConfigOption('gate_pfi',             'PFI1',           missing='warn')
     _diag_enabled         = ConfigOption('diag_enabled',         True,             missing='warn')
@@ -445,15 +446,23 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
         self._nidaq = self._load_nidaq()
         self._declare_argtypes()
-        try:
-            self._check(self._nidaq.DAQmxResetDevice(self._device))
-        except RuntimeError as e:
-            self._nidaq = None
-            raise RuntimeError(
-                f"on_activate: failed to reset device '{device_name}'. "
-                f"Check USB connection and NI-DAQmx driver installation.\n"
-                f"Original error: {e}"
-            ) from e
+
+        if self._reset_device_on_activate_deactivate:
+            try:
+                self._check(self._nidaq.DAQmxResetDevice(self._device))
+            except RuntimeError as e:
+                self._nidaq = None
+                raise RuntimeError(
+                    f"on_activate: failed to reset device '{device_name}'. "
+                    f"Check USB connection and NI-DAQmx driver installation.\n"
+                    f"Original error: {e}"
+                ) from e
+        else:
+            self.log.info(
+                f'on_activate: reset_device_on_activate_deactivate=False -- '
+                f'skipping DAQmxResetDevice("{device_name}"). Any other module '
+                f'sharing this device will be left untouched.'
+            )
 
         ni_device = ni.system.Device(device_name)
 
@@ -582,11 +591,18 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
 
         self._ni_stop_tasks()
 
-        if self._nidaq is not None:
-            try:
-                self._nidaq.DAQmxResetDevice(self._device)
-            except Exception as e:
-                self.log.warning(f'on_deactivate: device reset warning: {e}')
+        if self._reset_device_on_activate_deactivate:
+            if self._nidaq is not None:
+                try:
+                    self._nidaq.DAQmxResetDevice(self._device)
+                except Exception as e:
+                    self.log.warning(f'on_deactivate: device reset warning: {e}')
+        else:
+            self.log.info(
+                'on_deactivate: reset_device_on_activate_deactivate=False -- '
+                'skipping DAQmxResetDevice.'
+            )
+        
         self._nidaq = None
         self._status = self.STATUS_UNCONFIGURED
 
