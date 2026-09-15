@@ -403,6 +403,17 @@ class BasicPulseExtractor(PulseExtractorBase):
         @return dict: The extracted laser pulses of the timetrace as well as the indices for rising
                       and falling flanks.
         """
+        number_of_lasers = self.measurement_settings.get('number_of_lasers')
+        is_dummy_trace = self.sampling_information.get('_fast_counter_dummy_raw_trace', False)
+        if (is_dummy_trace and isinstance(number_of_lasers, int) and number_of_lasers > 0
+                and count_data.size != number_of_lasers):
+            # An ungated dummy (and other time-tagger style counters) returns a
+            # raw time trace. Preserve a visible laser pulse and one result per
+            # measurement point by extracting those pulses. A counter that has
+            # already processed the measurement returns exactly one value per
+            # laser and still follows the pass-through path below.
+            return self.ungated_conv_deriv(count_data)
+
         # Create return dictionary
         return_dict = {'laser_counts_arr': np.reshape(count_data, (-1, 1)),
                        'laser_indices_rising': np.arange(len(count_data)),
