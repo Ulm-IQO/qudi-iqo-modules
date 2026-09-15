@@ -425,6 +425,164 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_laser_gate_element.laser_on = True
             return mw_laser_gate_element
 
+
+    ################################################################################################
+    #                                    For pulser control                                        #
+    ################################################################################################
+
+    def _get_pulser_off_dx_mw_element_padded(self, length, increment, amp=None, freq=None, phase=None,
+                                              envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings),
+                                              min_length=None, always_on_channel=None):
+        """
+        The dx-setup (I/Q) equivalent of _get_pulser_off_mw_element: builds the MW element via
+        _get_dx_mw_element_padded (which may prepend a short idle pad, since this setup's digital
+        MW switch has a minimum pulse duration - see that method's docstring) instead of the
+        direct-synthesis _get_mw_element, and forces `always_on_channel` high on every element
+        returned (1 or 2, depending on whether padding was needed).
+
+        @return list of PulseBlockElement.
+        """
+        elements = self._get_dx_mw_element_padded(length=length, increment=increment, amp=amp,
+                                                   freq=freq, phase=phase, envelope=envelope,
+                                                   min_length=min_length)
+        for elem in elements:
+            if always_on_channel.startswith('d'):
+                elem.digital_high[always_on_channel] = True
+            elif always_on_channel.startswith('a'):
+                elem.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                    voltage=self.analog_trigger_voltage
+                )
+        return elements
+
+    def _get_pulser_on_dx_mw_laser_gate_element(self, length, increment, amp=None, freq=None, phase=None,
+                                                 always_on_channel=None, pulser_channel=None):
+        """
+        The dx-setup (I/Q) equivalent of _get_pulser_on_laser_gate_element, wrapping the combined
+        MW+laser+gate element (_get_dx_mw_laser_gate_element) instead of _get_laser_gate_element -
+        needed for CW ODMR, where MW and laser/readout happen simultaneously in one element.
+        """
+        mw_laser_gate_element = self._get_dx_mw_laser_gate_element(
+            length=length, increment=increment, amp=amp, freq=freq, phase=phase)
+        if always_on_channel.startswith('d'):
+            mw_laser_gate_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            mw_laser_gate_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        if pulser_channel.startswith('d'):
+            mw_laser_gate_element.digital_high[pulser_channel] = True
+        elif pulser_channel.startswith('a'):
+            mw_laser_gate_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return mw_laser_gate_element
+
+    def _get_pulser_off_idle_element(self, length, increment, always_on_channel=None):
+        idle_element = self._get_idle_element(length=length, increment=increment)
+        if always_on_channel.startswith('d'):
+            idle_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            idle_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return idle_element
+
+    def _get_pulser_on_idle_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+        idle_element = self._get_idle_element(length=length, increment=increment)
+        if always_on_channel.startswith('d'):
+            idle_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            idle_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        if pulser_channel.startswith('d'):
+            idle_element.digital_high[pulser_channel] = True
+        elif pulser_channel.startswith('a'):
+            idle_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return idle_element
+
+    def _get_pulser_on_laser_gate_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+        laser_gate_element = self._get_laser_gate_element(length=length, increment=increment)
+        if always_on_channel.startswith('d'):
+            laser_gate_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            laser_gate_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        if pulser_channel.startswith('d'):
+            laser_gate_element.digital_high[pulser_channel] = True
+        elif pulser_channel.startswith('a'):
+            laser_gate_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return laser_gate_element
+
+    def _get_pulser_on_delay_gate_element(self, always_on_channel=None, pulser_channel=None):
+        delay_gate_element = self._get_delay_gate_element()
+        if always_on_channel.startswith('d'):
+            delay_gate_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            delay_gate_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        if pulser_channel.startswith('d'):
+            delay_gate_element.digital_high[pulser_channel] = True
+        elif pulser_channel.startswith('a'):
+            delay_gate_element.pulse_function[pulser_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return delay_gate_element
+
+    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel):
+        """Identical to the other setup's implementation - see that file's docstring."""
+        self.save_block(block)
+        temp_ensemble = PulseBlockEnsemble(name='__tmp_granularity_check__', rotating_frame=False)
+        temp_ensemble.append((block.name, 0))
+
+        info = self.analyze_block_ensemble(temp_ensemble)
+        nominal_samples = int(info['number_of_samples'])
+
+        sample_rate  = self.pulse_generator_settings['sample_rate']
+        min_samples  = int(self.pulse_generator_constraints.waveform_length.min)
+        step_samples = int(self.pulse_generator_constraints.waveform_length.step)
+
+        target_samples = max(nominal_samples, min_samples)
+        remainder = target_samples % step_samples
+        if remainder != 0:
+            target_samples += step_samples - remainder
+        pad_samples = target_samples - nominal_samples
+
+        pad_length_s = 0.0
+        if pad_samples > 0:
+            pad_length_s = pad_samples / sample_rate
+            if on:
+                pad_element = self._get_pulser_on_idle_element(
+                    length=pad_length_s, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                pad_element = self._get_pulser_off_idle_element(
+                    length=pad_length_s, increment=0, always_on_channel=always_on_channel)
+            block.append(pad_element)
+            self.save_block(block)
+
+        total_length_s = target_samples / sample_rate
+        return pad_length_s, total_length_s
+
+    def _get_pulser_off_sync_element(self, always_on_channel=None):
+        """Sync/trigger element with `always_on_channel` forced high, so that always_on_channel
+        genuinely never drops low - not even for the short duration of the sync pulse itself.
+        pulser_channel is intentionally left LOW/untouched here."""
+        sync_element = self._get_sync_element()
+        if always_on_channel.startswith('d'):
+            sync_element.digital_high[always_on_channel] = True
+        elif always_on_channel.startswith('a'):
+            sync_element.pulse_function[always_on_channel] = SamplingFunctions.DC(
+                voltage=self.analog_trigger_voltage
+            )
+        return sync_element
+
     ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
@@ -845,3 +1003,493 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             created_sequences.append(cw_odmr_sequence)
             return created_blocks, created_ensembles, created_sequences
 
+    #################################################################################################################################
+    # Pulser included
+    #################################################################################################################################
+
+    def generate_dx_pulsedodmr_ao_trig(self, name='pODMR_ao_trig', freq_start=3.47e9, freq_stop=3.57e9,
+                                        num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
+                                        duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        freq_array = np.linspace(freq_start, freq_stop, num_of_points)
+
+        falling_element = self._get_pulser_off_idle_element(
+            length=falling_time, increment=0, always_on_channel=always_on_channel)
+        rising_element = self._get_pulser_on_idle_element(
+            length=rising_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_element = self._get_pulser_on_idle_element(
+            length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        laser_element = self._get_pulser_on_laser_gate_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element = self._get_pulser_on_delay_gate_element(
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(sync_element)
+        _, trigger_length_s = self._pad_ensemble_to_granularity(
+            trigger_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(trigger_block)
+
+        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        falling_block = PulseBlock(name='{0}_falling'.format(name))
+        falling_block.append(falling_element)
+        _, falling_length_s = self._pad_ensemble_to_granularity(
+            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(falling_block)
+
+        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+        falling_ensemble.append((falling_block.name, 0))
+        created_ensembles.append(falling_ensemble)
+
+        rising_block = PulseBlock(name='{0}_rising'.format(name))
+        rising_block.append(rising_element)
+        _, rising_length_s = self._pad_ensemble_to_granularity(
+            rising_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(rising_block)
+
+        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
+        rising_ensemble.append((rising_block.name, 0))
+        created_ensembles.append(rising_ensemble)
+
+        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block.append(laser_element)
+        readout_block.append(delay_element)
+        readout_block.append(waiting_element)
+        _, readout_length_s = self._pad_ensemble_to_granularity(
+            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(readout_block)
+
+        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble.append((readout_block.name, 0))
+        created_ensembles.append(readout_ensemble)
+
+        # ONLY DIFFERENCE vs the tau-sweep version: length fixed at rabi_period/2, freq swept
+        mw_ensembles = dict()
+        mw_length_total_s = 0.0
+        for kk, freq in enumerate(freq_array):
+            mw_elements = self._get_pulser_off_dx_mw_element_padded(
+                length=self.rabi_period / 2, increment=0,
+                amp=self.microwave_amplitude, freq=freq, phase=0,
+                always_on_channel=always_on_channel)
+
+            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+            for mw_elem in mw_elements:
+                mw_block.append(mw_elem)
+            _, mw_length_s = self._pad_ensemble_to_granularity(
+                mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            mw_length_total_s += mw_length_s
+            created_blocks.append(mw_block)
+
+            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
+            mw_ensembles[kk].append((mw_block.name, 0))
+            created_ensembles.append(mw_ensembles[kk])
+
+        total_on  = num_of_points * (rising_length_s + readout_length_s)
+        total_off = num_of_points * falling_length_s + mw_length_total_s + trigger_length_s
+        total_all = total_on + total_off
+        p_on = total_on / total_all
+
+        correction_on = None
+        correction_length = 0.0
+        if duty_cycle > p_on:
+            L = (duty_cycle * total_all - total_on) / (1.0 - duty_cycle)
+            if L > 0:
+                correction_on = True
+                correction_length = L
+        elif duty_cycle < p_on:
+            L = total_on / duty_cycle - total_all
+            if L > 0:
+                correction_on = False
+                correction_length = L
+
+        correction_ensemble = None
+        correction_base_length_actual = None
+        if correction_on is not None:
+            if correction_on:
+                corr_element = self._get_pulser_on_idle_element(
+                    length=self.wait_time, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                corr_element = self._get_pulser_off_idle_element(
+                    length=falling_time, increment=0, always_on_channel=always_on_channel)
+
+            correction_block = PulseBlock(name=name + '_duty_correction')
+            correction_block.append(corr_element)
+            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
+                correction_block, on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(correction_block)
+
+            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
+            correction_ensemble.append((correction_block.name, 0))
+            created_ensembles.append(correction_ensemble)
+
+        pulsedodmr_sequence = PulseSequence(name=name, rotating_frame=False)
+
+        pulsedodmr_sequence.append(trigger_ensemble.name)
+        pulsedodmr_sequence[-1].repetitions = 0
+
+        for kk, freq in enumerate(freq_array):
+            pulsedodmr_sequence.append(falling_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(mw_ensembles[kk].name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(rising_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(readout_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+        if correction_ensemble is not None:
+            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
+            pulsedodmr_sequence.append(correction_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = reps
+
+        pulsedodmr_sequence[-1].go_to = 1
+        pulsedodmr_sequence.refresh_parameters()
+
+        pulsedodmr_sequence.measurement_information['alternating'] = False
+        pulsedodmr_sequence.measurement_information['laser_ignore_list'] = list()
+        pulsedodmr_sequence.measurement_information['controlled_variable'] = freq_array
+        pulsedodmr_sequence.measurement_information['units'] = ('Hz', '')
+        pulsedodmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
+        pulsedodmr_sequence.measurement_information['number_of_lasers'] = len(freq_array)
+        pulsedodmr_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
+
+        created_sequences.append(pulsedodmr_sequence)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_dx_cw_odmr_ao_trig(self, name='cw_odmr_ao_trig', freq_start=3.4e9, freq_stop=3.6e9,
+                                     num_of_points=50, mw_amp=0.2, mw_length=10e-6,
+                                     always_on_channel='d_ch15', pulser_channel='d_ch3',
+                                     duty_cycle=0.2, falling_time=50e-6):
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        freq_array = np.linspace(freq_start, freq_stop, num_of_points)
+
+        falling_element = self._get_pulser_off_idle_element(
+            length=falling_time, increment=0, always_on_channel=always_on_channel)
+        waiting_element = self._get_pulser_on_idle_element(
+            length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element = self._get_pulser_on_delay_gate_element(
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(sync_element)
+        _, trigger_length_s = self._pad_ensemble_to_granularity(
+            trigger_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(trigger_block)
+
+        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        falling_block = PulseBlock(name='{0}_falling'.format(name))
+        falling_block.append(falling_element)
+        _, falling_length_s = self._pad_ensemble_to_granularity(
+            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(falling_block)
+
+        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+        falling_ensemble.append((falling_block.name, 0))
+        created_ensembles.append(falling_ensemble)
+
+        # readout = delay + waiting only here; the mw+laser element itself carries the "on" state
+        # from the moment it starts (no separate rising buffer - see prior correction: pulser
+        # must turn on exactly when mw+laser starts, not before it).
+        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block.append(delay_element)
+        readout_block.append(waiting_element)
+        _, readout_length_s = self._pad_ensemble_to_granularity(
+            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(readout_block)
+
+        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble.append((readout_block.name, 0))
+        created_ensembles.append(readout_ensemble)
+
+        # ONLY DIFFERENCE vs generate_dx_cw_odmr: combined mw+laser element built "pulser-on"
+        # via _get_pulser_on_dx_mw_laser_gate_element instead of _get_dx_mw_laser_gate_element.
+        mw_ensembles = dict()
+        mw_length_total_s = 0.0
+        for kk, freq in enumerate(freq_array):
+            mw_laser_gate_element = self._get_pulser_on_dx_mw_laser_gate_element(
+                length=mw_length, increment=0, amp=mw_amp, freq=freq, phase=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+            mw_block.append(mw_laser_gate_element)
+            _, mw_length_s = self._pad_ensemble_to_granularity(
+                mw_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            mw_length_total_s += mw_length_s
+            created_blocks.append(mw_block)
+
+            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
+            mw_ensembles[kk].append((mw_block.name, 0))
+            created_ensembles.append(mw_ensembles[kk])
+
+        # mw block is itself "on" now (no separate rising step), so it counts toward total_on
+        total_on  = num_of_points * readout_length_s + mw_length_total_s
+        total_off = num_of_points * falling_length_s + trigger_length_s
+        total_all = total_on + total_off
+        p_on = total_on / total_all
+
+        correction_on = None
+        correction_length = 0.0
+        if duty_cycle > p_on:
+            L = (duty_cycle * total_all - total_on) / (1.0 - duty_cycle)
+            if L > 0:
+                correction_on = True
+                correction_length = L
+        elif duty_cycle < p_on:
+            L = total_on / duty_cycle - total_all
+            if L > 0:
+                correction_on = False
+                correction_length = L
+
+        correction_ensemble = None
+        correction_base_length_actual = None
+        if correction_on is not None:
+            if correction_on:
+                corr_element = self._get_pulser_on_idle_element(
+                    length=self.wait_time, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                corr_element = self._get_pulser_off_idle_element(
+                    length=falling_time, increment=0, always_on_channel=always_on_channel)
+
+            correction_block = PulseBlock(name=name + '_duty_correction')
+            correction_block.append(corr_element)
+            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
+                correction_block, on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(correction_block)
+
+            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
+            correction_ensemble.append((correction_block.name, 0))
+            created_ensembles.append(correction_ensemble)
+
+        cw_odmr_sequence = PulseSequence(name=name, rotating_frame=False)
+
+        cw_odmr_sequence.append(trigger_ensemble.name)
+        cw_odmr_sequence[-1].repetitions = 0
+
+        for kk, freq in enumerate(freq_array):
+            cw_odmr_sequence.append(falling_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(mw_ensembles[kk].name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(readout_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+        if correction_ensemble is not None:
+            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
+            cw_odmr_sequence.append(correction_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = reps
+
+        cw_odmr_sequence[-1].go_to = 1
+        cw_odmr_sequence.refresh_parameters()
+
+        cw_odmr_sequence.measurement_information['alternating'] = False
+        cw_odmr_sequence.measurement_information['laser_ignore_list'] = list()
+        cw_odmr_sequence.measurement_information['controlled_variable'] = freq_array
+        cw_odmr_sequence.measurement_information['units'] = ('Hz', '')
+        cw_odmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
+        cw_odmr_sequence.measurement_information['number_of_lasers'] = len(freq_array)
+        cw_odmr_sequence.measurement_information['counting_length'] = (mw_length + delay_element.init_length_s)
+
+        created_sequences.append(cw_odmr_sequence)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_dx_rabi_ao_trig(self, name='rabi_ao_trig', tau_start=10.0e-9, tau_step=10.0e-9,
+                                  num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
+                                  duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6):
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+        # ── Shared elements ─────────────────────────────────────────────────
+        falling_element = self._get_pulser_off_idle_element(
+            length=falling_time, increment=0, always_on_channel=always_on_channel)
+        rising_element = self._get_pulser_on_idle_element(
+            length=rising_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_element = self._get_pulser_on_idle_element(
+            length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        laser_element = self._get_pulser_on_laser_gate_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element = self._get_pulser_on_delay_gate_element(
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+        # ── 1. Trigger ──────────────────────────────────────────────────────
+        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(sync_element)
+        _, trigger_length_s = self._pad_ensemble_to_granularity(
+            trigger_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(trigger_block)
+
+        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        # ── 2. Falling (shared, off) ────────────────────────────────────────
+        falling_block = PulseBlock(name='{0}_falling'.format(name))
+        falling_block.append(falling_element)
+        _, falling_length_s = self._pad_ensemble_to_granularity(
+            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(falling_block)
+
+        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+        falling_ensemble.append((falling_block.name, 0))
+        created_ensembles.append(falling_ensemble)
+
+        # ── 3. Rising (shared, on) ──────────────────────────────────────────
+        rising_block = PulseBlock(name='{0}_rising'.format(name))
+        rising_block.append(rising_element)
+        _, rising_length_s = self._pad_ensemble_to_granularity(
+            rising_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(rising_block)
+
+        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
+        rising_ensemble.append((rising_block.name, 0))
+        created_ensembles.append(rising_ensemble)
+
+        # ── 4. Readout (shared, on) ─────────────────────────────────────────
+        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block.append(laser_element)
+        readout_block.append(delay_element)
+        readout_block.append(waiting_element)
+        _, readout_length_s = self._pad_ensemble_to_granularity(
+            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(readout_block)
+
+        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble.append((readout_block.name, 0))
+        created_ensembles.append(readout_ensemble)
+
+        # ── 5. One MW ensemble per tau (off), each padded individually ──────
+        # ONLY DIFFERENCE vs generate_bd_pulsed_rabi: mw element built via the I/Q-aware
+        # _get_pulser_off_dx_mw_element_padded, which may return 1 or 2 elements (idle pad +
+        # mw), instead of _get_pulser_off_mw_element's single element.
+        mw_ensembles = dict()
+        mw_length_total_s = 0.0
+        for kk, tau in enumerate(tau_array):
+            mw_elements = self._get_pulser_off_dx_mw_element_padded(
+                length=tau, increment=0,
+                amp=self.microwave_amplitude, freq=None, phase=0,
+                always_on_channel=always_on_channel)
+
+            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+            for mw_elem in mw_elements:
+                mw_block.append(mw_elem)
+            _, mw_length_s = self._pad_ensemble_to_granularity(
+                mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            mw_length_total_s += mw_length_s
+            created_blocks.append(mw_block)
+
+            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
+            mw_ensembles[kk].append((mw_block.name, 0))
+            created_ensembles.append(mw_ensembles[kk])
+
+        # ── Duty-cycle math (measured, post-padding lengths) ────────────────
+        total_on  = num_of_points * (rising_length_s + readout_length_s)
+        total_off = num_of_points * falling_length_s + mw_length_total_s + trigger_length_s
+        total_all = total_on + total_off
+        p_on = total_on / total_all
+
+        correction_on = None
+        correction_length = 0.0
+        if duty_cycle > p_on:
+            L = (duty_cycle * total_all - total_on) / (1.0 - duty_cycle)
+            if L > 0:
+                correction_on = True
+                correction_length = L
+        elif duty_cycle < p_on:
+            L = total_on / duty_cycle - total_all
+            if L > 0:
+                correction_on = False
+                correction_length = L
+
+        # ── 6. Optional duty-cycle correction ────────────────────────────────
+        correction_ensemble = None
+        correction_base_length_actual = None
+        if correction_on is not None:
+            if correction_on:
+                corr_element = self._get_pulser_on_idle_element(
+                    length=self.wait_time, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            else:
+                corr_element = self._get_pulser_off_idle_element(
+                    length=falling_time, increment=0, always_on_channel=always_on_channel)
+
+            correction_block = PulseBlock(name=name + '_duty_correction')
+            correction_block.append(corr_element)
+            _, correction_base_length_actual = self._pad_ensemble_to_granularity(
+                correction_block, on=correction_on,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(correction_block)
+
+            correction_ensemble = PulseBlockEnsemble(name=name + '_duty_correction', rotating_frame=False)
+            correction_ensemble.append((correction_block.name, 0))
+            created_ensembles.append(correction_ensemble)
+
+        # ── Sequence construction ────────────────────────────────────────────
+        rabi_sequence = PulseSequence(name=name, rotating_frame=False)
+
+        rabi_sequence.append(trigger_ensemble.name)
+        rabi_sequence[-1].repetitions = 0
+
+        for kk, tau in enumerate(tau_array):
+            rabi_sequence.append(falling_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(mw_ensembles[kk].name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(rising_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(readout_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+        if correction_ensemble is not None:
+            reps = max(0, int(np.ceil(correction_length / correction_base_length_actual)) - 1)
+            rabi_sequence.append(correction_ensemble.name)
+            rabi_sequence[-1].repetitions = reps
+
+        rabi_sequence[-1].go_to = 1
+        rabi_sequence.refresh_parameters()
+
+        rabi_sequence.measurement_information['alternating'] = False
+        rabi_sequence.measurement_information['laser_ignore_list'] = list()
+        rabi_sequence.measurement_information['controlled_variable'] = tau_array
+        rabi_sequence.measurement_information['units'] = ('s', '')
+        rabi_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        rabi_sequence.measurement_information['number_of_lasers'] = num_of_points
+        rabi_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
+
+        created_sequences.append(rabi_sequence)
+        return created_blocks, created_ensembles, created_sequences
