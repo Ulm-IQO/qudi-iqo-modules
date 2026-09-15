@@ -23,10 +23,11 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 import os
 import numpy as np
-from scipy import ndimage
+from copy import deepcopy
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.hardware.dummy.pulse_data_simulation import simulate_photon_trace, select_pulse_edges
 
 
 class FastCounterDummy(FastCounterInterface):
@@ -35,37 +36,28 @@ class FastCounterDummy(FastCounterInterface):
     Example config for copy-paste:
 
     fastcounter_dummy:
-        module.Class: 'fast_counter_dummy.FastCounterDummy'
+        module.Class: 'dummy.fast_counter_dummy.FastCounterDummy'
         options:
             gated: False
-            #load_trace: None # path to the saved dummy trace
+            # load_trace: null  # optional 950 MHz counts file; rows are gates
+            # ungated_points: 50  # standalone fallback, overwritten by measurement metadata
+            # laser_length: 3e-6
+            # laser_delay: 500e-9
+            # rabi_period: 100e-9
+            # poisson_noise: False
+            # random_seed: null
 
     """
 
     # config option
     _gated = ConfigOption('gated', False, missing='warn')
     trace_path = ConfigOption('load_trace', None)
-    # Optional manual override for the number of laser pulses to simulate in ungated
-    # mode. Normally this is discovered automatically from the running measurement
-    # (see `_number_of_points`), so it only needs to be set when running the dummy
-    # without a PulsedMeasurementLogic.
-    _ungated_points = ConfigOption('ungated_points', None)
-
-    # The demo trace file was recorded for a Rabi measurement with exactly this many
-    # laser pulses/points. Its individual laser pulses are located by flank detection
-    # and re-emitted at a regular period, so that any requested number of points can
-    # be built by cycling through them.
-    _reference_points = 50
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if self.trace_path is None:
-            self.trace_path = os.path.abspath(os.path.join(
-                os.path.dirname(__file__),
-                'FastComTec_demo_timetrace.asc'
-            ))
-            self.log.debug(f"Loading dummy fastcounter trace: {self.trace_path}")
+    _ungated_points = ConfigOption('ungated_points', 50)
+    _laser_length = ConfigOption('laser_length', 3e-6)
+    _laser_delay = ConfigOption('laser_delay', 500e-9)
+    _rabi_period = ConfigOption('rabi_period', 100e-9)
+    _poisson_noise = ConfigOption('poisson_noise', False)
+    _random_seed = ConfigOption('random_seed', None)
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -74,7 +66,11 @@ class FastCounterDummy(FastCounterInterface):
         self._binwidth = 1
         self._gate_length_bins = 8192
         self._number_of_gates = 0
-        self._points_origin = 'gate count'
+        self._ungated_number_of_pulses = int(self._ungated_points or 50)
+        self._sampling_information = {}
+        self._measurement_settings = {}
+        self._extraction_method = None
+        self._count_data = np.zeros((0, 0) if self._gated else 0, dtype='int64')
         return
 
     def on_deactivate(self):
@@ -140,34 +136,47 @@ class FastCounterDummy(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
-        self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
-        self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
-        self._number_of_gates = int(number_of_gates)
-        actual_binwidth = self._binwidth * 1000 / 950e9
-        actual_length = self._gate_length_bins * actual_binwidth
+        if self.statusvar in (2, 3):
+            raise RuntimeError('Stop the counter before configuring it.')
+        if not np.isfinite(bin_width_s) or bin_width_s <= 0:
+            raise ValueError('Bin width must be finite and positive.')
+        if not np.isfinite(record_length_s) or record_length_s <= 0:
+            raise ValueError('Record length must be finite and positive.')
+        widths = np.array(self.get_constraints()['hardware_binwidth_list'])
+        actual_binwidth = float(widths[np.argmin(abs(widths - bin_width_s))])
+        bins = int(np.rint(record_length_s / actual_binwidth))
+        if bins < 1:
+            raise ValueError('Record length must contain at least one time bin.')
+        gates = int(number_of_gates) if self._gated else 0
+        if self._gated and (gates < 1 or gates != number_of_gates):
+            raise ValueError('Gated acquisition requires a positive integer gate count.')
+        self._binwidth = round(actual_binwidth * 950e6)
+        self._gate_length_bins = bins
+        self._number_of_gates = gates
+        self._count_data = np.zeros((gates, bins) if self._gated else bins, dtype='int64')
         self.statusvar = 1
-        return actual_binwidth, actual_length, number_of_gates
+        return actual_binwidth, bins * actual_binwidth, gates
+
+    def set_measurement_point_count(self, number_of_points):
+        """Set the standalone ungated demo pulse count for the next start."""
+        if int(number_of_points) != number_of_points or number_of_points < 1:
+            raise ValueError('Pulse count must be a positive integer.')
+        self._ungated_number_of_pulses = int(number_of_points)
 
     def set_ungated_points(self, number_of_points=None):
-        """ Override the number of laser pulses simulated in ungated mode.
+        """Compatibility alias for the PR's standalone pulse-count override."""
+        self.set_measurement_point_count(50 if number_of_points is None else number_of_points)
+        return self._ungated_number_of_pulses
 
-        Can be called at runtime, e.g. from the qudi console:
-            fast_counter_dummy.set_ungated_points(200)
+    def set_simulation_settings(self, sampling_information, measurement_settings):
+        """Optional capability used by measurement logic before starting the dummy.
 
-        @param int number_of_points: number of laser pulses to simulate. Pass None
-                                     or 0 to go back to determining the number
-                                     automatically from the running measurement.
-
-        @return int: the active override, or None if determined automatically
-
-        The new value is used the next time the measurement is started.
+        Copy public sequence metadata; never discover or inspect other modules.
+        Loaded traces deliberately ignore simulation settings.
         """
-        self._ungated_points = max(1, int(number_of_points)) if number_of_points else None
-        if self._ungated_points is None:
-            self.log.info('Ungated point count is determined automatically again.')
-        else:
-            self.log.info(f'Ungated point count fixed to {self._ungated_points}.')
-        return self._ungated_points
+        self._sampling_information = deepcopy(sampling_information)
+        self._measurement_settings = deepcopy(measurement_settings)
+        self.set_measurement_point_count(measurement_settings['number_of_lasers'])
 
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
@@ -182,189 +191,151 @@ class FastCounterDummy(FastCounterInterface):
         return self.statusvar
 
     def start_measure(self):
-        time.sleep(1)
-        try:
-            count_data = np.loadtxt(self.trace_path, dtype='int64').ravel()
-        except (OSError, ValueError):
-            self.statusvar = -1
-            self.log.exception(
-                f'Unable to load dummy fastcounter trace: {self.trace_path}'
-            )
+        if self.statusvar != 1:
             return -1
-
-        rising_ind, falling_ind = self._detect_reference_edges(count_data)
-        number_of_points = self._number_of_points()
-        # cycle through the reference pulses (wrapping around with modulo) so that
-        # requesting more points than were originally recorded continues the same
-        # periodic pattern seamlessly instead of jumping or getting noisy
-        point_indices = np.arange(number_of_points) % self._reference_points
-
-        if self._gated:
-            bursts = self._bursts_from_edges(count_data, rising_ind, falling_ind)
-            self._count_data = self._build_gated_count_data(bursts, point_indices)
-        else:
-            windows = self._build_reference_windows(count_data, rising_ind)
-            self._count_data = windows[point_indices].reshape(-1)
-
-        self.log.info(
-            f'Simulating {"gated" if self._gated else "ungated"} trace for '
-            f'{number_of_points} laser pulses (from {self._points_origin}), '
-            f'shape {self._count_data.shape}.'
-        )
+        try:
+            if self.trace_path is None:
+                self._count_data = self._simulate_trace()
+            else:
+                self._count_data = self._load_trace()
+        except (OSError, ValueError, KeyError, TypeError, OverflowError):
+            # Remain configurable after a failed simulation attempt.
+            self.statusvar = 1
+            self.log.exception('Unable to prepare fast-counter dummy data.')
+            return -1
         self.statusvar = 2
         return 0
 
-    def _build_reference_windows(self, count_data, rising_ind):
-        """Cut one fixed-length window around every reference laser pulse.
+    def _load_trace(self):
+        """Load nonnegative counts sampled at 950 MHz; rows are gates.
 
-        The recorded demo trace cannot simply be sliced into equally sized chunks:
-        its laser pulses are *not* equally spaced. Because the Rabi sequence adds
-        one tau step per point, the pulse-to-pulse distance grows continuously
-        (roughly 1127 -> 1245 bins across the trace), so fixed-size chunks slowly
-        drift out of sync with the pulses. Some chunks then contain two pulses and
-        others none, and cycling such chunks produces gaps and doublets that make
-        qudi's flank detection miss or double-count pulses.
-
-        Instead every pulse is located by flank detection and re-emitted in its own
-        window of constant length, keeping the real pulse shape and the real
-        background around it, but at a strictly regular period. Cycling these
-        windows therefore yields a clean, evenly spaced pulse train for any
-        requested number of points.
+        Only complete base-clock bins belonging to the configured record are
+        summed. Short traces or mismatched gate counts are errors, not repeated.
         """
-        # constant period/offset derived from the recording itself
-        period = int(np.median(np.diff(rising_ind))) if rising_ind.size > 1 else count_data.size
-        period = max(1, period)
-        lead = int(min(rising_ind.min(), period // 4)) if rising_ind.size else 0
+        data = np.loadtxt(os.path.expanduser(self.trace_path), ndmin=2)
+        if not np.all(np.isfinite(data)) or np.any(data < 0) or np.any(data != np.floor(data)):
+            raise ValueError('Loaded trace must contain nonnegative integer counts.')
+        if not self._gated:
+            if min(data.shape) != 1:
+                raise ValueError('Ungated load_trace must contain a single row or column.')
+            data = data.reshape(1, -1)
+        elif data.shape[0] != self._number_of_gates:
+            raise ValueError('Loaded trace must have one row per configured gate.')
+        required = self._gate_length_bins * self._binwidth
+        if data.shape[1] < required:
+            raise ValueError('Loaded trace is shorter than the configured record.')
+        # Check before casting/summing to avoid signed integer overflow.
+        if np.any(data >= np.iinfo(np.int64).max / self._binwidth):
+            raise ValueError('Loaded counts exceed the int64 range after binning.')
+        data = data[:, :required].astype('int64')
+        data = data.reshape(data.shape[0], self._gate_length_bins, self._binwidth).sum(axis=2)
+        return data if self._gated else data[0]
 
-        windows = np.zeros((self._reference_points, period), dtype='int64')
-        for i in range(self._reference_points):
-            start = max(0, rising_ind[i] - lead)
-            # a window running past the end of the recording is padded with zeros
-            # rather than wrapped, so that no partial extra pulse is introduced
-            segment = count_data[start:start + period]
-            windows[i, :segment.size] = segment
-        return windows
-
-    def _build_gated_count_data(self, bursts, point_indices):
-        """Build the gated (gate_index, timebin_index) trace.
-
-        The gated extraction (`gated_conv_deriv`) finds a single rising/falling
-        flank shared by all gates by summing them together, then reads each
-        gate's signal from that same bin range. If every gate used a
-        differently-shaped slice of raw data, that shared flank would not
-        correspond to any single gate's actual pulse and the extracted
-        amplitudes would come out scrambled instead of following the Rabi
-        oscillation. So every gate reuses one common, clean laser-pulse shape
-        (isolated the same way the ungated extraction isolates it - see
-        `_detect_reference_edges`) placed at the start of the gate, and only
-        its intensity - that point's true laser pulse amplitude - differs
-        between points. This keeps gated and ungated mode showing the same
-        underlying oscillation.
-        """
-        amplitudes = bursts.sum(axis=1).astype(float)
-        prototype = bursts.mean(axis=0)
-        prototype_sum = prototype.sum()
-        scales = amplitudes[point_indices] / prototype_sum if prototype_sum else np.ones(point_indices.size)
-
-        burst = np.rint(prototype).astype('int64')
-        gate_length = max(self._gate_length_bins, 1)
-        pulses = np.zeros((point_indices.size, gate_length), dtype='int64')
-        fill_length = min(burst.size, gate_length)
-        for row, scale in zip(pulses, scales):
-            row[:fill_length] = np.rint(burst[:fill_length] * scale).astype('int64')
-        return pulses
-
-    def _detect_reference_edges(self, count_data):
-        """Locate the rising and falling flank of every laser pulse in the trace.
-
-        This mirrors the logic of qudi's own `ungated_conv_deriv` pulse
-        extraction (rising/falling flank detection on a gaussian-smoothed
-        derivative, iterated once per point) so that the pulses isolated here
-        are exactly the ones the measurement itself would extract.
-        """
-        trace = count_data.astype(float)
-        conv_std_dev = 20.0
-        n = self._reference_points
-
-        conv_deriv = np.gradient(ndimage.gaussian_filter1d(trace, conv_std_dev))
-        conv_deriv_ref = np.gradient(ndimage.gaussian_filter1d(trace, 10.0))
-
-        rising_ind = np.empty(n, dtype='int64')
-        falling_ind = np.empty(n, dtype='int64')
-        for i in range(n):
-            rising_ind[i] = self._refine_edge_index(
-                conv_deriv, conv_deriv_ref, np.argmax(conv_deriv), conv_std_dev, np.argmax
-            )
-            self._suppress_around(conv_deriv, rising_ind[i], conv_std_dev)
-
-            falling_ind[i] = self._refine_edge_index(
-                conv_deriv, conv_deriv_ref, np.argmin(conv_deriv), conv_std_dev, np.argmin
-            )
-            self._suppress_around(conv_deriv, falling_ind[i], conv_std_dev)
-
-        rising_ind.sort()
-        falling_ind.sort()
-        return rising_ind, falling_ind
-
-    def _bursts_from_edges(self, count_data, rising_ind, falling_ind):
-        """Cut the bare laser pulse (without surrounding background) of every
-        reference point, all padded to a common length."""
-        burst_length = max(1, int(np.max(falling_ind - rising_ind)))
-        bursts = np.zeros((self._reference_points, burst_length), dtype='int64')
-        for i in range(self._reference_points):
-            segment = count_data[rising_ind[i]:rising_ind[i] + burst_length]
-            bursts[i, :segment.size] = segment
-        return bursts
-
-    @staticmethod
-    def _refine_edge_index(conv_deriv, conv_deriv_ref, coarse_index, conv_std_dev, arg_extreme):
-        start = max(0, int(coarse_index - conv_std_dev))
-        stop = min(len(conv_deriv), int(coarse_index + conv_std_dev))
-        if start == stop:
-            stop = start + 1
-        return start + arg_extreme(conv_deriv_ref[start:stop])
-
-    @staticmethod
-    def _suppress_around(conv_deriv, index, conv_std_dev):
-        start = 0 if index < 2 * conv_std_dev else int(index - 2 * conv_std_dev)
-        stop = conv_deriv.size - 1 if (conv_deriv.size - index) < 2 * conv_std_dev else int(index + 2 * conv_std_dev)
-        conv_deriv[start:stop] = 0
-
-    def _number_of_points(self):
-        """Determine how many Rabi points/laser pulses to generate for the current
-        configuration.
-
-        qudi's pulse extraction expects to find *exactly* as many laser pulses in
-        the trace as the measurement settings announce, so the dummy has to match
-        that number. A gated counter is told it directly via
-        `configure(..., number_of_gates)`. An ungated counter is not - the fast
-        counter interface only passes the total record length, from which the
-        point count cannot be recovered unambiguously - so it is looked up from
-        the running measurement instead (see `_discover_number_of_lasers`), which
-        is what makes the number of points selected in the GUI take effect here.
-        """
+    def _simulate_trace(self):
+        self._discover_measurement_settings()
+        sampling = self._sampling_information
+        generation = sampling.get('generation_parameters', {})
+        delay = float(generation.get('laser_delay', self._laser_delay))
+        count = self._number_of_gates if self._gated else self._ungated_number_of_pulses
+        width = self.get_binwidth()
+        record_length = self._gate_length_bins * width
+        if not np.isfinite(delay) or delay < 0:
+            raise ValueError('Laser delay must be finite and nonnegative.')
+        signal = self._simulation_signal(count)
+        simulation_bins = self._gate_length_bins
         if self._gated:
-            return max(1, self._number_of_gates)
-        if self._ungated_points:
-            self._points_origin = 'ungated_points override'
-            return max(1, int(self._ungated_points))
-        discovered = self._discover_number_of_lasers()
-        if discovered:
-            self._points_origin = 'running measurement'
-            return discovered
-        self._points_origin = 'reference trace fallback'
-        return self._reference_points
+            # A generated gate covers the laser first and the delay afterwards.
+            # Pass-through therefore exposes the laser at t=0 and leaves the
+            # configured delay as a dark tail at the end of each gate.
+            # Leave a short dark margin before the laser.  The unchanged gated
+            # convolution extractor needs a real rising edge inside the record;
+            # placing the pulse directly on bin zero makes that edge invisible.
+            edge_margin = min(delay / 5, max(0.0, record_length / 10))
+            starts = np.full(count, edge_margin)
+            # Gate count is configured by the counter. An older sampled asset
+            # may contain a different number of pulses; it must not prevent a
+            # gated demo with a new number of measurement points.
+            default_length = min(float(self._laser_length), record_length - edge_margin)
+            lengths = np.full(count, float(generation.get('laser_length', default_length)))
+            rising = np.asarray(sampling.get('laser_rising_bins', []), dtype=float)
+            falling = np.asarray(sampling.get('laser_falling_bins', []), dtype=float)
+            if sampling and rising.shape == falling.shape == (count,):
+                rate = float(sampling['pulse_generator_settings']['sample_rate'])
+                if not np.isfinite(rate) or rate <= 0:
+                    raise ValueError('Invalid pulse-generator sample rate.')
+                lengths = (falling - rising) / rate
+                if generation.get('gate_channel'):
+                    lengths = lengths - delay
+            elif sampling:
+                self.log.warning(
+                    f'Sampled asset has {rising.size} rising and {falling.size} falling edges; '
+                    f'simulating {count} configured gates using the laser duration.'
+                )
+            # In gated mode each row is one gate.  Some ungated sequence
+            # metadata reports the duration of the complete multi-point
+            # sequence as record_length.  Do not let that make every gated row
+            # grow with the number of measurement points.
+            gate_duration = float(np.max(starts + lengths)) + edge_margin
+            simulation_bins = min(
+                self._gate_length_bins,
+                max(1, int(np.ceil(gate_duration / width)))
+            )
+        elif sampling:
+            rate = float(sampling['pulse_generator_settings']['sample_rate'])
+            if not np.isfinite(rate) or rate <= 0:
+                raise ValueError('Invalid pulse-generator sample rate.')
+            starts = np.asarray(sampling['laser_rising_bins'], dtype=float) / rate
+            ends = np.asarray(sampling['laser_falling_bins'], dtype=float) / rate
+            # If sync and laser use the same digital channel, sequence analysis
+            # can report the sync edge across the waveform boundary: its falling
+            # edge is at zero and its rising edge is last. Pair every rise with
+            # the next chronological fall before selecting readout durations.
+            expected_length = float(generation.get('laser_length', self._laser_length))
+            tolerance = max(2 / rate, width)
+            try:
+                starts, ends = select_pulse_edges(
+                    starts, ends, count, expected_length, tolerance
+                )
+            except ValueError:
+                raise ValueError(
+                    f'Ungated sequence has {len(sampling["laser_rising_bins"])} rising and '
+                    f'{len(sampling["laser_falling_bins"])} falling edges, but {count} laser '
+                    f'pulses with duration {expected_length:g} s could not be identified. '
+                    'Regenerate, sample and load the sequence with matching laser settings.'
+                )
+            lengths = ends - starts
+            if generation.get('gate_channel'):
+                # Sampled "laser" edges describe the gate, including the delay.
+                lengths = lengths - delay
+            starts = starts + delay
+        else:
+            self.log.warning('No sampled sequence timing: using standalone dummy laser spacing. '
+                             'Load a sampled sequence for timing-based extraction.')
+            lengths = np.full(count, float(self._laser_length))
+            starts = delay + np.arange(count) * (2 * float(self._laser_length) + delay)
 
-    def _discover_number_of_lasers(self):
-        """Look up the number of laser pulses of the measurement this dummy is
-        currently serving, or None if it cannot be determined.
+        return simulate_photon_trace(
+            starts, lengths, signal, simulation_bins, width,
+            gated=self._gated, poisson_noise=self._poisson_noise, seed=self._random_seed
+        )
 
-        Searches the active qudi modules for the logic module that has this
-        instance connected as its fast counter and reads its configured number of
-        laser pulses. This is deliberately best-effort: any failure simply falls
-        back to the number of points of the recorded reference trace, so the dummy
-        keeps working when used stand-alone (e.g. in tests) or if the logic module
-        ever stops exposing that attribute.
+    def _simulation_signal(self, count):
+        """Return the oscillating signal level for each measurement point."""
+        times = (np.arange(count) + 1) * 10e-9
+        control = np.asarray(self._measurement_settings.get('controlled_variable', []), dtype=float)
+        units = self._measurement_settings.get('units', ('', ''))
+        if units[0] == 's' and control.shape == (count,):
+            times = control
+        if not np.isfinite(self._rabi_period) or self._rabi_period <= 0:
+            raise ValueError('Demo Rabi period must be finite and positive.')
+        return 500 + 100 * np.cos(2 * np.pi * times / self._rabi_period)
+
+    def _discover_measurement_settings(self):
+        """Read point count and public measurement data from the connected logic.
+
+        FastCounterInterface.configure() does not pass the point count to an
+        ungated counter.  Keep this compatibility lookup in the dummy so the
+        regular measurement and extraction modules can remain unchanged.
         """
         try:
             from qudi.core.modulemanager import ModuleManager
@@ -372,35 +343,52 @@ class FastCounterDummy(FastCounterInterface):
             manager = ModuleManager.instance()
             instances = [] if manager is None else list(manager.module_instances.values())
         except Exception:
-            self.log.debug('Unable to access the qudi module manager.', exc_info=True)
-            return None
+            return
 
         for instance in instances:
             if instance is self:
                 continue
-            # a single unrelated module misbehaving must not abort the search
             try:
-                number_of_lasers = getattr(instance, '_number_of_lasers', None)
-                fastcounter = getattr(instance, '_fastcounter', None)
-                if not number_of_lasers or fastcounter is None:
+                connector = getattr(instance, '_fastcounter', None)
+                if connector is None or not self._is_this_module(connector()):
                     continue
-                if not self._is_this_module(fastcounter()):
+                count = int(getattr(instance, '_number_of_lasers'))
+                if count < 1:
                     continue
-            except Exception:
+                self._ungated_number_of_pulses = count
+                source_sampling = getattr(instance, 'sampling_information', {})
+                self._extraction_method = getattr(instance, 'extraction_settings', {}).get('method')
+                if source_sampling:
+                    # Private runtime marker used only to distinguish this
+                    # synthetic raw trace from real pass-through hardware data.
+                    source_sampling['_fast_counter_dummy_raw_trace'] = True
+                if not self._gated and source_sampling:
+                    rate = float(source_sampling['pulse_generator_settings']['sample_rate'])
+                    rising_bins = np.asarray(source_sampling['laser_rising_bins'])
+                    falling_bins = np.asarray(source_sampling['laser_falling_bins'])
+                    if rising_bins.size != count or falling_bins.size != count:
+                        generation = source_sampling.get('generation_parameters', {})
+                        laser_length = float(generation.get('laser_length', self._laser_length))
+                        rising, falling = select_pulse_edges(
+                            rising_bins / rate, falling_bins / rate, count, laser_length,
+                            max(2 / rate, self.get_binwidth())
+                        )
+                        # The unchanged timing-based extractor reads this public
+                        # dictionary directly, so remove the shared sync edge here.
+                        source_sampling['laser_rising_bins'] = np.rint(rising * rate).astype('int64')
+                        source_sampling['laser_falling_bins'] = np.rint(falling * rate).astype('int64')
+                        self.log.warning('Ignored one shared sync edge in ungated laser timing.')
+                self._sampling_information = deepcopy(source_sampling)
+                self._measurement_settings = deepcopy(
+                    getattr(instance, 'measurement_settings', {})
+                )
+                self._measurement_settings.setdefault('number_of_lasers', count)
+                return
+            except (AttributeError, TypeError, ValueError):
                 continue
-            return int(number_of_lasers)
-
-        self.log.debug('No running measurement found to take the number of laser pulses '
-                       'from. Falling back to the reference trace.')
-        return None
 
     def _is_this_module(self, module):
-        """Check whether `module` refers to this hardware module.
-
-        A `Connector` hands out an `OverloadProxy` wrapping the connected module
-        rather than the module itself, so an identity check would always fail
-        here. Modules are therefore compared by their unique module id.
-        """
+        """Return whether a connector proxy refers to this dummy module."""
         if module is self:
             return True
         own_uuid = getattr(self, 'module_uuid', None)
@@ -411,6 +399,8 @@ class FastCounterDummy(FastCounterInterface):
 
         Fast counter must be initially in the run state to make it pause.
         """
+        if self.statusvar != 2:
+            return -1
         time.sleep(1)
         self.statusvar = 3
         return 0
@@ -428,6 +418,8 @@ class FastCounterDummy(FastCounterInterface):
         If fast counter is in pause state, then fast counter will be continued.
         """
 
+        if self.statusvar != 3:
+            return -1
         self.statusvar = 2
         return 0
 
