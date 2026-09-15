@@ -429,7 +429,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     #                             Generation methods for waveforms                                 #
     ################################################################################################
 
-    # def generate_dx_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
+    # def generate_dx_rabi_one(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
     #     """Generates a Rabi pulse block ensemble where the pulse length is varied linearly.
 
     #     Parameters
@@ -614,7 +614,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_sequences.append(rabi_sequence)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_dx_pulsedodmr(self, name='pODMR', freq_start=2870.0e6, freq_stop=0.2e6, num_of_points=50):
+    def generate_dx_pulsedodmr(self, name='pODMR', freq_start=3.47e9, freq_stop=3.57e9, num_of_points=50):
         """
         Pulsed ODMR sequence for combined AWG + PulseBlaster setup, structured analogously to
         generate_dx_cw_odmr: a leading sync/trigger step (TWAIT=ON forced by the interfuse),
@@ -844,7 +844,4 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     
             created_sequences.append(cw_odmr_sequence)
             return created_blocks, created_ensembles, created_sequences
-
-    
-    
 
