@@ -626,6 +626,31 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         reps = n_plays_needed - 1
         return correction_ensemble, reps
 
+    def _get_pulser_off_laser_only_element(self, length, increment, always_on_channel=None):
+        """
+        Turns ON just the physical laser channel (self.laser_channel) for `length` seconds,
+        WITHOUT toggling the detector gate channel and WITHOUT touching pulser_channel (stays
+        LOW). Used for laser warm-up pulses in pulser_mode == 0, where the pulser is never
+        actively driven at all.
+        """
+        warmup_element = self._get_idle_element(length=length, increment=increment)
+        self._set_always_on_channels(warmup_element, always_on_channel)
+        self._set_channel_high(warmup_element, self.laser_channel)
+        return warmup_element
+
+    def _get_pulser_on_laser_only_readout_element(self, length, increment, always_on_channel=None, pulser_channel=None):
+        """
+        Laser-only readout element: turns on ONLY the physical laser channel (self.laser_channel)
+        for `length` seconds, WITHOUT the detector gate channel - unlike
+        _get_pulser_on_laser_gate_element. Used for a one-time settle/flush exposure that must
+        not be counted as a measurement data point.
+        """
+        readout_element = self._get_idle_element(length=length, increment=increment)
+        self._set_always_on_channels(readout_element, always_on_channel)
+        self._set_channel_high(readout_element, pulser_channel)
+        self._set_channel_high(readout_element, self.laser_channel)
+        return readout_element
+
     ################################################################################################
     #                     Duty-cycle measurement/correction (works on any sequence)                #
     ################################################################################################
@@ -813,6 +838,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         waiting_element = self._get_pulser_on_idle_element(
             length=self.wait_time, increment=0,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_delay_element = self._get_pulser_on_idle_element(
+                    length=self.laser_delay, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
         laser_element = self._get_pulser_on_laser_gate_element(
             length=self.laser_length, increment=0,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -899,6 +927,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         cooldown_ensemble.append((cooldown_block.name, 0))
         created_ensembles.append(cooldown_ensemble)
 
+        # ── One-time settle readout (always present): rising -> laser-only readout (no gate,
+        # not counted as data) -> falling, inserted right after cooldown, before the main loop.
+        settle_readout_element = self._get_pulser_on_laser_only_readout_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        settle_readout_block = PulseBlock(name=name + '_settle_readout')
+        settle_readout_block.append(settle_readout_element)
+        settle_readout_block.append(waiting_delay_element)
+        settle_readout_block.append(waiting_element)
+        self._pad_ensemble_to_granularity(
+            settle_readout_block, on=True,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(settle_readout_block)
+
+        settle_readout_ensemble = PulseBlockEnsemble(name=name + '_settle_readout', rotating_frame=False)
+        settle_readout_ensemble.append((settle_readout_block.name, 0))
+        created_ensembles.append(settle_readout_ensemble)
+
         # ── One MW ensemble per tau point (off), each padded individually ──
         mw_ensembles = dict()
         for kk, tau in enumerate(tau_array):
@@ -928,6 +974,15 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         rabi_sequence[-1].repetitions = 0
 
         rabi_sequence.append(cooldown_ensemble.name)
+        rabi_sequence[-1].repetitions = 0
+
+        rabi_sequence.append(falling_ensemble.name)
+        rabi_sequence[-1].repetitions = 0
+
+        rabi_sequence.append(rising_ensemble.name)
+        rabi_sequence[-1].repetitions = 0
+
+        rabi_sequence.append(settle_readout_ensemble.name)
         rabi_sequence[-1].repetitions = 0
 
         for kk, tau in enumerate(tau_array):
@@ -995,6 +1050,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
         waiting_element = self._get_pulser_on_idle_element(
             length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_delay_element = self._get_pulser_on_idle_element(
+            length=self.laser_delay, increment=0,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
         laser_element = self._get_pulser_on_laser_gate_element(
             length=self.laser_length, increment=0,
@@ -1082,6 +1140,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         cooldown_ensemble.append((cooldown_block.name, 0))
         created_ensembles.append(cooldown_ensemble)
 
+        # ── One-time settle readout (always present): rising -> laser-only readout (no gate,
+        # not counted as data) -> falling, inserted right after cooldown, before the main loop.
+        settle_readout_element = self._get_pulser_on_laser_only_readout_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        settle_readout_block = PulseBlock(name=name + '_settle_readout')
+        settle_readout_block.append(settle_readout_element)
+        settle_readout_block.append(waiting_delay_element)
+        settle_readout_block.append(waiting_element)
+        self._pad_ensemble_to_granularity(
+            settle_readout_block, on=True,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(settle_readout_block)
+
+        settle_readout_ensemble = PulseBlockEnsemble(name=name + '_settle_readout', rotating_frame=False)
+        settle_readout_ensemble.append((settle_readout_block.name, 0))
+        created_ensembles.append(settle_readout_ensemble)
+
         # ── One MW (pi-pulse) ensemble per frequency point (off), padded individually ──
         mw_ensembles = dict()
         for kk, freq in enumerate(freq_array):
@@ -1111,6 +1187,15 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         pulsedodmr_sequence[-1].repetitions = 0
 
         pulsedodmr_sequence.append(cooldown_ensemble.name)
+        pulsedodmr_sequence[-1].repetitions = 0
+
+        pulsedodmr_sequence.append(falling_ensemble.name)
+        pulsedodmr_sequence[-1].repetitions = 0
+
+        pulsedodmr_sequence.append(rising_ensemble.name)
+        pulsedodmr_sequence[-1].repetitions = 0
+
+        pulsedodmr_sequence.append(settle_readout_ensemble.name)
         pulsedodmr_sequence[-1].repetitions = 0
 
         for kk, freq in enumerate(freq_array):
@@ -1159,13 +1244,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
 
-        pulser_mode : 0 -> pulser_channel is LOW for the entire mw_block (mw+laser element AND
-                           its delay element AND its granularity pad).
-                      1 -> pulser_channel is HIGH for the entire mw_block (default).
+        pulser_mode : 0 -> pulser_channel is never driven at all (stays LOW throughout,
+                           including during warm-up/cooldown). No rising/falling ramps are
+                           built or used, since there is no ON state to ramp to/from.
+                      1 -> pulser_channel is HIGH for the entire mw_block, with rising/falling
+                           ramps bracketing the measurement loop (default).
 
-        Sequence structure (fixed, always present): trigger (sync merged into a dedicated
-        rising block) -> laser warm-up -> cooldown -> falling -> [per frequency point:
-        mw+laser -> readout] -> falling -> [duty-cycle correction, if needed] -> loop back.
+        Sequence structure:
+          pulser_mode == 1 (fixed, always present): trigger (sync merged into a dedicated
+              rising block) -> laser warm-up (pulser ON) -> cooldown (pulser ON) -> falling ->
+              [per frequency point: mw+laser -> readout] -> falling ->
+              [duty-cycle correction, if needed] -> loop back.
+          pulser_mode == 0 (fixed, always present): trigger (sync merged into the laser
+              warm-up block, pulser OFF) -> cooldown (pulser OFF) ->
+              [per frequency point: mw+laser -> readout] ->
+              [duty-cycle correction, if needed] -> loop back.
 
         Returns
         -------
@@ -1183,8 +1276,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             self.log.error('pulser_mode must be 0 or 1 (got {0}); treating as 1.'.format(pulser_mode))
             pulser_mode = 1
 
-        falling_element = self._get_pulser_off_idle_element(
-            length=falling_time, increment=0, always_on_channel=always_on_channel)
         waiting_element = self._get_pulser_on_idle_element(
             length=self.wait_time, increment=0,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -1192,17 +1283,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
         delay_element_off = self._get_pulser_off_delay_gate_element(
             always_on_channel=always_on_channel)
-
-        # ── Falling (shared, off) ────────────────────────────────────────
-        falling_block = PulseBlock(name='{0}_falling'.format(name))
-        falling_block.append(falling_element)
-        self._pad_ensemble_to_granularity(
-            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(falling_block)
-
-        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
-        falling_ensemble.append((falling_block.name, 0))
-        created_ensembles.append(falling_ensemble)
 
         # ── Readout (shared, on): waiting only ────────────────────────────
         readout_block = PulseBlock(name='{0}_readout'.format(name))
@@ -1241,87 +1321,153 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
-        # ── Trigger: sync (pulser OFF) merged into a dedicated rising block (pulser ON) ─────
-        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
-        rising_element = self._get_pulser_on_idle_element(
-            length=rising_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-
-        first_rising_block = PulseBlock(name='{0}_trigger_rising'.format(name))
-        first_rising_block.append(sync_element)
-        first_rising_block.append(rising_element)
-        self._pad_ensemble_to_granularity(
-            first_rising_block, on=True,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(first_rising_block)
-
-        first_rising_ensemble = PulseBlockEnsemble(name='{0}_trigger_rising'.format(name), rotating_frame=False)
-        first_rising_ensemble.append((first_rising_block.name, 0))
-        created_ensembles.append(first_rising_ensemble)
-
-        # ── Laser warm-up (always present) ──────────────────────────────────────────────────
-        warmup_element = self._get_pulser_on_laser_only_element(
-            length=laser_warmup_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        warmup_block = PulseBlock(name=name + '_laser_warmup')
-        warmup_block.append(warmup_element)
-        self._pad_ensemble_to_granularity(
-            warmup_block, on=True,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel,
-            extra_high_channels=self.laser_channel)
-        created_blocks.append(warmup_block)
-
-        warmup_ensemble = PulseBlockEnsemble(name=name + '_laser_warmup', rotating_frame=False)
-        warmup_ensemble.append((warmup_block.name, 0))
-        created_ensembles.append(warmup_ensemble)
-
-        # ── Cooldown (always present) ───────────────────────────────────────────────────────
-        cooldown_element = self._get_pulser_on_idle_element(
-            length=laser_cooldown, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        cooldown_block = PulseBlock(name=name + '_laser_cooldown')
-        cooldown_block.append(cooldown_element)
-        self._pad_ensemble_to_granularity(
-            cooldown_block, on=True,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(cooldown_block)
-
-        cooldown_ensemble = PulseBlockEnsemble(name=name + '_laser_cooldown', rotating_frame=False)
-        cooldown_ensemble.append((cooldown_block.name, 0))
-        created_ensembles.append(cooldown_ensemble)
-
-        # ── Build the FULL physical sequence (warm-up ladder unconditional) ──────────────────
         cw_odmr_sequence = PulseSequence(name=name, rotating_frame=False)
 
-        cw_odmr_sequence.append(first_rising_ensemble.name)
-        cw_odmr_sequence[-1].repetitions = 0
+        if pulser_mode == 1:
+            # ── Falling (shared, off) ────────────────────────────────────
+            falling_element = self._get_pulser_off_idle_element(
+                length=falling_time, increment=0, always_on_channel=always_on_channel)
+            falling_block = PulseBlock(name='{0}_falling'.format(name))
+            falling_block.append(falling_element)
+            self._pad_ensemble_to_granularity(
+                falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(falling_block)
 
-        cw_odmr_sequence.append(warmup_ensemble.name)
-        cw_odmr_sequence[-1].repetitions = 0
+            falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
+            falling_ensemble.append((falling_block.name, 0))
+            created_ensembles.append(falling_ensemble)
 
-        cw_odmr_sequence.append(cooldown_ensemble.name)
-        cw_odmr_sequence[-1].repetitions = 0
+            # ── Trigger: sync (pulser OFF) merged into a dedicated rising block (pulser ON) ─
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+            rising_element = self._get_pulser_on_idle_element(
+                length=rising_time, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
 
-        cw_odmr_sequence.append(falling_ensemble.name)
-        cw_odmr_sequence[-1].repetitions = 0
+            first_rising_block = PulseBlock(name='{0}_trigger_rising'.format(name))
+            first_rising_block.append(sync_element)
+            first_rising_block.append(rising_element)
+            self._pad_ensemble_to_granularity(
+                first_rising_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(first_rising_block)
 
-        for kk, freq in enumerate(freq_array):
-            cw_odmr_sequence.append(mw_ensembles[kk].name)
+            first_rising_ensemble = PulseBlockEnsemble(name='{0}_trigger_rising'.format(name), rotating_frame=False)
+            first_rising_ensemble.append((first_rising_block.name, 0))
+            created_ensembles.append(first_rising_ensemble)
+
+            # ── Laser warm-up (pulser ON) ───────────────────────────────────────────────────
+            warmup_element = self._get_pulser_on_laser_only_element(
+                length=laser_warmup_time, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            warmup_block = PulseBlock(name=name + '_laser_warmup')
+            warmup_block.append(warmup_element)
+            self._pad_ensemble_to_granularity(
+                warmup_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+                extra_high_channels=self.laser_channel)
+            created_blocks.append(warmup_block)
+
+            warmup_ensemble = PulseBlockEnsemble(name=name + '_laser_warmup', rotating_frame=False)
+            warmup_ensemble.append((warmup_block.name, 0))
+            created_ensembles.append(warmup_ensemble)
+
+            # ── Cooldown (pulser ON) ─────────────────────────────────────────────────────────
+            cooldown_element = self._get_pulser_on_idle_element(
+                length=laser_cooldown, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            cooldown_block = PulseBlock(name=name + '_laser_cooldown')
+            cooldown_block.append(cooldown_element)
+            self._pad_ensemble_to_granularity(
+                cooldown_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(cooldown_block)
+
+            cooldown_ensemble = PulseBlockEnsemble(name=name + '_laser_cooldown', rotating_frame=False)
+            cooldown_ensemble.append((cooldown_block.name, 0))
+            created_ensembles.append(cooldown_ensemble)
+
+            cw_odmr_sequence.append(first_rising_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
-            cw_odmr_sequence.append(readout_ensemble.name)
+            cw_odmr_sequence.append(warmup_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
-        cw_odmr_sequence.append(falling_ensemble.name)
-        cw_odmr_sequence[-1].repetitions = 0
+            cw_odmr_sequence.append(cooldown_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            for kk, freq in enumerate(freq_array):
+                cw_odmr_sequence.append(mw_ensembles[kk].name)
+                cw_odmr_sequence[-1].repetitions = 0
+
+                cw_odmr_sequence.append(readout_ensemble.name)
+                cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(falling_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+        else:
+            # pulser_mode == 0: pulser never driven at all - no rising/falling needed.
+            # Trigger: sync (pulser OFF) merged directly into the laser warm-up block (pulser OFF).
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+            warmup_element = self._get_pulser_off_laser_only_element(
+                length=laser_warmup_time, increment=0, always_on_channel=always_on_channel)
+
+            first_warmup_block = PulseBlock(name='{0}_trigger_warmup'.format(name))
+            first_warmup_block.append(sync_element)
+            first_warmup_block.append(warmup_element)
+            self._pad_ensemble_to_granularity(
+                first_warmup_block, on=False,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+                extra_high_channels=self.laser_channel)
+            created_blocks.append(first_warmup_block)
+
+            first_warmup_ensemble = PulseBlockEnsemble(name='{0}_trigger_warmup'.format(name), rotating_frame=False)
+            first_warmup_ensemble.append((first_warmup_block.name, 0))
+            created_ensembles.append(first_warmup_ensemble)
+
+            # ── Cooldown (pulser OFF) ────────────────────────────────────────────────────────
+            cooldown_element = self._get_pulser_off_idle_element(
+                length=laser_cooldown, increment=0, always_on_channel=always_on_channel)
+            cooldown_block = PulseBlock(name=name + '_laser_cooldown')
+            cooldown_block.append(cooldown_element)
+            self._pad_ensemble_to_granularity(
+                cooldown_block, on=False,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(cooldown_block)
+
+            cooldown_ensemble = PulseBlockEnsemble(name=name + '_laser_cooldown', rotating_frame=False)
+            cooldown_ensemble.append((cooldown_block.name, 0))
+            created_ensembles.append(cooldown_ensemble)
+
+            cw_odmr_sequence.append(first_warmup_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(cooldown_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            for kk, freq in enumerate(freq_array):
+                cw_odmr_sequence.append(mw_ensembles[kk].name)
+                cw_odmr_sequence[-1].repetitions = 0
+
+                cw_odmr_sequence.append(readout_ensemble.name)
+                cw_odmr_sequence[-1].repetitions = 0
 
         cw_odmr_sequence[-1].go_to = 1
 
         # ── Fix up the duty cycle, if needed, by measuring the finished sequence ────────────
-        self._apply_duty_cycle_correction(
-            cw_odmr_sequence, created_blocks, created_ensembles,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
+        # (correction_length base durations still reference falling_time/wait_time regardless
+        # of pulser_mode - falling_time is simply used as a convenient short OFF-state
+        # duration for the correction loop base element, not as an actual ramp here.)
+        if pulser_mode == 0:
+            self.log.warning(
+                'pulser_mode == 0: pulser_channel is never driven in this sequence, so '
+                'duty-cycle correction is meaningless here and has been skipped entirely '
+                '(requested duty_cycle = {0} is ignored).'.format(duty_cycle))
+        else:
+            self._apply_duty_cycle_correction(
+                cw_odmr_sequence, created_blocks, created_ensembles,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
+                name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
 
         cw_odmr_sequence.refresh_parameters()
 
