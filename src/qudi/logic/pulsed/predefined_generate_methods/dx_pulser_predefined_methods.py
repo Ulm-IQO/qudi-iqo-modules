@@ -21,12 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from numpy.ma import cos
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.logic.pulsed.pulse_objects import PredefinedGeneratorBase
-from qudi.logic.pulsed.sampling_functions import SamplingFunctions
-from qudi.util.helpers import csv_2_list
 
 """
 General Pulse Creation Procedure:
@@ -446,6 +443,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_channel_high(delay_gate_element, pulser_channel)
         return delay_gate_element
 
+    def _get_pulser_off_delay_gate_element(self, always_on_channel=None):
+        """Delay/gate element with always_on_channel(s) held HIGH, pulser_channel left
+        untouched (LOW)."""
+        delay_gate_element = self._get_delay_gate_element()
+        self._set_always_on_channels(delay_gate_element, always_on_channel)
+        return delay_gate_element
+
     def _get_pulser_on_laser_only_element(self, length, increment, always_on_channel=None, pulser_channel=None):
         """
         Turns ON just the physical laser channel (self.laser_channel) for `length` seconds,
@@ -487,6 +491,27 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_always_on_channels(mw_laser_gate_element, always_on_channel)
         self._set_channel_high(mw_laser_gate_element, pulser_channel)
         return mw_laser_gate_element
+
+    def _get_pulser_off_dx_mw_laser_gate_element(self, length, increment, amp=None, freq=None, phase=None,
+                                                  always_on_channel=None):
+        """
+        Combined I/Q-modulated MW+laser+gate element (see _get_dx_mw_laser_gate_element), with
+        always_on_channel(s) held HIGH, pulser_channel left untouched (LOW).
+        """
+        mw_laser_gate_element = self._get_dx_mw_laser_gate_element(
+            length=length, increment=increment, amp=amp, freq=freq, phase=phase)
+        self._set_always_on_channels(mw_laser_gate_element, always_on_channel)
+        return mw_laser_gate_element
+
+    def _get_pulser_off_sync_element(self, always_on_channel=None):
+        """
+        Sync/trigger element with always_on_channel(s) held HIGH, pulser_channel always left
+        LOW - the pulser must be off during the sync pulse itself, regardless of which block it
+        gets merged into.
+        """
+        sync_element = self._get_sync_element()
+        self._set_always_on_channels(sync_element, always_on_channel)
+        return sync_element
 
     def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel,
                                     extra_high_channels=None):
@@ -601,41 +626,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         reps = n_plays_needed - 1
         return correction_ensemble, reps
 
-    def _get_pulser_off_dx_mw_laser_gate_element(self, length, increment, amp=None, freq=None, phase=None,
-                                                  always_on_channel=None):
-        """
-        Combined I/Q-modulated MW+laser+gate element (see _get_dx_mw_laser_gate_element), with
-        always_on_channel(s) held HIGH, pulser_channel left untouched (LOW).
-        """
-        mw_laser_gate_element = self._get_dx_mw_laser_gate_element(
-            length=length, increment=increment, amp=amp, freq=freq, phase=phase)
-        self._set_always_on_channels(mw_laser_gate_element, always_on_channel)
-        return mw_laser_gate_element
-
-    def _get_pulser_off_sync_element(self, always_on_channel=None):
-        """Sync/trigger element with always_on_channel(s) held HIGH, so the always-on channel
-        never drops low even for the short duration of the sync pulse itself. pulser_channel is
-        intentionally left untouched (LOW)."""
-        sync_element = self._get_sync_element()
-        self._set_always_on_channels(sync_element, always_on_channel)
-        return sync_element
-
-    def _get_pulser_off_delay_gate_element(self, always_on_channel=None):
-        """Delay/gate element with always_on_channel(s) held HIGH, pulser_channel left
-        untouched (LOW)."""
-        delay_gate_element = self._get_delay_gate_element()
-        self._set_always_on_channels(delay_gate_element, always_on_channel)
-        return delay_gate_element
-
-    def _get_pulser_on_sync_element(self, always_on_channel=None, pulser_channel=None):
-        """Sync/trigger element with always_on_channel(s) AND pulser_channel held HIGH -
-        used when merging the sync pulse onto a block that is itself pulser-ON, to avoid a
-        spurious OFF->ON transition inside that block."""
-        sync_element = self._get_sync_element()
-        self._set_always_on_channels(sync_element, always_on_channel)
-        self._set_channel_high(sync_element, pulser_channel)
-        return sync_element
-
     ################################################################################################
     #                       Generation methods with pulser + always-on channel                     #
     ################################################################################################
@@ -647,11 +637,26 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
 
-        The AWG sync/trigger pulse is not uploaded as its own memory segment (which would need
-        its own idle/granularity correction - not allowed for the trigger waveform). Instead it
-        is prepended onto whichever block is genuinely first in the sequence: the pre-warmup
-        rising block if a duty-cycle correction ladder is needed, otherwise point 0's falling
-        block. That combined block is the one that receives granularity padding.
+        Per tau point: falling (pulser OFF) -> MW pulse (pulser OFF) -> rising (pulser ON) ->
+        laser + delay + wait readout (pulser ON). falling/rising/readout are shared blocks
+        reused every point; only the MW element is unique per point.
+
+        The AWG sync/trigger pulse (pulser always OFF during the pulse itself) is never
+        uploaded as its own memory segment, since the trigger waveform is not allowed to carry
+        an idle/granularity correction. Instead it is merged onto whichever block is genuinely
+        first in the sequence:
+          - if a duty-cycle correction ladder is needed: onto a one-off pre-warmup rising block.
+          - otherwise: onto point 0's falling block.
+
+        If a duty-cycle correction is needed at all, the following one-time sequence is
+        inserted between the (merged) trigger step and the main measurement loop:
+
+            rising -> laser warm-up (pulser ON, laser only, not counted as data) ->
+            cooldown (laser off, pulser held ON)
+
+        and a final falling step is appended after the main loop, right before the duty-cycle
+        correction block. All of these measured durations are folded into the duty-cycle
+        accounting before the correction length is solved for.
 
         Returns
         -------
@@ -735,7 +740,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
-        # ── Duty-cycle correction (no separate trigger contribution anymore) ──────────────
+        # ── Duty-cycle correction ────────────────────────────────────────
         total_on  = num_of_points * (rising_length_s + readout_length_s)
         total_off = num_of_points * falling_length_s + mw_length_total_s
 
@@ -745,13 +750,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         correction_ensemble = None
         correction_reps = 0
+        warmup_ensemble = None
         cooldown_ensemble = None
         first_step_ensemble = None
 
         if need_correction:
-            # Sync merged into the pre-warmup rising block (pulser ON) - now the true first step.
-            sync_element = self._get_pulser_on_sync_element(
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            # Sync (pulser OFF) merged into a one-off pre-warmup rising block (pulser ON).
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
             first_rising_block = PulseBlock(name='{0}_trigger_rising'.format(name))
             first_rising_block.append(sync_element)
             first_rising_block.append(rising_element)
@@ -764,6 +769,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             first_step_ensemble.append((first_rising_block.name, 0))
             created_ensembles.append(first_step_ensemble)
 
+            # Laser warm-up: laser only, pulser ON, not counted as data.
             warmup_element = self._get_pulser_on_laser_only_element(
                 length=laser_warmup_time, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -779,6 +785,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             warmup_ensemble.append((warmup_block.name, 0))
             created_ensembles.append(warmup_ensemble)
 
+            # Cooldown: laser off, pulser channel held ON.
             cooldown_element = self._get_pulser_on_idle_element(
                 length=laser_cooldown, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -793,7 +800,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cooldown_ensemble.append((cooldown_block.name, 0))
             created_ensembles.append(cooldown_ensemble)
 
-            # first_rising_length_s replaces plain rising_length_s for this one-time step.
             total_on  += first_rising_length_s + warmup_length_s + cooldown_length_s
             total_off += falling_length_s
             total_all  = total_on + total_off
@@ -820,7 +826,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                     preferred_base_length=preferred_base_length,
                     created_blocks=created_blocks, created_ensembles=created_ensembles)
         else:
-            # Sync merged into point 0's falling block (pulser OFF) - now the true first step.
+            # Sync (pulser OFF) merged into point 0's falling block (pulser OFF).
             sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
             first_falling_block = PulseBlock(name='{0}_trigger_falling'.format(name))
             first_falling_block.append(sync_element)
@@ -838,7 +844,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         rabi_sequence = PulseSequence(name=name, rotating_frame=False)
 
         if need_correction:
-            rabi_sequence.append(first_step_ensemble.name)     # sync + rising, plays once
+            rabi_sequence.append(first_step_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
             rabi_sequence.append(warmup_ensemble.name)
@@ -865,7 +871,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         else:
             for kk, tau in enumerate(tau_array):
                 if kk == 0:
-                    rabi_sequence.append(first_step_ensemble.name)   # sync + falling, plays once
+                    rabi_sequence.append(first_step_ensemble.name)
                 else:
                     rabi_sequence.append(falling_ensemble.name)
                 rabi_sequence[-1].repetitions = 0
@@ -906,10 +912,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         Sequence-mode pulsed ODMR with an always-on channel and a duty-cycle-controlled pulser
         channel. Same structure as generate_dx_rabi_ao_trig, swept over frequency with a fixed
         pi-pulse length (self.rabi_period / 2) instead of swept tau. Requires self.rabi_period
-        to already be calibrated.
+        to already be calibrated (e.g. via a prior Rabi measurement).
 
-        The AWG sync/trigger pulse is merged onto whichever block is genuinely first (see
-        generate_dx_rabi_ao_trig docstring) instead of being its own memory segment.
+        The AWG sync/trigger pulse is merged onto whichever block is genuinely first in the
+        sequence, exactly as in generate_dx_rabi_ao_trig.
 
         Returns
         -------
@@ -993,7 +999,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
-        # ── Duty-cycle correction (no separate trigger contribution anymore) ──────────────
+        # ── Duty-cycle correction ────────────────────────────────────────
         total_on  = num_of_points * (rising_length_s + readout_length_s)
         total_off = num_of_points * falling_length_s + mw_length_total_s
 
@@ -1003,12 +1009,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         correction_ensemble = None
         correction_reps = 0
+        warmup_ensemble = None
         cooldown_ensemble = None
         first_step_ensemble = None
 
         if need_correction:
-            sync_element = self._get_pulser_on_sync_element(
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
             first_rising_block = PulseBlock(name='{0}_trigger_rising'.format(name))
             first_rising_block.append(sync_element)
             first_rising_block.append(rising_element)
@@ -1155,15 +1161,30 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_dx_cw_odmr_ao_trig(self, name='cw_odmr_ao_trig', freq_start=3.4e9, freq_stop=3.6e9,
                                      num_of_points=50, mw_amp=0.2, mw_length=10e-6,
                                      always_on_channel='d_ch15', pulser_channel='d_ch3', pulser_mode=1,
-                                     duty_cycle=0.2, falling_time=50e-6,
+                                     duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
                                      laser_warmup_time=100e-6, laser_cooldown=10e-6):
         """
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
 
-        The AWG sync/trigger pulse is merged onto whichever block is genuinely first: the
-        laser warm-up block if a duty-cycle correction ladder is needed, otherwise the first
-        frequency point's mw+laser block - instead of being its own memory segment.
+        pulser_mode : 0 -> pulser_channel is LOW for the entire mw_block (mw+laser element AND
+                           its delay element AND its granularity pad).
+                      1 -> pulser_channel is HIGH for the entire mw_block (default).
+
+        The AWG sync/trigger pulse (pulser always OFF during the pulse itself) is never
+        uploaded as its own memory segment. Instead it is merged onto whichever block is
+        genuinely first in the sequence:
+          - if a duty-cycle correction ladder is needed: onto a one-off rising ramp (pulser ON)
+            that precedes the laser warm-up block.
+          - otherwise: onto the first frequency point's mw+laser block, matching that point's
+            pulser state.
+
+        If a duty-cycle correction is needed at all, a one-time laser warm-up pulse (pulser ON,
+        laser only, not counted as data) followed by a cooldown period (laser off, pulser held
+        ON) is inserted right after the (merged) trigger step, and a falling step is appended
+        after the main loop, right before the duty-cycle correction block. All measured
+        durations are folded into the duty-cycle accounting before the correction length is
+        solved for.
 
         Returns
         -------
@@ -1252,7 +1273,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
-        # ── Duty-cycle correction (no separate trigger contribution anymore) ──────────────
+        # ── Duty-cycle correction ─────────────────────────────────────────
         total_on  = num_of_points * readout_length_s + mw_on_total_s
         total_off = num_of_points * falling_length_s + mw_off_total_s
 
@@ -1263,28 +1284,42 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         correction_ensemble = None
         correction_reps = 0
         cooldown_ensemble = None
+        warmup_ensemble = None
         first_step_ensemble = None
 
         if need_correction:
-            # Sync merged into the laser warm-up block (pulser ON) - now the true first step.
-            sync_element = self._get_pulser_on_sync_element(
+            # Sync (pulser OFF) merged into a one-off rising block (pulser ON), preceding warm-up.
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+            rising_element = self._get_pulser_on_idle_element(
+                length=rising_time, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+
+            first_rising_block = PulseBlock(name='{0}_trigger_rising'.format(name))
+            first_rising_block.append(sync_element)
+            first_rising_block.append(rising_element)
+            _, first_rising_length_s = self._pad_ensemble_to_granularity(
+                first_rising_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(first_rising_block)
+
+            first_step_ensemble = PulseBlockEnsemble(name='{0}_trigger_rising'.format(name), rotating_frame=False)
+            first_step_ensemble.append((first_rising_block.name, 0))
+            created_ensembles.append(first_step_ensemble)
+
             warmup_element = self._get_pulser_on_laser_only_element(
                 length=laser_warmup_time, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-
-            first_warmup_block = PulseBlock(name=name + '_trigger_warmup')
-            first_warmup_block.append(sync_element)
-            first_warmup_block.append(warmup_element)
-            _, first_warmup_length_s = self._pad_ensemble_to_granularity(
-                first_warmup_block, on=True,
+            warmup_block = PulseBlock(name=name + '_laser_warmup')
+            warmup_block.append(warmup_element)
+            _, warmup_length_s = self._pad_ensemble_to_granularity(
+                warmup_block, on=True,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel,
                 extra_high_channels=self.laser_channel)
-            created_blocks.append(first_warmup_block)
+            created_blocks.append(warmup_block)
 
-            first_step_ensemble = PulseBlockEnsemble(name=name + '_trigger_warmup', rotating_frame=False)
-            first_step_ensemble.append((first_warmup_block.name, 0))
-            created_ensembles.append(first_step_ensemble)
+            warmup_ensemble = PulseBlockEnsemble(name=name + '_laser_warmup', rotating_frame=False)
+            warmup_ensemble.append((warmup_block.name, 0))
+            created_ensembles.append(warmup_ensemble)
 
             cooldown_element = self._get_pulser_on_idle_element(
                 length=laser_cooldown, increment=0,
@@ -1300,8 +1335,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cooldown_ensemble.append((cooldown_block.name, 0))
             created_ensembles.append(cooldown_ensemble)
 
-            # first_warmup_length_s replaces plain warmup_length_s for this one-time step.
-            total_on  += first_warmup_length_s + cooldown_length_s
+            total_on  += first_rising_length_s + warmup_length_s + cooldown_length_s
             total_off += falling_length_s
             total_all  = total_on + total_off
             p_on = total_on / total_all
@@ -1327,12 +1361,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                     preferred_base_length=preferred_base_length,
                     created_blocks=created_blocks, created_ensembles=created_ensembles)
         else:
-            # Sync merged into point 0's mw+laser block, matching that point's pulser state.
-            if pulser_mode == 1:
-                sync_element = self._get_pulser_on_sync_element(
-                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            else:
-                sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+            # Sync (pulser OFF) merged into point 0's mw+laser block.
+            sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
 
             first_mw_block = PulseBlock(name='{0}_trigger_mw'.format(name))
             first_mw_block.append(sync_element)
@@ -1351,7 +1381,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         cw_odmr_sequence = PulseSequence(name=name, rotating_frame=False)
 
         if need_correction:
-            cw_odmr_sequence.append(first_step_ensemble.name)   # sync + warm-up, plays once
+            cw_odmr_sequence.append(first_step_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+            cw_odmr_sequence.append(warmup_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
             cw_odmr_sequence.append(cooldown_ensemble.name)
@@ -1372,7 +1405,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         else:
             for kk, freq in enumerate(freq_array):
                 if kk == 0:
-                    cw_odmr_sequence.append(first_step_ensemble.name)   # sync + mw, plays once
+                    cw_odmr_sequence.append(first_step_ensemble.name)
                 else:
                     cw_odmr_sequence.append(mw_ensembles[kk].name)
                 cw_odmr_sequence[-1].repetitions = 0
