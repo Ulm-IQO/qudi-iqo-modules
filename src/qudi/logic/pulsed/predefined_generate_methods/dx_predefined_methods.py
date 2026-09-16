@@ -620,6 +620,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_always_on_channels(sync_element, always_on_channel)
         return sync_element
 
+    def _get_pulser_off_delay_gate_element(self, always_on_channel=None):
+        """Delay/gate element with always_on_channel(s) held HIGH, pulser_channel left
+        untouched (LOW)."""
+        delay_gate_element = self._get_delay_gate_element()
+        self._set_always_on_channels(delay_gate_element, always_on_channel)
+        return delay_gate_element
+
     ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
@@ -939,24 +946,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
 
-        Every block that becomes its own AWG waveform is padded to the pulse generator's minimum
-        waveform length / granularity step via _pad_ensemble_to_granularity, so
-        SequenceGeneratorLogic never needs to append its own idle_extension block afterward.
-
         Per tau point: falling (pulser OFF) -> MW pulse (pulser OFF) -> rising (pulser ON) ->
         laser + delay + wait readout (pulser ON). falling/rising/readout are shared blocks
         reused every point; only the MW element is unique per point.
 
-        The duty-cycle correction is realized as a single small base idle element looped via
-        sequence-step `repetitions`; if the required loop count would exceed the AWG's per-step
-        loop-count limit, the base element's length is increased instead
-        (see _build_duty_cycle_correction).
+        If a duty-cycle correction is needed at all, the following one-time sequence is
+        inserted between the trigger step and the main measurement loop:
 
-        If a duty-cycle correction is needed at all, a one-time laser warm-up pulse (pulser ON,
-        physical laser channel only, not counted as a data point) followed by a cooldown period
-        (pulser OFF) is inserted right after the trigger step. Their measured durations are
-        folded into the duty-cycle accounting before the correction length is solved for, so the
-        realized duty cycle over the entire sequence matches `duty_cycle`.
+            rising -> laser warm-up (pulser ON, laser only, not counted as data) ->
+            cooldown (laser off, pulser held ON) -> falling -> rising ->
+            readout flush (laser only + wait, no gate, not counted as data) -> falling
+
+        and a final falling step is appended after the main loop, right before the duty-cycle
+        correction block. All of these measured durations are folded into the duty-cycle
+        accounting before the correction length is solved for.
 
         Parameters
         ----------
@@ -1082,8 +1085,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         correction_reps = 0
         warmup_ensemble = None
         cooldown_ensemble = None
+        readout_flush_ensemble = None
 
         if need_correction:
+            # Laser warm-up: laser only, pulser ON, not counted as data.
             warmup_element = self._get_pulser_on_laser_only_element(
                 length=laser_warmup_time, increment=0,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -1099,12 +1104,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             warmup_ensemble.append((warmup_block.name, 0))
             created_ensembles.append(warmup_ensemble)
 
-            cooldown_element = self._get_pulser_off_idle_element(
-                length=laser_cooldown, increment=0, always_on_channel=always_on_channel)
+            # Cooldown: laser off, pulser channel held ON.
+            cooldown_element = self._get_pulser_on_idle_element(
+                length=laser_cooldown, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             cooldown_block = PulseBlock(name=name + '_laser_cooldown')
             cooldown_block.append(cooldown_element)
             _, cooldown_length_s = self._pad_ensemble_to_granularity(
-                cooldown_block, on=False,
+                cooldown_block, on=True,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             created_blocks.append(cooldown_block)
 
@@ -1112,8 +1119,28 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cooldown_ensemble.append((cooldown_block.name, 0))
             created_ensembles.append(cooldown_ensemble)
 
-            total_on  += warmup_length_s
-            total_off += cooldown_length_s
+            # Readout flush: laser only + wait, no gate, not counted as data.
+            flush_laser_element = self._get_pulser_on_laser_only_element(
+                length=self.laser_length, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            readout_flush_block = PulseBlock(name=name + '_readout_flush')
+            readout_flush_block.append(flush_laser_element)
+            readout_flush_block.append(waiting_element)
+            _, readout_flush_length_s = self._pad_ensemble_to_granularity(
+                readout_flush_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(readout_flush_block)
+
+            readout_flush_ensemble = PulseBlockEnsemble(name=name + '_readout_flush', rotating_frame=False)
+            readout_flush_ensemble.append((readout_flush_block.name, 0))
+            created_ensembles.append(readout_flush_ensemble)
+
+            # Fold every block used in this branch into the duty-cycle accounting:
+            # rising, warmup, cooldown, falling, rising, readout_flush, falling (x2 rising ON,
+            # x3 falling OFF total including the one appended after the main loop below).
+            total_on  += rising_length_s + warmup_length_s + cooldown_length_s \
+                         + rising_length_s + readout_flush_length_s
+            total_off += falling_length_s + falling_length_s + falling_length_s
             total_all  = total_on + total_off
             p_on = total_on / total_all
 
@@ -1145,11 +1172,25 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         rabi_sequence[-1].repetitions = 0
 
         if warmup_ensemble is not None:
+            rabi_sequence.append(rising_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
             rabi_sequence.append(warmup_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
-        if cooldown_ensemble is not None:
             rabi_sequence.append(cooldown_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(falling_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(rising_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(readout_flush_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+            rabi_sequence.append(falling_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
         for kk, tau in enumerate(tau_array):
@@ -1163,6 +1204,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             rabi_sequence[-1].repetitions = 0
 
             rabi_sequence.append(readout_ensemble.name)
+            rabi_sequence[-1].repetitions = 0
+
+        if warmup_ensemble is not None:
+            rabi_sequence.append(falling_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
         if correction_ensemble is not None:
@@ -1194,23 +1239,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         pi-pulse length (self.rabi_period / 2) instead of swept tau.
 
         Requires self.rabi_period to already be calibrated (e.g. via a prior Rabi measurement).
-
-        Parameters
-        ----------
-        name : str
-        freq_start : float
-        freq_stop : float
-        num_of_points : int
-        always_on_channel : str or list of str
-            Channel(s) held HIGH for the entire sequence.
-        pulser_channel : str
-            Channel toggled LOW (falling + MW) / HIGH (rising + readout) each point.
-        duty_cycle : float
-            Target fraction of total sequence time with pulser_channel HIGH.
-        rising_time, falling_time : float
-            Pulser ramp buffer durations, in seconds.
-        laser_warmup_time, laser_cooldown : float
-            One-time laser warm-up/cooldown durations, in seconds.
 
         Returns
         -------
@@ -1319,6 +1347,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         correction_reps = 0
         warmup_ensemble = None
         cooldown_ensemble = None
+        readout_flush_ensemble = None
 
         if need_correction:
             warmup_element = self._get_pulser_on_laser_only_element(
@@ -1336,12 +1365,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             warmup_ensemble.append((warmup_block.name, 0))
             created_ensembles.append(warmup_ensemble)
 
-            cooldown_element = self._get_pulser_off_idle_element(
-                length=laser_cooldown, increment=0, always_on_channel=always_on_channel)
+            cooldown_element = self._get_pulser_on_idle_element(
+                length=laser_cooldown, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             cooldown_block = PulseBlock(name=name + '_laser_cooldown')
             cooldown_block.append(cooldown_element)
             _, cooldown_length_s = self._pad_ensemble_to_granularity(
-                cooldown_block, on=False,
+                cooldown_block, on=True,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             created_blocks.append(cooldown_block)
 
@@ -1349,8 +1379,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cooldown_ensemble.append((cooldown_block.name, 0))
             created_ensembles.append(cooldown_ensemble)
 
-            total_on  += warmup_length_s
-            total_off += cooldown_length_s
+            flush_laser_element = self._get_pulser_on_laser_only_element(
+                length=self.laser_length, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            readout_flush_block = PulseBlock(name=name + '_readout_flush')
+            readout_flush_block.append(flush_laser_element)
+            readout_flush_block.append(waiting_element)
+            _, readout_flush_length_s = self._pad_ensemble_to_granularity(
+                readout_flush_block, on=True,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(readout_flush_block)
+
+            readout_flush_ensemble = PulseBlockEnsemble(name=name + '_readout_flush', rotating_frame=False)
+            readout_flush_ensemble.append((readout_flush_block.name, 0))
+            created_ensembles.append(readout_flush_ensemble)
+
+            total_on  += rising_length_s + warmup_length_s + cooldown_length_s \
+                         + rising_length_s + readout_flush_length_s
+            total_off += falling_length_s + falling_length_s + falling_length_s
             total_all  = total_on + total_off
             p_on = total_on / total_all
 
@@ -1382,11 +1428,25 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         pulsedodmr_sequence[-1].repetitions = 0
 
         if warmup_ensemble is not None:
+            pulsedodmr_sequence.append(rising_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
             pulsedodmr_sequence.append(warmup_ensemble.name)
             pulsedodmr_sequence[-1].repetitions = 0
 
-        if cooldown_ensemble is not None:
             pulsedodmr_sequence.append(cooldown_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(falling_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(rising_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(readout_flush_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+            pulsedodmr_sequence.append(falling_ensemble.name)
             pulsedodmr_sequence[-1].repetitions = 0
 
         for kk, freq in enumerate(freq_array):
@@ -1400,6 +1460,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             pulsedodmr_sequence[-1].repetitions = 0
 
             pulsedodmr_sequence.append(readout_ensemble.name)
+            pulsedodmr_sequence[-1].repetitions = 0
+
+        if warmup_ensemble is not None:
+            pulsedodmr_sequence.append(falling_ensemble.name)
             pulsedodmr_sequence[-1].repetitions = 0
 
         if correction_ensemble is not None:
@@ -1429,23 +1493,15 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
 
-        pulser_mode : 0 -> pulser_channel is LOW during the mw+laser element.
-                      1 -> pulser_channel is HIGH during the mw+laser element (default, matches
-                           the original behavior of this method).
-        In both modes, falling keeps pulser_channel LOW, and delay + waiting keep it HIGH -
-        unchanged from the original structure.
+        pulser_mode : 0 -> pulser_channel is LOW for the entire mw_block (mw+laser element AND
+                           its delay element AND its granularity pad).
+                      1 -> pulser_channel is HIGH for the entire mw_block (default).
 
-        Per-frequency-point block structure:
-            falling_block (shared, OFF)
-            mw_block: mw+laser element [ON if pulser_mode=1 else OFF] + delay element [ON]
-            readout_block (shared, ON): waiting element
-
-        duty_cycle is realized via a single small base idle element looped via sequence-step
-        `repetitions` (see _build_duty_cycle_correction). If a correction is needed at all, a
-        one-time laser warm-up pulse (pulser ON, physical laser channel only) followed by a
-        cooldown period (pulser OFF) is inserted right after the trigger step, and their
-        measured durations are folded into the duty-cycle accounting before the correction
-        length is solved for.
+        If a duty-cycle correction is needed at all, a one-time laser warm-up pulse (pulser ON,
+        laser only, not counted as data) followed by a cooldown period (laser off, pulser held
+        ON) is inserted right after the trigger step, and a falling step is appended after the
+        main loop, right before the duty-cycle correction block. All measured durations are
+        folded into the duty-cycle accounting before the correction length is solved for.
 
         Returns
         -------
@@ -1468,8 +1524,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         waiting_element = self._get_pulser_on_idle_element(
             length=self.wait_time, increment=0,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        delay_element = self._get_pulser_on_delay_gate_element(
+        delay_element_on = self._get_pulser_on_delay_gate_element(
             always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element_off = self._get_pulser_off_delay_gate_element(
+            always_on_channel=always_on_channel)
 
         # ── Trigger (pulser OFF; always_on_channel ON) ──────────────────────
         sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
@@ -1494,8 +1552,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         falling_ensemble.append((falling_block.name, 0))
         created_ensembles.append(falling_ensemble)
 
-        # ── Readout (shared, on): waiting only - mw+laser element itself carries the pulser
-        # state from the moment it starts, delay is handled inside each mw_block ──────────────
+        # ── Readout (shared, on): waiting only ────────────────────────────
         readout_block = PulseBlock(name='{0}_readout'.format(name))
         readout_block.append(waiting_element)
         _, readout_length_s = self._pad_ensemble_to_granularity(
@@ -1515,26 +1572,25 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 mw_laser_gate_element = self._get_pulser_on_dx_mw_laser_gate_element(
                     length=mw_length, increment=0, amp=mw_amp, freq=freq, phase=0,
                     always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                delay_elem = delay_element_on
             else:
                 mw_laser_gate_element = self._get_pulser_off_dx_mw_laser_gate_element(
                     length=mw_length, increment=0, amp=mw_amp, freq=freq, phase=0,
                     always_on_channel=always_on_channel)
+                delay_elem = delay_element_off
 
             mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
             mw_block.append(mw_laser_gate_element)
-            mw_block.append(delay_element)
+            mw_block.append(delay_elem)
             _, mw_length_s = self._pad_ensemble_to_granularity(
-                mw_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                mw_block, on=(pulser_mode == 1),
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             created_blocks.append(mw_block)
 
-            # mw_length_s = mw_length + delay_length + pad, all measured together. Split into
-            # the ON portion (delay + pad, always ON) and OFF portion (mw_length itself, only
-            # ON if pulser_mode == 1).
             if pulser_mode == 1:
                 mw_on_total_s += mw_length_s
             else:
-                mw_on_total_s  += mw_length_s - mw_length
-                mw_off_total_s += mw_length
+                mw_off_total_s += mw_length_s
 
             mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
             mw_ensembles[kk].append((mw_block.name, 0))
@@ -1569,12 +1625,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             warmup_ensemble.append((warmup_block.name, 0))
             created_ensembles.append(warmup_ensemble)
 
-            cooldown_element = self._get_pulser_off_idle_element(
-                length=laser_cooldown, increment=0, always_on_channel=always_on_channel)
+            # Cooldown: laser off, pulser channel held ON.
+            cooldown_element = self._get_pulser_on_idle_element(
+                length=laser_cooldown, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             cooldown_block = PulseBlock(name=name + '_laser_cooldown')
             cooldown_block.append(cooldown_element)
             _, cooldown_length_s = self._pad_ensemble_to_granularity(
-                cooldown_block, on=False,
+                cooldown_block, on=True,
                 always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             created_blocks.append(cooldown_block)
 
@@ -1582,8 +1640,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cooldown_ensemble.append((cooldown_block.name, 0))
             created_ensembles.append(cooldown_ensemble)
 
-            total_on  += warmup_length_s
-            total_off += cooldown_length_s
+            # Fold warm-up/cooldown (both ON) and the trailing falling step (before
+            # correction) into the accounting.
+            total_on  += warmup_length_s + cooldown_length_s
+            total_off += falling_length_s
             total_all  = total_on + total_off
             p_on = total_on / total_all
 
@@ -1618,7 +1678,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cw_odmr_sequence.append(warmup_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
-        if cooldown_ensemble is not None:
             cw_odmr_sequence.append(cooldown_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
@@ -1630,6 +1689,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             cw_odmr_sequence[-1].repetitions = 0
 
             cw_odmr_sequence.append(readout_ensemble.name)
+            cw_odmr_sequence[-1].repetitions = 0
+
+        if warmup_ensemble is not None:
+            cw_odmr_sequence.append(falling_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
 
         if correction_ensemble is not None:
@@ -1645,7 +1708,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         cw_odmr_sequence.measurement_information['units'] = ('Hz', '')
         cw_odmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
         cw_odmr_sequence.measurement_information['number_of_lasers'] = len(freq_array)
-        cw_odmr_sequence.measurement_information['counting_length'] = (mw_length + delay_element.init_length_s)
+        cw_odmr_sequence.measurement_information['counting_length'] = (mw_length + delay_element_on.init_length_s)
 
         created_sequences.append(cw_odmr_sequence)
         return created_blocks, created_ensembles, created_sequences
