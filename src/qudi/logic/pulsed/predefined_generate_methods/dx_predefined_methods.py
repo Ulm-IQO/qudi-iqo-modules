@@ -1214,7 +1214,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # from the moment it starts (no separate rising buffer - see prior correction: pulser
         # must turn on exactly when mw+laser starts, not before it).
         readout_block = PulseBlock(name='{0}_readout'.format(name))
-        readout_block.append(delay_element)
         readout_block.append(waiting_element)
         _, readout_length_s = self._pad_ensemble_to_granularity(
             readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
@@ -1235,6 +1234,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
             mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
             mw_block.append(mw_laser_gate_element)
+            mw_block.append(delay_element)
             _, mw_length_s = self._pad_ensemble_to_granularity(
                 mw_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             mw_length_total_s += mw_length_s
