@@ -25,6 +25,7 @@
 - Added selectable `ScanningOptimizeLogic` optimization methods
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
+- Added Magnet Toolchain
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure
@@ -66,6 +67,7 @@
 - Updated install documentation
 - Improved Github Actions dependency testing
 - Added tests for scanning tool chain
+- No more automatic multi-switch channel deactivation on the wavemeter by the `high_finesse_proxy` upon starting/stopping of instreamers. Only reactivate channels (e.g. after deactivation through GUI) if they are associated to a running instreamer.
 
 ## Version 0.6.0
 

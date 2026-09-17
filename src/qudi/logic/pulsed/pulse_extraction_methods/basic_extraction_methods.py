@@ -258,24 +258,24 @@ class BasicPulseExtractor(PulseExtractorBase):
                           threshold_tolerance=20e-9):
         """
         Detects the laser pulses in the ungated timetrace data and extracts them.
-    
+
         @param numpy.ndarray count_data: The raw timetrace data (1D) from an ungated fast counter
-        @param count_threshold: 
-        @param min_laser_length: 
-        @param threshold_tolerance: 
-        
+        @param count_threshold:
+        @param min_laser_length:
+        @param threshold_tolerance:
+
         @return 2D numpy.ndarray:   2D array, the extracted laser pulses of the timetrace.
                                     dimensions: 0: laser number, 1: time bin
-    
+
         Procedure:
             Threshold detection:
             ---------------
-    
+
             All count data from the time trace is compared to a threshold value.
             Values above the threshold are considered to belong to a laser pulse.
             If the length of a pulse would be below the minimum length the pulse is discarded.
-            If a number of bins which are below the threshold is smaller than the number of bins 
-            making the threshold_tolerance then they are still considered to belong to a laser 
+            If a number of bins which are below the threshold is smaller than the number of bins
+            making the threshold_tolerance then they are still considered to belong to a laser
             pulse.
         """
         return_dict = dict()
@@ -403,17 +403,6 @@ class BasicPulseExtractor(PulseExtractorBase):
         @return dict: The extracted laser pulses of the timetrace as well as the indices for rising
                       and falling flanks.
         """
-        number_of_lasers = self.measurement_settings.get('number_of_lasers')
-        is_dummy_trace = self.sampling_information.get('_fast_counter_dummy_raw_trace', False)
-        if (is_dummy_trace and isinstance(number_of_lasers, int) and number_of_lasers > 0
-                and count_data.size != number_of_lasers):
-            # An ungated dummy (and other time-tagger style counters) returns a
-            # raw time trace. Preserve a visible laser pulse and one result per
-            # measurement point by extracting those pulses. A counter that has
-            # already processed the measurement returns exactly one value per
-            # laser and still follows the pass-through path below.
-            return self.ungated_conv_deriv(count_data)
-
         # Create return dictionary
         return_dict = {'laser_counts_arr': np.reshape(count_data, (-1, 1)),
                        'laser_indices_rising': np.arange(len(count_data)),

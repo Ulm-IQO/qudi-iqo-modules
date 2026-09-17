@@ -140,7 +140,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
         )
 
     def on_deactivate(self) -> None:
-        self.stop_stream()
+        if self.module_state() == 'locked':
+            self.stop_stream()
 
         # free memory
         self._data_buffer = None
