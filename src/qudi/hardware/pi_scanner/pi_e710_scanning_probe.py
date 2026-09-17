@@ -985,10 +985,17 @@ class PIE710Scanner(PIE710ScannerInterface):
 
     # ── Unit conversion helpers ───────────────────────────────────────────────
 
+    # Round µm values to 0.1 nm before they go to the controller. m -> µm
+    # multiplication produces float noise (10e-6 * 1e6 = 9.999999999999998);
+    # the E-710 segment-protocol parser has a fixed field width and
+    # mis-parses such 17-digit numbers, giving wrong scan amplitudes.
+    _UM_DECIMALS: int = 4
+
     @classmethod
-    def _to_um(cls, values) -> np.ndarray:
-        """Array of positions in m -> np.ndarray in µm (for the controller)."""
-        return np.asarray(values, dtype=float) * cls._M_TO_UM
+    def _to_um(cls, values) -> List[float]:
+        """Array of positions in m -> list of plain floats in µm (for the controller)."""
+        arr = np.round(np.asarray(values, dtype=float) * cls._M_TO_UM, cls._UM_DECIMALS)
+        return [float(v) for v in np.atleast_1d(arr)]
 
     @classmethod
     def _to_m(cls, values) -> List[float]:
@@ -997,7 +1004,7 @@ class PIE710Scanner(PIE710ScannerInterface):
 
     @classmethod
     def _pos_dict_to_um(cls, pos: Dict[str, float]) -> Dict[str, float]:
-        return {k: float(v) * cls._M_TO_UM for k, v in pos.items()}
+        return {k: round(float(v) * cls._M_TO_UM, cls._UM_DECIMALS) for k, v in pos.items()}
 
     def _read_position_m(self) -> Dict[str, float]:
         """Query the controller (µm) and return {'x','y','z'} in m."""
