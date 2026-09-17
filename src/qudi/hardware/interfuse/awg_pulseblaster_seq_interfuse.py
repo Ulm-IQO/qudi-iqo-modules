@@ -184,6 +184,7 @@ awg_pb_interfuse:
         default_activation_config: 'A2_M3_M4'
         debug_channel_routing: False
         debug_watch_channel: 'd_ch10'
+        pb_extra_wait_active_channels: ['d_ch9']  # optional, turn on to keep trigger channel HIGH during extra wait tail
 """
 
 from math import gcd
