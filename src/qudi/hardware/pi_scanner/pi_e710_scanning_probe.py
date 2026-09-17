@@ -9,7 +9,17 @@ Does NOT implement ScanningProbeInterface and knows nothing about photon countin
 To get a full ScanningProbeInterface combine this module with a photon counter
 via PIE710CounterInterfuse.
 
-YAML configuration:
+Units
+-----
+The Qudi-facing API of this module (PIE710ScannerInterface / PIE710Scanner)
+uses SI units throughout: positions, ranges and distances are in METRES,
+times in seconds.
+
+The PI E-710 controller itself works in micrometres. The low-level ctypes
+wrapper PIE710Controller therefore stays in µm (native controller units);
+PIE710Scanner converts m <-> µm at its boundary and nowhere else.
+
+YAML configuration (ranges in metres):
     hardware:
         my_pi_scanner:
             module.Class: 'hardware.pi_e710_scanning_probe.PIE710Scanner'
@@ -17,9 +27,9 @@ YAML configuration:
                 dll_path:     'C:/PI/E7XX_GCS_DLL_x64.dll'
                 gpib_board:   0
                 gpib_address: 4
-                x_range: [0.0, 100.0]
-                y_range: [0.0, 100.0]
-                z_range: [0.0,  50.0]
+                x_range: [0.0, 100.0e-6]
+                y_range: [0.0, 100.0e-6]
+                z_range: [0.0,  50.0e-6]
                 trigger_mode: 'SPCM'
 
 Line-by-line 2D scan performance
@@ -75,6 +85,10 @@ class PIE7XXError(Exception):
 class PIE710Controller:
     """
     ctypes wrapper for E7XX_GCS_DLL_x64.dll  —  PI E-710 firmware V7.040 (GCS v1).
+
+    UNITS: every position, travel limit and waveform amplitude handled by
+    this class is in MICROMETRES — the controller's native unit. SI
+    conversion is done one level up, in PIE710Scanner.
 
     Critical V7.040 facts:
       - Axis strings are CONCATENATED, no spaces  →  b'123'  not  b'1 2 3'
@@ -391,7 +405,7 @@ class PIE710Controller:
             self._fn("E7XX_SVO")(self._id, self._ax(axes), self._barr(states)),
             "SVO")
 
-    # ── Motion ────────────────────────────────────────────────────────────────
+    # ── Motion (µm) ───────────────────────────────────────────────────────────
 
     def get_position(self, axes) -> List[float]:
         self._require_connection()
@@ -449,7 +463,7 @@ class PIE710Controller:
                     break
                 time.sleep(poll_interval)
 
-    # ── Travel limits ─────────────────────────────────────────────────────────
+    # ── Travel limits (µm) ────────────────────────────────────────────────────
 
     def get_min_travel(self, axes) -> List[float]:
         self._require_connection()
@@ -495,7 +509,7 @@ class PIE710Controller:
             self._fn("E7XX_E7XXSendString")(self._id, command.encode("ascii")),
             "E7XXSendString")
 
-    # ── Old-style E-710 segment protocol ─────────────────────────────────────
+    # ── Old-style E-710 segment protocol (positions/amplitudes in µm) ─────────
 
     def segment(
         self, seg_num: int, total_pts: int, curve_pts: int,
@@ -723,7 +737,7 @@ class PIE710Controller:
     # ── Initialisation ────────────────────────────────────────────────────────
 
     def probe_firmware(self) -> dict:
-        """INI all axes + SVO per axis + read travel limits + current position."""
+        """INI all axes + SVO per axis + read travel limits + current position (µm)."""
         self._require_connection()
         result = {
             "idn":     self.get_identification(),
@@ -803,11 +817,14 @@ class PIE710Controller:
 # ══════════════════════════════════════════════════════════════════════════════
 #  ABSTRACT INTERFACE — PIE710ScannerInterface
 #  Any concrete scanner module connected to the interfuse must implement this.
+#  ALL positions / ranges / distances in SI units (metres).
 # ══════════════════════════════════════════════════════════════════════════════
 
 class PIE710ScannerInterface(Base):
     """
     Abstract Qudi interface for the PI E-710 scanner hardware module.
+
+    All lengths are in METRES, all times in seconds (SI units).
 
     Implemented by PIE710Scanner below.
     Referenced as the connector interface in PIE710CounterInterfuse.
@@ -816,43 +833,43 @@ class PIE710ScannerInterface(Base):
     @property
     @abstractmethod
     def x_range(self) -> List[float]:
-        """Travel range [min, max] in µm for the X axis."""
+        """Travel range [min, max] in m for the X axis."""
         pass
 
     @property
     @abstractmethod
     def y_range(self) -> List[float]:
-        """Travel range [min, max] in µm for the Y axis."""
+        """Travel range [min, max] in m for the Y axis."""
         pass
 
     @property
     @abstractmethod
     def z_range(self) -> List[float]:
-        """Travel range [min, max] in µm for the Z axis."""
+        """Travel range [min, max] in m for the Z axis."""
         pass
 
     @abstractmethod
     def move_absolute(
         self, position: Dict[str, float], blocking: bool = False,
     ) -> Dict[str, float]:
-        """Move to absolute position. Returns new target dict."""
+        """Move to absolute position (m). Returns new target dict (m)."""
         pass
 
     @abstractmethod
     def move_relative(
         self, distance: Dict[str, float], blocking: bool = False,
     ) -> Dict[str, float]:
-        """Move by relative distance. Returns new target dict."""
+        """Move by relative distance (m). Returns new target dict (m)."""
         pass
 
     @abstractmethod
     def get_position(self) -> Dict[str, float]:
-        """Read actual position from capacitive sensors (µm)."""
+        """Read actual position from capacitive sensors (m)."""
         pass
 
     @abstractmethod
     def get_target(self) -> Dict[str, float]:
-        """Return last commanded target position (µm)."""
+        """Return last commanded target position (m)."""
         pass
 
     @abstractmethod
@@ -887,9 +904,9 @@ class PIE710ScannerInterface(Base):
         Fire off PI waveform scan commands (non-blocking from PC side).
 
         @param axes        : ('x',) for 1D, ('x','y') etc. for 2D — first = fast axis.
-        @param positions   : tuple of position arrays, one per axis in `axes`.
+        @param positions   : tuple of position arrays in m, one per axis in `axes`.
         @param t_pixel     : dwell time per pixel in seconds.
-        @param current_pos : current position of all three axes (for fixed-axis values).
+        @param current_pos : current position of all three axes in m (for fixed-axis values).
         @return            : estimated scan duration in seconds.
         """
         pass
@@ -935,20 +952,29 @@ class PIE710Scanner(PIE710ScannerInterface):
     """
     PI E-710 3CD Qudi hardware module — motion and waveform control only.
 
+    Public API in SI units (m, s). The wrapped PIE710Controller speaks µm;
+    this class is the ONLY place where m <-> µm conversion happens.
+
     Connect this to PIE710CounterInterfuse to get a full ScanningProbeInterface.
     """
+
+    # m <-> µm conversion factors (controller native unit is µm)
+    _M_TO_UM: float = 1.0e6
+    _UM_TO_M: float = 1.0e-6
 
     _dll_path     = ConfigOption('dll_path',     default="C:/jmaze/matlab/Experiment/mytoolboxes/piezoE7XX/E7XX_GCS_DLL_x64.dll")
     _gpib_board   = ConfigOption('gpib_board',   default=0)
     _gpib_address = ConfigOption('gpib_address', default=4)
-    _x_range      = ConfigOption('x_range',      default=[0.0, 100.0])
-    _y_range      = ConfigOption('y_range',      default=[0.0, 100.0])
-    _z_range      = ConfigOption('z_range',      default=[0.0,  50.0])
+    # Ranges in METRES
+    _x_range      = ConfigOption('x_range',      default=[0.0, 100.0e-6])
+    _y_range      = ConfigOption('y_range',      default=[0.0, 100.0e-6])
+    _z_range      = ConfigOption('z_range',      default=[0.0,  50.0e-6])
     _trigger_mode = ConfigOption('trigger_mode', default='SPCM')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ctrl:        Optional[PIE710Controller] = None
+        # Last commanded target, in METRES
         self._target_pos:  Dict[str, float]           = {'x': 0.0, 'y': 0.0, 'z': 0.0}
         # Estimated duration of the most recently configured single-axis
         # line scan. Used by retrigger_line() to return a consistent
@@ -956,6 +982,27 @@ class PIE710Scanner(PIE710ScannerInterface):
         # formula depends only on the fast-axis range and t_pixel, both of
         # which are unchanged across lines of the same 2D raster.
         self._last_line_duration_s: Optional[float] = None
+
+    # ── Unit conversion helpers ───────────────────────────────────────────────
+
+    @classmethod
+    def _to_um(cls, values) -> np.ndarray:
+        """Array of positions in m -> np.ndarray in µm (for the controller)."""
+        return np.asarray(values, dtype=float) * cls._M_TO_UM
+
+    @classmethod
+    def _to_m(cls, values) -> List[float]:
+        """Sequence of positions in µm (from the controller) -> list in m."""
+        return [float(v) * cls._UM_TO_M for v in values]
+
+    @classmethod
+    def _pos_dict_to_um(cls, pos: Dict[str, float]) -> Dict[str, float]:
+        return {k: float(v) * cls._M_TO_UM for k, v in pos.items()}
+
+    def _read_position_m(self) -> Dict[str, float]:
+        """Query the controller (µm) and return {'x','y','z'} in m."""
+        pos = self._to_m(self._ctrl.get_position("123"))
+        return {'x': pos[0], 'y': pos[1], 'z': pos[2]}
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -969,17 +1016,24 @@ class PIE710Scanner(PIE710ScannerInterface):
             info = self._ctrl.probe_firmware()
             self.log.info(f"PI E-710 connected: {info.get('idn', '(unknown)')}")
 
-            # Prefer hardware-reported limits over yaml values
-            if info.get('travel_min') and len(info['travel_min']) >= 3:
-                self._x_range = [info['travel_min'][0], info['travel_max'][0]]
-                self._y_range = [info['travel_min'][1], info['travel_max'][1]]
-                self._z_range = [info['travel_min'][2], info['travel_max'][2]]
+            # Make sure yaml ranges are plain floats (metres)
+            self._x_range = [float(v) for v in self._x_range]
+            self._y_range = [float(v) for v in self._y_range]
+            self._z_range = [float(v) for v in self._z_range]
 
-            pos = self._ctrl.get_position("123")
-            self._target_pos = {'x': pos[0], 'y': pos[1], 'z': pos[2]}
+            # Prefer hardware-reported limits (µm) over yaml values -> convert to m
+            if info.get('travel_min') and len(info['travel_min']) >= 3:
+                mn = self._to_m(info['travel_min'])
+                mx = self._to_m(info['travel_max'])
+                self._x_range = [mn[0], mx[0]]
+                self._y_range = [mn[1], mx[1]]
+                self._z_range = [mn[2], mx[2]]
+
+            self._target_pos = self._read_position_m()
+            p = self._target_pos
             self.log.info(
-                f"Travel limits  x:{self._x_range}  y:{self._y_range}  z:{self._z_range} µm  |  "
-                f"Position  x={pos[0]:.3f}  y={pos[1]:.3f}  z={pos[2]:.3f} µm"
+                f"Travel limits  x:{self._x_range}  y:{self._y_range}  z:{self._z_range} m  |  "
+                f"Position  x={p['x']:.3e}  y={p['y']:.3e}  z={p['z']:.3e} m"
             )
         except PIE7XXError as exc:
             self.log.exception(f"PI E-710 activation failed: {exc}")
@@ -993,7 +1047,7 @@ class PIE710Scanner(PIE710ScannerInterface):
                 self.log.warning(f"PI close_connection: {exc}")
             self._ctrl = None
 
-    # ── Range properties ──────────────────────────────────────────────────────
+    # ── Range properties (m) ──────────────────────────────────────────────────
 
     @property
     def x_range(self) -> List[float]:
@@ -1007,7 +1061,7 @@ class PIE710Scanner(PIE710ScannerInterface):
     def z_range(self) -> List[float]:
         return list(self._z_range)
 
-    # ── Motion ────────────────────────────────────────────────────────────────
+    # ── Motion (m) ────────────────────────────────────────────────────────────
 
     def move_absolute(
         self, position: Dict[str, float], blocking: bool = False,
@@ -1019,8 +1073,9 @@ class PIE710Scanner(PIE710ScannerInterface):
         target['x'] = float(np.clip(target['x'], *self._x_range))
         target['y'] = float(np.clip(target['y'], *self._y_range))
         target['z'] = float(np.clip(target['z'], *self._z_range))
+        t_um = self._pos_dict_to_um(target)
         self._ctrl.move_absolute(
-            ['1', '2', '3'], [target['x'], target['y'], target['z']])
+            ['1', '2', '3'], [t_um['x'], t_um['y'], t_um['z']])
         self._target_pos = target
         if blocking:
             self._ctrl.wait_for_motion("123", timeout=60.0)
@@ -1038,16 +1093,14 @@ class PIE710Scanner(PIE710ScannerInterface):
 
     def get_position(self) -> Dict[str, float]:
         try:
-            pos = self._ctrl.get_position("123")
-            return {'x': pos[0], 'y': pos[1], 'z': pos[2]}
+            return self._read_position_m()
         except PIE7XXError:
             return dict(self._target_pos)
 
     def sync_position(self) -> None:
         """Read sensor position and update internal target tracking."""
         try:
-            pos = self._ctrl.get_position("123")
-            self._target_pos = {'x': pos[0], 'y': pos[1], 'z': pos[2]}
+            self._target_pos = self._read_position_m()
         except PIE7XXError as exc:
             self.log.warning(f"sync_position failed: {exc}")
 
@@ -1070,7 +1123,7 @@ class PIE710Scanner(PIE710ScannerInterface):
         except PIE7XXError as exc:
             self.log.error(f"PI E-710 reset failed: {exc}")
 
-    # ── Scan commands ─────────────────────────────────────────────────────────
+    # ── Scan commands (positions in m) ────────────────────────────────────────
 
     def start_scan(
         self,
@@ -1082,6 +1135,7 @@ class PIE710Scanner(PIE710ScannerInterface):
         """
         Fire off a PI waveform scan and return the estimated duration in seconds.
         The call returns as soon as the GPIB command is sent — the PI runs autonomously.
+        All positions in m.
         """
         if len(axes) == 1:
             return self._start_1d(axes[0], positions[0], t_pixel, current_pos)
@@ -1091,14 +1145,18 @@ class PIE710Scanner(PIE710ScannerInterface):
         raise ValueError(f"Unsupported scan dimension: {len(axes)}")
 
     def _start_1d(self, axis, pos_array, t_pixel, current_pos) -> float:
+        # Convert to controller units (µm) at the boundary
+        pos_um = self._to_um(pos_array)
+        cur_um = self._pos_dict_to_um(current_pos)
+
         if axis == 'x':
-            self._ctrl.scan_x(x=pos_array, y=current_pos['y'], z=current_pos['z'],
+            self._ctrl.scan_x(x=pos_um, y=cur_um['y'], z=cur_um['z'],
                                t_pixel=t_pixel, trigger=self._trigger_mode)
         elif axis == 'y':
-            self._ctrl.scan_y(x=current_pos['x'], y=pos_array, z=current_pos['z'],
+            self._ctrl.scan_y(x=cur_um['x'], y=pos_um, z=cur_um['z'],
                                t_pixel=t_pixel, trigger=self._trigger_mode)
         elif axis == 'z':
-            self._ctrl.scan_z(x=current_pos['x'], y=current_pos['y'], z=pos_array,
+            self._ctrl.scan_z(x=cur_um['x'], y=cur_um['y'], z=pos_um,
                                t_pixel=t_pixel, trigger=self._trigger_mode)
         else:
             raise ValueError(f"Unknown axis '{axis}'")
@@ -1108,7 +1166,7 @@ class PIE710Scanner(PIE710ScannerInterface):
         # scan has been programmed and fired, the fast axis physically ends
         # up back at pos_array[0] (the segment waveform's forward-then-
         # backward sweep returns to its start point) -- so _target_pos is
-        # updated here to reflect that.
+        # updated here to reflect that (in m).
         #
         # This matters for line-by-line 2D scans: between lines, only the
         # slow axis position actually needs to change, but move_absolute()
@@ -1118,7 +1176,7 @@ class PIE710Scanner(PIE710ScannerInterface):
         # starting position via a real, closed-loop MOV command on every
         # line, rather than relying on the (skipped, for speed) internal
         # re-move that scan_x/y/z would otherwise perform on every call.
-        self._target_pos[axis] = pos_array[0]
+        self._target_pos[axis] = float(pos_array[0])
 
         speed_pts, start_pt = 100, 100
         n = max(1, round(t_pixel * PIE710Controller.SAMP_RATE))
@@ -1133,8 +1191,13 @@ class PIE710Scanner(PIE710ScannerInterface):
         return duration_s
 
     def _start_2d(self, fast_axis, slow_axis, fast_pos, slow_pos, t_pixel, current_pos) -> float:
+        # Convert to controller units (µm) at the boundary
+        fast_um = self._to_um(fast_pos)
+        slow_um = self._to_um(slow_pos)
+        cur_um  = self._pos_dict_to_um(current_pos)
+
         if fast_axis == 'x' and slow_axis == 'y':
-            self._ctrl.scan_xy(x=fast_pos, y=slow_pos, z=current_pos['z'],
+            self._ctrl.scan_xy(x=fast_um, y=slow_um, z=cur_um['z'],
                                 t_pixel=t_pixel, trigger=self._trigger_mode)
             speed_pts = 50
             n = max(1, round(t_pixel * PIE710Controller.SAMP_RATE))
@@ -1143,11 +1206,11 @@ class PIE710Scanner(PIE710ScannerInterface):
             return len(slow_pos) * line_s + 5.0
 
         if fast_axis == 'x' and slow_axis == 'z':
-            self._ctrl.scan_xz(x=fast_pos, y=current_pos['y'], z=slow_pos, t_pixel=t_pixel)
+            self._ctrl.scan_xz(x=fast_um, y=cur_um['y'], z=slow_um, t_pixel=t_pixel)
             return len(slow_pos) * 1.2 + 5.0
 
         if fast_axis == 'y' and slow_axis == 'z':
-            self._ctrl.scan_yz(x=current_pos['x'], y=fast_pos, z=slow_pos, t_pixel=t_pixel)
+            self._ctrl.scan_yz(x=cur_um['x'], y=fast_um, z=slow_um, t_pixel=t_pixel)
             return len(slow_pos) * 1.2 + 5.0
 
         raise ValueError(
