@@ -1144,6 +1144,11 @@ class PIE710Scanner(PIE710ScannerInterface):
         The call returns as soon as the GPIB command is sent — the PI runs autonomously.
         All positions in m.
         """
+        # Diagnostic: what the interfuse actually hands over (units check)
+        self.log.info(
+            f"start_scan {axes}: {float(positions[0][0]):.3e} .. {float(positions[0][-1]):.3e} "
+            f"({len(positions[0])} px), t_pixel={t_pixel}, current_pos={current_pos}"
+        )
         if len(axes) == 1:
             return self._start_1d(axes[0], positions[0], t_pixel, current_pos)
         if len(axes) == 2:
