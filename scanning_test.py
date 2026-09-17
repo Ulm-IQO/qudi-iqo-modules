@@ -1,7 +1,6 @@
 # ---
 # jupyter:
 #   jupytext:
-#     formats: py:percent
 #     text_representation:
 #       extension: .py
 #       format_name: percent
@@ -824,5 +823,403 @@ signal_generator_33250a.write('FUNC:SQU:DCYC 20')
 
 # %%
 drift_corrector.track_drift(interval=60.0)
+
+# %%
+print(type(pulsed_master_logic))  # should print <class '...PulsedMasterLogic'>
+
+
+# %%
+def ensure_laser_on(clear_awg=False, laser_length=3.0e-6, timeout=30.0, poll_interval=0.2):
+    """
+    Ensure the AWG/pulse generator is outputting a constant 'laser_on'
+    waveform, which is required for the counter/APD to register any
+    signal during confocal scans.
+
+    Assumes `pulsed_master_logic` (a PulsedMasterLogic instance) is available
+    in the calling namespace (e.g. injected into the Jupyter notebook by qudi).
+
+    Parameters
+    ----------
+    clear_awg : bool
+        If True, clear all existing waveforms/sequences from the AWG
+        memory before generating and loading 'laser_on'. Useful if the
+        AWG is in an unknown/stale state from a previous measurement.
+    laser_length : float
+        Duration (s) of the laser_on pulse, passed to the
+        'generate_laser_on' predefined method.
+    timeout : float
+        Maximum time (s) to wait for each step to complete.
+    poll_interval : float
+        Polling interval (s) while waiting for busy flags to clear.
+    """
+
+    def _wait_while(condition_fn, description):
+        t_start = time.time()
+        while condition_fn():
+            if time.time() - t_start > timeout:
+                raise TimeoutError(f'Timed out waiting for {description}.')
+            time.sleep(poll_interval)
+
+    # ---------- -1. stop any currently running pulsed measurement/sequence ----------
+    if pulsed_master_logic.status_dict['measurement_running']:
+        pulsed_master_logic.log.info('Stopping currently running pulsed measurement...')
+        pulsed_master_logic.toggle_pulsed_measurement(False)
+        _wait_while(
+            lambda: pulsed_master_logic.status_dict['measurement_running'],
+            'running measurement to stop'
+        )
+
+    # ---------- 0. optionally clear AWG memory ----------
+    if clear_awg:
+        busy = (pulsed_master_logic.status_dict['sampling_ensemble_busy']
+                or pulsed_master_logic.status_dict['sampling_sequence_busy']
+                or pulsed_master_logic.status_dict['loading_busy']
+                or pulsed_master_logic.status_dict['sampload_busy'])
+        if busy:
+            raise RuntimeError(
+                'Cannot clear pulse generator: sampling/loading already in '
+                'progress. Wait for it to finish and try again.'
+            )
+
+        # Turn off the pulser first if it's running (mirrors clear_pulse_generator()'s
+        # own safety check).
+        if pulsed_master_logic.status_dict['pulser_running']:
+            pulsed_master_logic.log.info('Turning off pulse generator before clearing...')
+            pulsed_master_logic.pulsedmeasurementlogic().pulse_generator_off()
+            _wait_while(
+                lambda: pulsed_master_logic.status_dict['pulser_running'],
+                'pulse generator to turn off'
+            )
+
+        pulsed_master_logic.log.info('Clearing AWG/pulse generator memory...')
+        # Call clear_pulser() directly (synchronously) instead of going through
+        # clear_pulse_generator()'s queued signal, to avoid a race condition where
+        # module_state() briefly appears idle before the queued call has even started.
+        pulsed_master_logic.sequencegeneratorlogic().clear_pulser()
+
+        # As an extra safety margin, also wait for the module to report idle
+        # (covers the case where clear_pulser() itself is non-blocking/async).
+        _wait_while(
+            lambda: pulsed_master_logic.sequencegeneratorlogic().module_state() != 'idle',
+            'AWG memory to clear'
+        )
+
+    # ---------- 1. generate, sample, and load 'laser_on' in one call ----------
+    pulsed_master_logic.generate_predefined_sequence(
+        'laser_on', {'name': 'laser_on', 'length': laser_length}, sample_and_load=True
+    )
+
+    # 'sampload_busy' stays True for the entire generate -> sample -> load chain
+    _wait_while(
+        lambda: pulsed_master_logic.status_dict['sampload_busy'],
+        '\'laser_on\' generation/sampling/loading to finish'
+    )
+
+    if pulsed_master_logic.loaded_asset[0] != 'laser_on':
+        raise RuntimeError(
+            f'\'laser_on\' failed to load; currently loaded asset is '
+            f'{pulsed_master_logic.loaded_asset}. Check the qudi log for errors.'
+        )
+
+    # ---------- 2. start the pulse generator output ----------
+    if not pulsed_master_logic.status_dict['pulser_running']:
+        pulsed_master_logic.toggle_pulse_generator(True)
+        _wait_while(
+            lambda: not pulsed_master_logic.status_dict['pulser_running'],
+            'pulse generator to start running'
+        )
+
+    pulsed_master_logic.log.info('\'laser_on\' sequence loaded and running.')
+
+
+# %%
+ensure_laser_on(clear_awg=True)
+
+# %%
+signal_generator_33250a.write('*RST')
+signal_generator_33250a.write('OUTP OFF')
+signal_generator_33250a.write('FUNC:SHAP SQU')
+signal_generator_33250a.write('FREQ 100')
+signal_generator_33250a.write('VOLT:HIGH 1')
+signal_generator_33250a.write('VOLT:LOW 0')
+signal_generator_33250a.write('FUNC:SQU:DCYC 20')
+
+# %%
+values = [0, 1, 1, 0]
+channels = ['ao0', 'ao1', 'ao2', 'ao3']
+for ch in range(4):
+    daq_1.set_activity_state(channels[ch], True)
+    daq_1.set_setpoint(channels[ch], values[ch])
+
+# %%
+signal_generator_33250a.write('OUTP ON')
+
+# %%
+import time
+import numpy as np
+
+
+# Module-level state used to remember what was running before switching to
+# laser-only tracking mode, so it can be restored afterward.
+_tracking_state = {}
+
+
+def _get_pulseblaster_hw():
+    """
+    Drill down through pulsed_master_logic's connectors to obtain a direct
+    reference to the raw PulseBlaster hardware module, bypassing the AWG
+    entirely. Also returns the AwgPulseBlasterInterfuse instance itself,
+    since its channel-mapping helpers (_is_pb_d_ch, _d_ch_to_pb_hw) are
+    reused here to correctly translate the qudi-facing laser channel name
+    into the PulseBlaster module's own zero-based channel key.
+
+    Confirmed connector chain (from sequence_generator_logic.py /
+    awg_pulseblaster_seq_interfuse.py):
+      pulsed_master_logic.sequencegeneratorlogic() -> SequenceGeneratorLogic
+      SequenceGeneratorLogic.pulsegenerator()      -> AwgPulseBlasterInterfuse
+      AwgPulseBlasterInterfuse.pulseblaster()      -> raw PulseBlaster hw module
+    """
+    seq_gen = pulsed_master_logic.sequencegeneratorlogic()
+    interfuse = seq_gen.pulsegenerator()
+    pb_hw = interfuse.pulseblaster()
+    return pb_hw, interfuse
+
+
+def _wait_while(condition_fn, description, timeout, poll_interval):
+    t_start = time.time()
+    while condition_fn():
+        if time.time() - t_start > timeout:
+            raise TimeoutError(f'Timed out waiting for {description}.')
+        time.sleep(poll_interval)
+
+
+def start_laser_tracking(laser_channel=None, laser_length=3.0e-6,
+                         timeout=30.0, poll_interval=0.2):
+    """
+    Save the currently loaded/running experiment state, stop it, and switch
+    to a direct PulseBlaster-only 'laser on' pattern, bypassing the AWG
+    entirely. Much faster than the normal generate/sample/load pipeline,
+    since the AWG is never reprogrammed.
+
+    Call stop_laser_tracking_and_resume() afterward to restore and resume
+    the experiment sequence/ensemble that was active before this call.
+
+    Parameters
+    ----------
+    laser_channel : str, optional
+        The qudi-facing digital channel name driving the laser (e.g.
+        'd_ch9'). If None, taken from
+        pulsed_master_logic.generation_parameters['laser_channel'].
+    laser_length : float
+        Duration (s) of one repetition of the HIGH pulse programmed onto
+        the PulseBlaster. Since the pattern loops continuously once
+        started, the laser remains effectively continuously on regardless
+        of this value.
+    timeout, poll_interval : float
+        Passed to internal wait loops.
+    """
+    if _tracking_state.get('active'):
+        pulsed_master_logic.log.warning(
+            'start_laser_tracking() called while already in tracking mode; '
+            'ignoring to avoid overwriting the saved experiment state. '
+            'Call stop_laser_tracking_and_resume() first if you need to restart.'
+        )
+        return
+
+    # ---------- 0. save current state ----------
+    loaded_name, loaded_type = pulsed_master_logic.loaded_asset
+    _tracking_state.clear()
+    _tracking_state['active'] = True
+    _tracking_state['loaded_name'] = loaded_name
+    _tracking_state['loaded_type'] = loaded_type
+    _tracking_state['was_pulser_running'] = pulsed_master_logic.status_dict['pulser_running']
+    _tracking_state['was_measurement_running'] = pulsed_master_logic.status_dict['measurement_running']
+
+    pulsed_master_logic.log.info(
+        f'Saving experiment state before laser tracking: '
+        f'loaded=({loaded_name!r}, {loaded_type!r}), '
+        f'pulser_running={_tracking_state["was_pulser_running"]}, '
+        f'measurement_running={_tracking_state["was_measurement_running"]}'
+    )
+
+    # ---------- 1. stop measurement and pulser output ----------
+    if _tracking_state['was_measurement_running']:
+        pulsed_master_logic.toggle_pulsed_measurement(False)
+        _wait_while(
+            lambda: pulsed_master_logic.status_dict['measurement_running'],
+            'running measurement to stop', timeout, poll_interval
+        )
+
+    if _tracking_state['was_pulser_running']:
+        pulsed_master_logic.toggle_pulse_generator(False)
+        _wait_while(
+            lambda: pulsed_master_logic.status_dict['pulser_running'],
+            'pulse generator to stop', timeout, poll_interval
+        )
+
+    # ---------- 2. resolve hardware objects & laser channel ----------
+    pb_hw, interfuse = _get_pulseblaster_hw()
+
+    if laser_channel is None:
+        laser_channel = pulsed_master_logic.generation_parameters.get('laser_channel')
+        if not laser_channel:
+            raise ValueError(
+                'No laser_channel provided and none found in '
+                'pulsed_master_logic.generation_parameters. Pass laser_channel explicitly.'
+            )
+
+    if not interfuse._is_pb_d_ch(laser_channel):
+        raise ValueError(
+            f'Laser channel "{laser_channel}" is not routed through the PulseBlaster '
+            f'according to the interfuse\'s own channel mapping. This bypass method '
+            f'only works for PulseBlaster-routed laser channels.'
+        )
+
+    pb_hw_channel = 'd_ch{0:d}'.format(interfuse._d_ch_to_pb_hw(laser_channel))
+
+    # ---------- 3. build and upload a constant-HIGH waveform directly on the PB ----------
+    if pb_hw.get_status()[0] != 0:
+        pb_hw.pulser_off()
+
+    pb_constraints = pb_hw.get_constraints()
+    sample_rate = pb_hw.get_sample_rate() or pb_constraints.sample_rate.default
+
+    n_samples = max(
+        int(pb_constraints.waveform_length.min),
+        int(round(laser_length * sample_rate))
+    )
+
+    digital_samples = {pb_hw_channel: np.ones(n_samples, dtype=bool)}
+
+    pb_name = 'laser_on_direct'
+    written, _ = pb_hw.write_waveform(
+        pb_name, {}, digital_samples, True, True, n_samples
+    )
+    if written < 0:
+        raise RuntimeError('Failed to write laser-on waveform directly to the PulseBlaster.')
+
+    pb_hw.load_waveform([pb_name])
+
+    # ---------- 4. start the PulseBlaster output ----------
+    pb_hw.pulser_on()
+
+    pulsed_master_logic.log.info(
+        f'Laser tracking mode active: PulseBlaster channel "{pb_hw_channel}" '
+        f'(qudi channel "{laser_channel}") running directly, AWG bypassed.'
+    )
+
+
+def stop_laser_tracking_and_resume(timeout=30.0, poll_interval=0.2):
+    """
+    Stop the direct PulseBlaster-only laser output and restore + resume
+    whatever experiment sequence/ensemble was active before the matching
+    start_laser_tracking() call.
+
+    Since the AWG was never touched during tracking, load_sequence()/
+    load_ensemble() skip re-uploading the AWG side entirely and only
+    re-write the PulseBlaster from the interfuse's own cache -- so this
+    restore step is fast.
+    """
+    if not _tracking_state.get('active'):
+        pulsed_master_logic.log.warning(
+            'stop_laser_tracking_and_resume() called but no active tracking '
+            'state was found (start_laser_tracking() was not called, or was '
+            'already stopped). Nothing to do.'
+        )
+        return
+
+    pb_hw, _ = _get_pulseblaster_hw()
+    pb_hw.pulser_off()
+
+    loaded_name = _tracking_state.get('loaded_name')
+    loaded_type = _tracking_state.get('loaded_type')
+
+    if not loaded_name:
+        pulsed_master_logic.log.info(
+            'No previously loaded asset to restore (nothing was loaded '
+            'before laser tracking started). Leaving pulse generator idle.'
+        )
+        _tracking_state.clear()
+        _tracking_state['active'] = False
+        return
+
+    pulsed_master_logic.log.info(
+        f'Restoring previously loaded asset: ({loaded_name!r}, {loaded_type!r})'
+    )
+
+    is_sequence = loaded_type == 'PulseSequence'
+    is_ensemble = loaded_type == 'PulseBlockEnsemble'
+
+    if is_sequence:
+        pulsed_master_logic.load_sequence(loaded_name)
+    elif is_ensemble:
+        pulsed_master_logic.load_ensemble(loaded_name)
+    else:
+        pulsed_master_logic.log.error(
+            f'Unrecognized loaded_type "{loaded_type}" for asset "{loaded_name}"; '
+            f'cannot determine whether to call load_sequence() or load_ensemble(). '
+            f'Restore aborted -- please reload manually.'
+        )
+        _tracking_state.clear()
+        _tracking_state['active'] = False
+        return
+
+    _wait_while(
+        lambda: pulsed_master_logic.status_dict['loading_busy'],
+        f'"{loaded_name}" to finish loading', timeout, poll_interval
+    )
+
+    current_loaded_name, _ = pulsed_master_logic.loaded_asset
+    if current_loaded_name != loaded_name:
+        pulsed_master_logic.log.error(
+            f'Restore failed: expected "{loaded_name}" to be loaded, but '
+            f'currently loaded asset is "{current_loaded_name}". Check the '
+            f'qudi log for load errors.'
+        )
+        _tracking_state.clear()
+        _tracking_state['active'] = False
+        return
+
+    if _tracking_state.get('was_pulser_running'):
+        pulsed_master_logic.toggle_pulse_generator(True)
+        _wait_while(
+            lambda: not pulsed_master_logic.status_dict['pulser_running'],
+            'pulse generator to resume running', timeout, poll_interval
+        )
+
+    if _tracking_state.get('was_measurement_running'):
+        pulsed_master_logic.toggle_pulsed_measurement(True)
+        _wait_while(
+            lambda: not pulsed_master_logic.status_dict['measurement_running'],
+            'measurement to resume running', timeout, poll_interval
+        )
+
+    pulsed_master_logic.log.info(f'Experiment "{loaded_name}" successfully restored and resumed.')
+
+    _tracking_state.clear()
+    _tracking_state['active'] = False
+
+
+# %%
+start_laser_tracking()
+
+# %%
+stop_laser_tracking_and_resume()
+
+# %%
+import nv_field_fitting as nvfit
+import numpy as np
+
+quantization_axes = [
+    (np.sqrt(2/3), 0.0, np.sqrt(1/3)),
+    (-np.sqrt(2/3), 0.0, np.sqrt(1/3)),
+    (0.0, np.sqrt(2/3), -np.sqrt(1/3)),
+    (0.0, -np.sqrt(2/3), -np.sqrt(1/3))
+]
+
+# --- Forward prediction + toy plot ---
+B_test = nvfit.field_gauss_to_freq((5.0, 0.0, 2.0))  # 5 G along x, 2 G along z
+freq, signal, dips = nvfit.plot_toy_odmr_spectrum(quantization_axes, B_test)
+print(dips)
 
 # %%
