@@ -379,7 +379,7 @@ def _find_dip_candidates(freq, signal, max_dips, prominence=None):
 
 
 def fit_multi_lorentzian_dips(freq, signal, n_dips=None, min_dips=1, max_dips=8,
-                              prominence=None):
+                              prominence=None, plot=False, ax=None):
     """
     Fit a sum-of-N-Lorentzian-dips model to a raw ODMR spectrum:
 
@@ -404,10 +404,19 @@ def fit_multi_lorentzian_dips(freq, signal, n_dips=None, min_dips=1, max_dips=8,
         If given, skip automatic selection and fit exactly this many dips.
     min_dips, max_dips : int
         Range of N to try during automatic selection (ignored if n_dips
-        is given).
+        is given). max_dips defaults to 8, matching the physical upper
+        bound for NV ensembles: 4 orientation groups x 2 transitions
+        (ms=0 -> +-1) each in the fully general (non-axial) field case.
     prominence : float, optional
         Passed to scipy.signal.find_peaks for candidate detection. If
         None, a reasonable default is estimated from the data.
+    plot : bool
+        If True, plot the raw data together with the chosen fit curve and
+        a vertical dashed line at each fitted dip center -- useful for
+        quickly sanity-checking whether a fit is reasonable.
+    ax : matplotlib.axes.Axes, optional
+        If given (and plot=True), plot into this axes instead of creating
+        a new figure.
 
     Returns
     -------
@@ -436,7 +445,6 @@ def fit_multi_lorentzian_dips(freq, signal, n_dips=None, min_dips=1, max_dips=8,
         candidates = _find_dip_candidates(freq, signal, n_try, prominence=prominence)
         offset_guess = float(np.percentile(signal, 90))
 
-        # Pad with evenly spaced guesses if find_peaks found fewer candidates than n_try.
         while len(candidates) < n_try:
             frac = (len(candidates) + 1) / (n_try + 1)
             fallback_center = float(freq[0] + frac * (freq[-1] - freq[0]))
@@ -493,7 +501,7 @@ def fit_multi_lorentzian_dips(freq, signal, n_dips=None, min_dips=1, max_dips=8,
     else:
         center_errs = np.full(chosen_n, np.nan)
 
-    return {
+    result = {
         'n_dips': chosen_n,
         'centers': np.asarray(centers, dtype=float),
         'center_errs': np.asarray(center_errs, dtype=float),
@@ -507,6 +515,39 @@ def fit_multi_lorentzian_dips(freq, signal, n_dips=None, min_dips=1, max_dips=8,
         'success': bool(success),
         'candidates_tried': candidates_tried,
     }
+
+    if plot:
+        _plot_lorentzian_fit(freq, signal, result, ax=ax)
+
+    return result
+
+
+def _plot_lorentzian_fit(freq, signal, fit_result, ax=None):
+    """
+    Plot raw ODMR data together with a multi-Lorentzian fit result (as
+    returned by fit_multi_lorentzian_dips()): the data as points, the
+    fitted curve as a solid line, and a vertical dashed line at each
+    fitted dip center.
+    """
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(8, 4))
+    else:
+        fig = ax.figure
+
+    ax.plot(freq, signal, 'o', color='C0', markersize=3, label='data')
+    ax.plot(freq, fit_result['best_fit'], '-', color='C1', linewidth=1.5,
+            label=f"fit ({fit_result['n_dips']} dip(s))")
+
+    for c in fit_result['centers']:
+        ax.axvline(c, color='gray', linestyle='--', linewidth=1.0, alpha=0.7)
+
+    ax.set_xlabel('Frequency')
+    ax.set_ylabel('Signal')
+    ax.set_title(f"Multi-Lorentzian fit (n_dips={fit_result['n_dips']}, "
+                f"BIC={fit_result['bic']:.2f})")
+    ax.legend(loc='lower right', fontsize=8)
+
+    return fig, ax
 
 
 # =============================================================================
@@ -762,7 +803,7 @@ def fit_field_from_dips_sequence(quantization_axes, measurements, B_guess0,
 
 def fit_field_from_spectrum(quantization_axes, freq, signal, B_guess,
                             D=2.87e9, E=0.0, n_dips=None, min_dips=1, max_dips=8,
-                            prominence=None, **field_fit_kwargs):
+                            prominence=None, plot=False, ax=None, **field_fit_kwargs):
     """
     Fit a magnetic field directly from a raw ODMR spectrum: first extracts
     dip positions/uncertainties via fit_multi_lorentzian_dips(), then
@@ -779,6 +820,14 @@ def fit_field_from_spectrum(quantization_axes, freq, signal, B_guess,
     n_dips, min_dips, max_dips, prominence :
         Passed through to fit_multi_lorentzian_dips() (see its docstring
         for automatic dip-count selection via BIC).
+    plot : bool
+        If True, plot the raw spectrum together with the multi-Lorentzian
+        fit curve and dip centers (see fit_multi_lorentzian_dips()) --
+        useful for quickly checking whether the underlying spectral fit
+        (which the field fit depends on) looks reasonable.
+    ax : matplotlib.axes.Axes, optional
+        If given (and plot=True), plot into this axes instead of creating
+        a new figure.
     **field_fit_kwargs :
         Passed through to fit_field_from_dips() (e.g. max_match_distance).
 
@@ -792,7 +841,7 @@ def fit_field_from_spectrum(quantization_axes, freq, signal, B_guess,
     """
     lorentzian_fit = fit_multi_lorentzian_dips(
         freq, signal, n_dips=n_dips, min_dips=min_dips, max_dips=max_dips,
-        prominence=prominence
+        prominence=prominence, plot=plot, ax=ax
     )
 
     observed_dips = lorentzian_fit['centers']
@@ -810,7 +859,7 @@ def fit_field_from_spectrum(quantization_axes, freq, signal, B_guess,
 
 def fit_field_from_spectra_sequence(quantization_axes, measurements, B_guess0,
                                     D=2.87e9, E=0.0, min_dips=1, max_dips=8,
-                                    prominence=None, **field_fit_kwargs):
+                                    prominence=None, plot=False, **field_fit_kwargs):
     """
     Array/sequence version of fit_field_from_spectrum(): fit a magnetic
     field for EACH raw spectrum in an ordered sequence, chaining each
@@ -829,6 +878,13 @@ def fit_field_from_spectra_sequence(quantization_axes, measurements, B_guess0,
     min_dips, max_dips, prominence :
         Defaults for fit_multi_lorentzian_dips(), used for any
         measurement that doesn't specify its own 'n_dips'.
+    plot : bool
+        If True, produce one plot PER measurement (each in its own new
+        figure), showing that measurement's raw spectrum, fit curve, and
+        dip centers -- useful for scanning through an entire sweep to
+        spot-check fit quality. For large sequences, consider leaving
+        this False and instead calling fit_field_from_spectrum() manually
+        with plot=True on a few individual measurements of interest.
     **field_fit_kwargs :
         Passed through to fit_field_from_dips() for every measurement.
 
@@ -845,6 +901,7 @@ def fit_field_from_spectra_sequence(quantization_axes, measurements, B_guess0,
             quantization_axes, meas['freq'], meas['signal'], B_guess,
             D=D, E=E, n_dips=meas.get('n_dips'),
             min_dips=min_dips, max_dips=max_dips, prominence=prominence,
+            plot=plot,
             **field_fit_kwargs
         )
         results.append((B_fit, fit_info))
