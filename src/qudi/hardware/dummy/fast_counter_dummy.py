@@ -128,8 +128,6 @@ class FastCounterDummy(FastCounterInterface):
         self._gate_length_bins = round(record_length_s / bin_width_s) if self._gated else round(record_length_s / 50 / bin_width_s)
         self._number_of_gates = number_of_gates if self._gated else 50
 
-        self.log.warn(f"{self._number_of_gates=}, {self._gate_length_bins=}, {self.get_binwidth()=}")
-
         return self.get_binwidth(), record_length_s, self._number_of_gates
 
     def get_status(self):
