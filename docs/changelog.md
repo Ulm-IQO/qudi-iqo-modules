@@ -15,6 +15,7 @@
 - Fix discovery of `AltPlotMethodBase` subclasses
 - Fix NI IO for only analog input channels.
 - bug fixes for millennia eV laser
+- Fixed data trace generation for `FastCounterDummy` in gated and ungated modes, so that measurements yield a clean oscillation for an arbitrary number of points
 
 ### New Features
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
