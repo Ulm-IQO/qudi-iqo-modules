@@ -258,24 +258,24 @@ class BasicPulseExtractor(PulseExtractorBase):
                           threshold_tolerance=20e-9):
         """
         Detects the laser pulses in the ungated timetrace data and extracts them.
-
+    
         @param numpy.ndarray count_data: The raw timetrace data (1D) from an ungated fast counter
-        @param count_threshold:
-        @param min_laser_length:
-        @param threshold_tolerance:
-
+        @param count_threshold: 
+        @param min_laser_length: 
+        @param threshold_tolerance: 
+        
         @return 2D numpy.ndarray:   2D array, the extracted laser pulses of the timetrace.
                                     dimensions: 0: laser number, 1: time bin
-
+    
         Procedure:
             Threshold detection:
             ---------------
-
+    
             All count data from the time trace is compared to a threshold value.
             Values above the threshold are considered to belong to a laser pulse.
             If the length of a pulse would be below the minimum length the pulse is discarded.
-            If a number of bins which are below the threshold is smaller than the number of bins
-            making the threshold_tolerance then they are still considered to belong to a laser
+            If a number of bins which are below the threshold is smaller than the number of bins 
+            making the threshold_tolerance then they are still considered to belong to a laser 
             pulse.
         """
         return_dict = dict()
