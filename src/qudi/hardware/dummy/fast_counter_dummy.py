@@ -35,14 +35,6 @@ class FastCounterDummy(FastCounterInterface):
         module.Class: 'dummy.fast_counter_dummy.FastCounterDummy'
         options:
             gated: False
-            # load_trace: null  # optional 950 MHz counts file; rows are gates
-            # ungated_points: 50  # standalone fallback, overwritten by measurement metadata
-            # laser_length: 3e-6
-            # laser_delay: 500e-9
-            # rabi_period: 100e-9
-            # poisson_noise: False
-            # random_seed: null
-
     """
 
     # config option
