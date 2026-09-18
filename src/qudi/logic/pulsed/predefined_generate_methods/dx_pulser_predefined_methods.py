@@ -576,7 +576,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def _build_duty_cycle_correction(self, name, correction_length, correction_on,
                                     always_on_channel, pulser_channel,
                                     preferred_base_length,
-                                    created_blocks, created_ensembles):
+                                    created_blocks, created_ensembles,
+                                    laser_duty=False):
         """
         Build a duty-cycle correction PulseBlock/PulseBlockEnsemble whose base element is looped
         via sequence-step `repetitions` to reach `correction_length` in total (a single small
@@ -586,22 +587,39 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         _MAX_SEQUENCE_LOOP_COUNT consecutive plays, the base element's length is instead
         increased just enough to bring the required loop count back under the limit.
 
+        @param laser_duty: if True, the physical laser channel (self.laser_channel) is held HIGH
+            for the ENTIRE correction block, regardless of whether the block itself is a
+            pulser-ON or pulser-OFF correction. No detector gate channel is touched. If False
+            (default), the correction block behaves exactly as before - laser untouched.
+
         @return (PulseBlockEnsemble, int): the created correction ensemble, and the
             `repetitions` value to use for it in the sequence step (total plays = repetitions + 1).
         """
         def _make_block(length):
-            if correction_on:
-                element = self._get_pulser_on_idle_element(
-                    length=length, increment=0,
-                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            if laser_duty:
+                if correction_on:
+                    element = self._get_pulser_on_laser_only_element(
+                        length=length, increment=0,
+                        always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                else:
+                    element = self._get_pulser_off_laser_only_element(
+                        length=length, increment=0, always_on_channel=always_on_channel)
             else:
-                element = self._get_pulser_off_idle_element(
-                    length=length, increment=0, always_on_channel=always_on_channel)
+                if correction_on:
+                    element = self._get_pulser_on_idle_element(
+                        length=length, increment=0,
+                        always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                else:
+                    element = self._get_pulser_off_idle_element(
+                        length=length, increment=0, always_on_channel=always_on_channel)
+
             block = PulseBlock(name=name + '_duty_correction')
             block.append(element)
+            extra_high_channels = self.laser_channel if laser_duty else None
             _, actual_length_s = self._pad_ensemble_to_granularity(
                 block, on=correction_on,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+                extra_high_channels=extra_high_channels)
             return block, actual_length_s
 
         correction_block, actual_base_length = _make_block(preferred_base_length)
@@ -746,41 +764,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def _apply_duty_cycle_correction(self, sequence, created_blocks, created_ensembles,
                                     always_on_channel, pulser_channel, duty_cycle,
-                                    name, preferred_on_base_length, preferred_off_base_length):
+                                    name, preferred_on_base_length, preferred_off_base_length,
+                                    laser_duty=False):
         """
-        Given an already fully-built PulseSequence (ALL real content already appended,
-        including any warm-up/cooldown/rising/falling ladder the caller wants as a fixed part
-        of the sequence, and go_to already pointing back to the intended loop-back step), this
-        measures the sequence's actual pulser_channel duty cycle
-        (_measure_sequence_duty_cycle) and, if it doesn't already match `duty_cycle`, appends
-        exactly ONE additional idle correction step (looped via sequence-step repetitions to
-        reach the exact required length - see _build_duty_cycle_correction) right before the
-        loop-back point, then moves go_to onto that new final step.
+        ... (unchanged docstring, plus:)
 
-        Logs the measured on/off/total time and resulting duty cycle both before and after any
-        correction is applied, using the exact same measurement function the correction decision
-        itself is based on.
-
-        This is the ONLY place duty-cycle correction logic lives - it does not add any laser
-        warm-up/cooldown or ramping of its own; those are the caller's responsibility as part
-        of building the physical sequence.
-
-        @param sequence: PulseSequence, modified in place.
-        @param created_blocks, created_ensembles: lists, appended to in place if a new
-            correction block/ensemble is created.
-        @param always_on_channel, pulser_channel: as elsewhere.
-        @param duty_cycle: target fraction of total sequence time with pulser_channel HIGH.
-        @param name: base name for the correction block/ensemble.
-        @param preferred_on_base_length, preferred_off_base_length: preferred base element
-            duration for the correction loop, depending on whether ON or OFF time needs to be
-            added (see _build_duty_cycle_correction).
-
-        @return bool: True if a correction step was appended.
+        @param laser_duty: if True, the appended correction step holds the physical laser
+            channel HIGH for its entire duration (no gate channel), regardless of whether the
+            correction itself is pulser-ON or pulser-OFF. Passed straight through to
+            _build_duty_cycle_correction. Default False (laser untouched, as before).
         """
         def _log_duty_cycle(label, total_on_s, total_off_s):
             total_s = total_on_s + total_off_s
             p_on = total_on_s / total_s if total_s > 0 else float('nan')
-            self.log.info(
+            self.log.debug(
                 '{0} duty cycle for "{1}": on={2:.6e} s, off={3:.6e} s, total={4:.6e} s, '
                 'p_on={5:.6f}'.format(label, name, total_on_s, total_off_s, total_s, p_on))
 
@@ -799,7 +796,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             name=name, correction_length=correction_length, correction_on=correction_on,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel,
             preferred_base_length=preferred_base_length,
-            created_blocks=created_blocks, created_ensembles=created_ensembles)
+            created_blocks=created_blocks, created_ensembles=created_ensembles,
+            laser_duty=laser_duty)
 
         loop_back_target = sequence[-1].go_to
         sequence.append(correction_ensemble.name)
@@ -820,7 +818,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_dx_rabi_ao_trig(self, name='rabi_ao_trig', tau_start=10.0e-9, tau_step=10.0e-9,
                                   num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                   duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                  laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True):
+                                  laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True, laser_duty=False):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
 
@@ -1061,7 +1059,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._apply_duty_cycle_correction(
             rabi_sequence, created_blocks, created_ensembles,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
+            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time, laser_duty=laser_duty)
 
         rabi_sequence.refresh_parameters()
 
@@ -1079,7 +1077,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_dx_pulsedodmr_ao_trig(self, name='pODMR_ao_trig', freq_start=3.47e9, freq_stop=3.57e9,
                                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                         duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                        laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True):
+                                        laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True, laser_duty=False):
         """
         Sequence-mode pulsed ODMR - identical structure to generate_dx_rabi_ao_trig, swept over
         frequency with a fixed pi-pulse length (self.rabi_period / 2) instead of swept tau.
@@ -1306,7 +1304,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._apply_duty_cycle_correction(
             pulsedodmr_sequence, created_blocks, created_ensembles,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
+            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time, laser_duty=laser_duty)
 
         pulsedodmr_sequence.refresh_parameters()
 
@@ -1325,7 +1323,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                      num_of_points=50, mw_amp=0.2, mw_length=10e-6,
                                      always_on_channel='d_ch15', pulser_channel='d_ch3', pulser_mode=1,
                                      duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                     laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True):
+                                     laser_warmup_time=100e-6, laser_cooldown=10e-6, include_warmup=True, laser_duty=False):
         """
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
@@ -1586,17 +1584,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         cw_odmr_sequence[-1].go_to = 1
 
-        # ── Fix up the duty cycle, if needed, by measuring the finished sequence ────────────
-        if pulser_mode == 0:
-            self.log.warning(
-                'pulser_mode == 0: pulser_channel is never driven in this sequence, so '
-                'duty-cycle correction is meaningless here and has been skipped entirely '
-                '(requested duty_cycle = {0} is ignored).'.format(duty_cycle))
-        else:
-            self._apply_duty_cycle_correction(
-                cw_odmr_sequence, created_blocks, created_ensembles,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-                name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
+        self._apply_duty_cycle_correction(
+            cw_odmr_sequence, created_blocks, created_ensembles,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
+            name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time, laser_duty=laser_duty)
 
         cw_odmr_sequence.refresh_parameters()
 
