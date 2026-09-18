@@ -534,7 +534,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                 the pad)
         """
         self.save_block(block)
-        temp_ensemble = PulseBlockEnsemble(name='__tmp_granularity_check__', rotating_frame=False)
+        #temp_ensemble = PulseBlockEnsemble(name='__tmp_granularity_check__', rotating_frame=False)
+        temp_ensemble = PulseBlockEnsemble(name='__tmp_granularity_check__{0}'.format(block.name), rotating_frame=False)
         temp_ensemble.append((block.name, 0))
 
         info = self.analyze_block_ensemble(temp_ensemble)
@@ -756,6 +757,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         reach the exact required length - see _build_duty_cycle_correction) right before the
         loop-back point, then moves go_to onto that new final step.
 
+        Logs the measured on/off/total time and resulting duty cycle both before and after any
+        correction is applied, using the exact same measurement function the correction decision
+        itself is based on.
+
         This is the ONLY place duty-cycle correction logic lives - it does not add any laser
         warm-up/cooldown or ramping of its own; those are the caller's responsibility as part
         of building the physical sequence.
@@ -772,12 +777,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         @return bool: True if a correction step was appended.
         """
+        def _log_duty_cycle(label, total_on_s, total_off_s):
+            total_s = total_on_s + total_off_s
+            p_on = total_on_s / total_s if total_s > 0 else float('nan')
+            self.log.info(
+                '{0} duty cycle for "{1}": on={2:.6e} s, off={3:.6e} s, total={4:.6e} s, '
+                'p_on={5:.6f}'.format(label, name, total_on_s, total_off_s, total_s, p_on))
+
         total_on_s, total_off_s = self._measure_sequence_duty_cycle(
             sequence, created_blocks, created_ensembles, pulser_channel)
+        _log_duty_cycle('Pre-correction', total_on_s, total_off_s)
 
         correction_on, correction_length = self._solve_duty_cycle_correction_length(
             total_on_s, total_off_s, duty_cycle)
         if correction_on is None:
+            _log_duty_cycle('Post-correction (no correction needed)', total_on_s, total_off_s)
             return False
 
         preferred_base_length = preferred_on_base_length if correction_on else preferred_off_base_length
@@ -792,6 +806,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         sequence[-1].repetitions = correction_reps
         sequence[-2].go_to = 0
         sequence[-1].go_to = loop_back_target
+
+        total_on_s, total_off_s = self._measure_sequence_duty_cycle(
+            sequence, created_blocks, created_ensembles, pulser_channel)
+        _log_duty_cycle('Post-correction', total_on_s, total_off_s)
 
         return True
 
@@ -1040,7 +1058,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         rabi_sequence[-1].go_to = 1
 
-        # ── Fix up the duty cycle, if needed, by measuring the finished sequence ────────────
         self._apply_duty_cycle_correction(
             rabi_sequence, created_blocks, created_ensembles,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
