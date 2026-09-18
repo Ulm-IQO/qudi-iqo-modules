@@ -21,13 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import os
 import numpy as np
-from copy import deepcopy
-
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
-from qudi.hardware.dummy.pulse_data_simulation import simulate_photon_trace, select_pulse_edges
 
 
 class FastCounterDummy(FastCounterInterface):
