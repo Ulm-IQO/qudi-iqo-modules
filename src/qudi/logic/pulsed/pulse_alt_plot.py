@@ -30,9 +30,11 @@ import inspect
 from collections.abc import Callable
 from typing import Any
 import numpy as np
+from functools import partial
+
 
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
+from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path, is_subclass
 
 class AltPlotMethodBase:
     """ Base class for alternative plot methods. Must be inherited from *exclusively*.
@@ -131,6 +133,9 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         self._methods: dict[str, AltPlotMethodBase] = dict()      # {name: instance}
         self._parameters: dict[str, Any] = dict()   # union of all compute() kwargs
         self._current_method: str | None = None  # None => no alternative plot
+
+        # alt plot sub class predicate
+        self.is_alt_plot_class = partial(is_subclass, base=AltPlotMethodBase)
 
         # Import from the default namespace package
         import qudi.logic.pulsed.alt_plot_methods as default_ns
@@ -246,6 +251,3 @@ class AltPlotAnalyzer(AltPlotMethodBase):
             kwargs[name] = stored if type(stored) == type(param.default) else param.default
         return kwargs
 
-    @staticmethod
-    def is_alt_plot_class(obj: Any) -> bool:
-        return inspect.isclass(obj) and AltPlotMethodBase in obj.mro() and obj is not AltPlotMethodBase

@@ -25,10 +25,12 @@ import inspect
 import importlib
 import numpy as np
 import warnings
+from functools import partial
+
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
+from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path, is_subclass
 
 
 class PulseBlockElement(object):
@@ -1771,6 +1773,8 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         # nested dictionary with keys being the generation method names and values being a
         # dictionary containing all keyword arguments as keys with their default value
         self._generate_method_parameters = dict()
+        # Generator sub class predicate
+        self.is_generator_class = partial(is_subclass, base=PredefinedGeneratorBase)
 
         # Import predefined generator modules
         # Import default namespace "qudi.logic.pulsed.predefined_generate_methods"
@@ -1839,17 +1843,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
             self._generate_method_parameters[method_name] = param_dict
         return
 
-    @staticmethod
-    def is_generator_class(obj):
-        """
-        Helper method to check if an object is a valid generator class.
 
-        @param object obj: object to check
-        @return bool: True if obj is a valid generator class, False otherwise
-        """
-        if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.mro()
-        return False
 
     def activate_plugins(self):
         [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]

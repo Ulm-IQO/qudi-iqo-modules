@@ -21,9 +21,11 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import inspect
 import importlib
+from functools import partial
+
 
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
+from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path, is_subclass
 
 
 class PulseExtractorBase:
@@ -90,6 +92,8 @@ class PulseExtractor(PulseExtractorBase):
         self._parameters = dict()
         # Currently selected extraction method
         self._current_extraction_method = None
+        # Extraction sub class predicate
+        self.is_extractor_class = partial(is_subclass, base=PulseExtractorBase)
 
         # import extraction modules from default namespace package
         # "qudi.logic.pulse_extraction_methods"
@@ -293,14 +297,3 @@ class PulseExtractor(PulseExtractorBase):
             self._parameters.update(self._get_extraction_method_kwargs(method=method))
         return
 
-    @staticmethod
-    def is_extractor_class(obj):
-        """
-        Helper method to check if an object is a valid extractor class.
-
-        @param object obj: object to check
-        @return bool: True if obj is a valid extractor class, False otherwise
-        """
-        if inspect.isclass(obj):
-            return PulseExtractorBase in obj.__bases__ and len(obj.__bases__) == 1
-        return False

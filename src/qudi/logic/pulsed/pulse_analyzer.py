@@ -21,9 +21,11 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import inspect
 import importlib
+from functools import partial
+
 
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path
+from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path, is_subclass
 
 
 
@@ -90,6 +92,9 @@ class PulseAnalyzer(PulseAnalyzerBase):
         self._parameters = dict()
         # Currently selected analysis method
         self._current_analysis_method = None
+        # Analyzer sub class predicate
+        self.is_analyzer_class = partial(is_subclass, base=PulseAnalyzerBase)
+
 
         # import analysis modules from default namespace package
         # "qudi.logic.pulsed.pulsed_analysis_methods"
@@ -272,14 +277,3 @@ class PulseAnalyzer(PulseAnalyzerBase):
             self._parameters.update(self._get_analysis_method_kwargs(method=method))
         return
 
-    @staticmethod
-    def is_analyzer_class(obj):
-        """
-        Helper method to check if an object is a valid analyzer class.
-
-        @param object obj: object to check
-        @return bool: True if obj is a valid analyzer class, False otherwise
-        """
-        if inspect.isclass(obj):
-            return PulseAnalyzerBase in obj.__bases__ and len(obj.__bases__) == 1
-        return False
