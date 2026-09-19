@@ -28,6 +28,7 @@
 - Added Magnet Toolchain
 
 ### Other
+- Disabled workflow triggers on a draft PR
 - Displaying Qudi logs in the test workflow upon test failure
 
 ## Version 1.0.0

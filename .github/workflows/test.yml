@@ -8,6 +8,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+    types: [opened, synchronize, reopened, ready_for_review]
+
   workflow_dispatch:
 
 concurrency:
@@ -16,6 +18,7 @@ concurrency:
 
 jobs:
   make-matrix:
+    if: ${{ github.event.pull_request.draft == false }}
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
@@ -28,6 +31,7 @@ jobs:
         shell: bash
 
   test:
+    if: ${{ github.event.pull_request.draft == false }}
     needs: make-matrix
     runs-on: windows-latest
     strategy:
