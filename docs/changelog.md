@@ -15,6 +15,7 @@
 - Fix discovery of `AltPlotMethodBase` subclasses
 - Fix NI IO for only analog input channels.
 - bug fixes for millennia eV laser
+- Fixed data trace generation for `FastCounterDummy` in gated and ungated modes, so that measurements yield a clean oscillation for an arbitrary number of points
 - Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
@@ -25,8 +26,10 @@
 - Added selectable `ScanningOptimizeLogic` optimization methods
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
+- Added Magnet Toolchain
 
 ### Other
+- Disabled workflow triggers on a draft PR
 - Displaying Qudi logs in the test workflow upon test failure
 
 ## Version 1.0.0
@@ -67,6 +70,7 @@
 - Updated install documentation
 - Improved Github Actions dependency testing
 - Added tests for scanning tool chain
+- No more automatic multi-switch channel deactivation on the wavemeter by the `high_finesse_proxy` upon starting/stopping of instreamers. Only reactivate channels (e.g. after deactivation through GUI) if they are associated to a running instreamer.
 
 ## Version 0.6.0
 

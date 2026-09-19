@@ -21,9 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import os
 import numpy as np
-
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
@@ -34,25 +32,13 @@ class FastCounterDummy(FastCounterInterface):
     Example config for copy-paste:
 
     fastcounter_dummy:
-        module.Class: 'fast_counter_dummy.FastCounterDummy'
+        module.Class: 'dummy.fast_counter_dummy.FastCounterDummy'
         options:
             gated: False
-            #load_trace: None # path to the saved dummy trace
-
     """
 
     # config option
     _gated = ConfigOption('gated', False, missing='warn')
-    trace_path = ConfigOption('load_trace', None)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        if self.trace_path is None:
-            self.trace_path = os.path.abspath(os.path.join(__file__,
-                                                           '..',
-                                                           'FastComTec_demo_timetrace.asc'))
-            self.log.debug(f"Loading dummy fastcounter trace: {self.trace_path}")
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -60,6 +46,8 @@ class FastCounterDummy(FastCounterInterface):
         self.statusvar = 0
         self._binwidth = 1
         self._gate_length_bins = 8192
+        self._number_of_gates = 0
+        self._count_data = np.zeros((0, 0) if self._gated else 0, dtype='int64')
         return
 
     def on_deactivate(self):
@@ -105,7 +93,7 @@ class FastCounterDummy(FastCounterInterface):
         constraints = dict()
 
         # the unit of those entries are seconds per bin. In order to get the
-        # current binwidth in seonds use the get_binwidth method.
+        # current binwidth in seconds use the get_binwidth method.
         constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6, 8/950e6]
 
         return constraints
@@ -125,13 +113,10 @@ class FastCounterDummy(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
-        self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
-        self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
-        actual_binwidth = self._binwidth * 1000 / 950e9
-        actual_length = self._gate_length_bins * actual_binwidth
-        self.statusvar = 1
-        return actual_binwidth, actual_length, number_of_gates
+        self._gate_length_bins = round(record_length_s / bin_width_s) if self._gated else round(record_length_s / 50 / bin_width_s)
+        self._number_of_gates = number_of_gates if self._gated else 50
 
+        return self.get_binwidth(), record_length_s, self._number_of_gates
 
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
@@ -146,16 +131,31 @@ class FastCounterDummy(FastCounterInterface):
         return self.statusvar
 
     def start_measure(self):
-        time.sleep(1)
         self.statusvar = 2
-        try:
-            self._count_data = np.loadtxt(self.trace_path, dtype='int64')
-        except:
-            return -1
+        self._count_data = self._simulate_fluorescence()
+
+    def _simulate_fluorescence(self) -> np.ndarray:
+        sine = np.rint(1e3 * np.sin(np.linspace(0, 4 * np.pi, self._number_of_gates))**2) + 1e3
+
+        edge_bins = int(self._gate_length_bins * 0.05)
+        gated_data = np.zeros(
+            (self._number_of_gates, self._gate_length_bins),
+            dtype=int,
+        )
+        gated_data[
+            :,
+            edge_bins:-edge_bins,
+        ] = sine[:, np.newaxis]
 
         if self._gated:
-            self._count_data = self._count_data.transpose()
-        return 0
+            return gated_data
+
+        zero_bins = np.zeros(self._gate_length_bins)
+
+        return np.concatenate([
+            np.concatenate([pulse, zero_bins])
+            for pulse in gated_data
+        ])
 
     def pause_measure(self):
         """ Pauses the current measurement.
@@ -178,7 +178,6 @@ class FastCounterDummy(FastCounterInterface):
 
         If fast counter is in pause state, then fast counter will be continued.
         """
-
         self.statusvar = 2
         return 0
 
@@ -222,8 +221,3 @@ class FastCounterDummy(FastCounterInterface):
         time.sleep(0.5)
         info_dict = {'elapsed_sweeps': None, 'elapsed_time': None}
         return self._count_data, info_dict
-
-    def get_frequency(self):
-        freq = 950.
-        time.sleep(0.5)
-        return freq

@@ -21,8 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from abc import abstractmethod
+from typing import Dict, Any
 
 from qudi.core.module import Base
+
 
 
 class MotorInterface(Base):
@@ -143,13 +145,13 @@ class MotorInterface(Base):
                                 If nothing is passed, then from each axis the
                                 position is asked.
 
-        @return dict: with keys being the axis labels and item the current
+        @return dict: with keys being the axis labels and value the current
                       position.
         """
         pass
 
     @abstractmethod
-    def get_status(self, param_list=None):
+    def get_status(self, param_list=None) -> Dict[str, Any]:
         """ Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
@@ -158,7 +160,7 @@ class MotorInterface(Base):
                                 If nothing is passed, then from each axis the
                                 status is asked.
 
-        @return dict: with the axis label as key and the status number as item.
+        @return dict: with the axis label as key and the axis status as value.
         """
         pass
 
@@ -205,5 +207,13 @@ class MotorInterface(Base):
                                  to one of the axis.
 
         @return int: error code (0:OK, -1:error)
+        """
+        pass
+
+    @abstractmethod
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
         """
         pass
