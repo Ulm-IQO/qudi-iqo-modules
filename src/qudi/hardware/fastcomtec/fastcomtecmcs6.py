@@ -74,7 +74,7 @@ class AcqStatus(ctypes.Structure):
     """ Create a structured Data type with ctypes where the dll can write into.
 
     This object handles and retrieves the acquisition status data from the
-    Fastcomtec.
+    FastComtec.
 
     int started;                // acquisition status: 1 if running, 0 else
     double runtime;             // running time in seconds
@@ -118,7 +118,7 @@ class AcqSettings(ctypes.Structure):
 class ACQDATA(ctypes.Structure):
     """ Create a structured Data type with ctypes where the dll can write into.
 
-    This object handles and retrieves the acquisition data of the Fastcomtec.
+    This object handles and retrieves the acquisition data of the FastComtec.
     """
     _fields_ = [('s0', ctypes.POINTER(ctypes.c_ulong)),
                 ('region', ctypes.POINTER(ctypes.c_ulong)),
@@ -171,6 +171,7 @@ class FastComtec(FastCounterInterface):
             trigger_safety: 400e-9
             aom_delay: 390e-9
             minimal_binwidth: 0.2e-9
+            # dll_path: 'C:\\Windows\\System32\\DMCS6.dll'  # optional override
 
     """
 
@@ -178,12 +179,14 @@ class FastComtec(FastCounterInterface):
     trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
+    dll_path = ConfigOption('dll_path', [r'C:\Windows\System32\DMCS6.dll',
+                                       r'C:\Windows\System32\DMCS8.dll'], missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         #this variable has to be added because there is no difference
-        #in the fastcomtec it can be on "stopped" or "halt"
+        #in the FastComtec it can be on "stopped" or "halt"
         self.stopped_or_halt = "stopped"
         self.timetrace_tmp = []
 
@@ -191,7 +194,16 @@ class FastComtec(FastCounterInterface):
         """ Initialisation performed during activation of the module.
         """
 
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        dll_paths = [self.dll_path] if isinstance(self.dll_path, str) else self.dll_path
+        for dll_path in dll_paths:
+            try:
+                self.dll = ctypes.windll.LoadLibrary(dll_path)
+                break
+            except OSError as error:
+                load_error = error
+        else:
+            raise OSError('Could not load a FastComtec DLL from {0}'.format(dll_paths)) from (
+                load_error if dll_paths else None)
         if self.gated:
             self.change_sweep_mode(gated=True)
         else:
@@ -204,10 +216,10 @@ class FastComtec(FastCounterInterface):
         return
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
+        """ Retrieve the hardware constraints from the Fast counting device.
 
         @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
+                      items are the definition for the constraints.
 
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
@@ -240,7 +252,7 @@ class FastComtec(FastCounterInterface):
         constraints = dict()
 
         # the unit of those entries are seconds per bin. In order to get the
-        # current binwidth in seonds use the get_binwidth method.
+        # current binwidth in seconds use the get_binwidth method.
         constraints['hardware_binwidth_list'] = list(self.minimal_binwidth * (2 ** np.array(
                                                      np.linspace(0,24,25))))
         constraints['max_sweep_len'] = 6.8
@@ -266,8 +278,6 @@ class FastComtec(FastCounterInterface):
 
         # when not gated, record length = total sequence length, when gated, record length = laser length.
         # subtract 200 ns to make sure no sequence trigger is missed
-        self.set_binwidth(bin_width_s)
-
         if self.gated:
             # sequential acquisition, new line on every "sync" trigger
             self.configure_gated_counter(bin_width_s, record_length_s,
@@ -275,11 +285,10 @@ class FastComtec(FastCounterInterface):
         else:
             # one acquisition for all taus, one sync trigger per acquisition
             # subtract time to make sure no sequence trigger is missed
+            self.set_binwidth(bin_width_s)
             no_of_bins = int((record_length_s - self.trigger_safety) / bin_width_s)
-            self.change_sweep_mode(False, cycles=None, preset=None)
+            self.change_sweep_mode(False, cycles=number_of_gates, preset=None)
             self.set_length(no_of_bins)
-
-        self.set_cycles(number_of_gates)
 
         return self.get_binwidth(), self.get_length() * self.get_binwidth(), number_of_gates
 
@@ -294,7 +303,7 @@ class FastComtec(FastCounterInterface):
         """
         status = AcqStatus()
         self.dll.GetStatusData(ctypes.byref(status), 0)
-        # status.started = 3 measn that fct is about to stop
+        # status.started = 3 means that fct is about to stop
         while status.started == 3:
             time.sleep(0.1)
             self.dll.GetStatusData(ctypes.byref(status), 0)
@@ -367,7 +376,7 @@ class FastComtec(FastCounterInterface):
 
         @return float: current length of a single bin in seconds (seconds/bin)
 
-        The red out bitshift will be converted to binwidth. The binwidth is
+        The read out bitshift will be converted to binwidth. The binwidth is
         defined as 2**bitshift*minimal_binwidth.
         """
         return self.minimal_binwidth*(2**int(self.get_bitshift()))
@@ -380,7 +389,7 @@ class FastComtec(FastCounterInterface):
         If the counter is UNgated it will return a 1D-numpy-array with returnarray[timebin_index]
         If the counter is gated it will return a 2D-numpy-array with returnarray[gate_index, timebin_index]
 
-          @return arrray: Time trace.
+          @return array: Time trace.
         """
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
@@ -432,9 +441,9 @@ class FastComtec(FastCounterInterface):
         return self.gated
 
     def get_bitshift(self):
-        """Get bitshift from Fastcomtec.
+        """Get bitshift from FastComtec.
 
-        @return int settings.bitshift: the red out bitshift
+        @return int settings.bitshift: the read out bitshift
         """
         settings = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(settings), 0)
@@ -445,7 +454,7 @@ class FastComtec(FastCounterInterface):
 
         @param int bitshift:
 
-        @return int: asks the actual bitshift and returns the red out value
+        @return int: asks the actual bitshift and returns the read out value
         """
         cmd = 'BITSHIFT={0}'.format(hex(bitshift))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
@@ -456,9 +465,9 @@ class FastComtec(FastCounterInterface):
 
         @param float binwidth: the current binwidth in seconds
 
-        @return float: Red out bitshift converted to binwidth
+        @return float: Read out bitshift converted to binwidth
 
-        The binwidth is converted into to an appropiate bitshift defined as
+        The binwidth is converted into to an appropriate bitshift defined as
         2**bitshift*minimal_binwidth.
         """
         bitshift = int(np.log2(binwidth/self.minimal_binwidth))
@@ -532,7 +541,7 @@ class FastComtec(FastCounterInterface):
 
         @param int length_bins: Length of the measurement in bins
 
-        @return float: Red out length of measurement
+        @return float: Read out length of measurement
         """
         # First check if no constraint is
         constraints = self.get_constraints()
@@ -642,16 +651,20 @@ class FastComtec(FastCounterInterface):
         @param int preset: Optional, change number of preset. If gated, typically = 1.
         """
 
-        # Reduce length to prevent crashes
-        #self.set_length(1440)
-        if gated:
-            self.set_cycle_mode(sequential_mode=True, cycles=cycles)
-            self.set_preset_mode(mode=16, preset=preset)
-            self.gated = True
-        else:
-            self.set_cycle_mode(sequential_mode=False, cycles=cycles)
-            self.set_preset_mode(mode=0, preset=preset)
-            self.gated = False
+        # Apply board parameters together instead of resetting cycles multiple times.
+        bsetting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        # Preserve the sweep-mode value used by set_cycle_mode in both modes.
+        bsetting.sweepmode = 35528836
+        bsetting.prena = 16 if gated else 0
+        bsetting.cycles = (bsetting.cycles if cycles is None else cycles) or 1
+        if preset is not None:
+            bsetting.swpreset = preset
+        self.dll.StoreMCSSetting(ctypes.byref(bsetting), 0)
+        self.dll.NewSetting(0)
+        # Keep the settling time previously provided by set_cycles.
+        time.sleep(0.5)
+        self.gated = gated
         return gated
 
 
