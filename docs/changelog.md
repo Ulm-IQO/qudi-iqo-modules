@@ -38,6 +38,7 @@
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 - Fixed sampling functions inheritance of parameters
 - Improved error handling of `sample_pulse_block_sequence`, `sample_pulse_sequence`
+- Reduced repeated FastComtec MCS6 hardware-setting updates during counter configuration.
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
@@ -45,6 +46,7 @@
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
 - Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
+- Added configurable FastComtec DLL paths with automatic `DMCS6.dll` and `DMCS8.dll` fallback.
 
 ### Other
 - Updated versions for Github actions to fix Node.js 20 deprecation warnings
