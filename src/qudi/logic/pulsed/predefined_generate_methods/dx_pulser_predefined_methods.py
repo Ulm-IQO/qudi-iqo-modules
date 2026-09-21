@@ -436,6 +436,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_channel_high(laser_gate_element, pulser_channel)
         return laser_gate_element
 
+    def _get_pulser_off_laser_gate_element(self, length, increment, always_on_channel=None):
+        """Laser/gate readout element with always_on_channel(s) held HIGH, pulser_channel left
+        untouched (LOW). Used by the alternating-trace feature (mode 1) to build a "laser+gate,
+        no MW" element in setups where the pulser channel is never driven."""
+        laser_gate_element = self._get_laser_gate_element(length=length, increment=increment)
+        self._set_always_on_channels(laser_gate_element, always_on_channel)
+        return laser_gate_element
+
     def _get_pulser_on_delay_gate_element(self, always_on_channel=None, pulser_channel=None):
         """Delay/gate element with always_on_channel(s) and pulser_channel held HIGH."""
         delay_gate_element = self._get_delay_gate_element()
@@ -766,13 +774,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                     name, preferred_on_base_length, preferred_off_base_length,
                                     laser_duty=False):
         """
-        Given an already fully-built PulseSequence (ALL real content already appended, and
-        go_to already pointing back to the intended loop-back step), this measures the
-        sequence's actual pulser_channel duty cycle (_measure_sequence_duty_cycle) and, if it
-        doesn't already match `duty_cycle`, appends exactly ONE additional idle correction step
-        (looped via sequence-step repetitions to reach the exact required length - see
-        _build_duty_cycle_correction) right before the loop-back point, then moves go_to onto
-        that new final step.
+        Given an already fully-built PulseSequence (ALL real content already appended up to
+        this point, and go_to either left at its default "continue sequentially" or already
+        pointing back to the intended loop-back step), this measures the sequence's actual
+        pulser_channel duty cycle (_measure_sequence_duty_cycle) and, if it doesn't already
+        match `duty_cycle`, appends exactly ONE additional idle correction step (looped via
+        sequence-step repetitions to reach the exact required length - see
+        _build_duty_cycle_correction) right after the current last step, then moves go_to onto
+        that new final step (preserving whatever go_to value the previous last step had).
+
+        Because this always measures the ACTUAL sequence built so far, it composes correctly
+        when called more than once on the same growing sequence (e.g. once after a "normal"
+        loop and again after an "alternating" loop appended afterwards) - each call corrects
+        the overall duty cycle across everything appended so far, not just the most recent
+        addition.
 
         Logs the measured on/off/total time and resulting duty cycle both before and after any
         correction is applied, using the exact same measurement function the correction decision
@@ -838,13 +853,31 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_dx_rabi_ao_trig(self, name='rabi_ao_trig', tau_start=10.0e-9, tau_step=10.0e-9,
                                   num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                   duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                  laser_duty=False):
+                                  laser_duty=False, alternating=False, alternating_mode=1):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
 
         Sequence structure: trigger (sync merged into a one-off rising block) -> settle readout
-        (laser only, no gate, not counted as data) -> [main measurement loop] -> falling ->
-        [duty-cycle correction, if needed] -> loop back.
+        (laser only, no gate, not counted as data) -> [main measurement loop, normal and
+        alternating points strictly interleaved as normal[0], alternating[0], normal[1],
+        alternating[1], ... when alternating=True] -> falling -> [duty-cycle correction, if
+        needed] -> loop back.
+
+        Every normal point and its alternating partner are immediately preceded by the same
+        fixed "falling" block, so both start from an identical initial state - the duty-cycle
+        correction is only ever appended once, after the ENTIRE loop, so it can never be
+        inserted between a normal/alternating pair.
+
+        alternating : bool
+            If True, each normal point is immediately followed by one alternating partner
+            point, so that every normal data point has exactly one alternating partner right
+            next to it (qudi expects normal, alternating, normal, alternating, ... ordering).
+        alternating_mode : int
+            1 -> the alternating trace replaces the swept MW pulse with an idle wait of the
+                 same duration (MW never driven).
+            2 -> the alternating trace keeps the swept MW pulse and appends one additional
+                 fixed pi-pulse afterwards (length self.rabi_period / 2, at
+                 self.microwave_frequency).
 
         Returns
         -------
@@ -929,6 +962,40 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
+        # ── One alternating MW ensemble per tau point (only if alternating) ──
+        alt_mw_ensembles = dict()
+        if alternating:
+            if alternating_mode not in (1, 2):
+                self.log.error(
+                    'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
+                alternating_mode = 1
+
+            for kk, tau in enumerate(tau_array):
+                if alternating_mode == 1:
+                    alt_length = max(tau, self._MW_ELEMENT_MIN_LENGTH)
+                    alt_elements = [self._get_pulser_off_idle_element(
+                        length=alt_length, increment=0, always_on_channel=always_on_channel)]
+                else:
+                    alt_elements = self._get_pulser_off_dx_mw_element_padded(
+                        length=tau, increment=0,
+                        amp=self.microwave_amplitude, freq=None, phase=0,
+                        always_on_channel=always_on_channel)
+                    alt_elements += self._get_pulser_off_dx_mw_element_padded(
+                        length=self.rabi_period / 2, increment=0,
+                        amp=self.microwave_amplitude, freq=None, phase=0,
+                        always_on_channel=always_on_channel)
+
+                alt_mw_block = PulseBlock(name='{0}_alt_mw_{1}'.format(name, kk))
+                for elem in alt_elements:
+                    alt_mw_block.append(elem)
+                self._pad_ensemble_to_granularity(
+                    alt_mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                created_blocks.append(alt_mw_block)
+
+                alt_mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_alt_mw_{1}'.format(name, kk), rotating_frame=False)
+                alt_mw_ensembles[kk].append((alt_mw_block.name, 0))
+                created_ensembles.append(alt_mw_ensembles[kk])
+
         rabi_sequence = PulseSequence(name=name, rotating_frame=False)
 
         # ── Trigger: sync (pulser OFF) merged into a one-off rising block (pulser ON) ───
@@ -968,7 +1035,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         rabi_sequence.append(settle_readout_ensemble.name)
         rabi_sequence[-1].repetitions = 0
 
-        # ── Main measurement loop ────────────────────────────────────────────────────────
+        # ── Main measurement loop: normal and alternating strictly interleaved ─────────────
         for kk, tau in enumerate(tau_array):
             rabi_sequence.append(falling_ensemble.name)
             rabi_sequence[-1].repetitions = 0
@@ -982,6 +1049,19 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             rabi_sequence.append(readout_ensemble.name)
             rabi_sequence[-1].repetitions = 0
 
+            if alternating:
+                rabi_sequence.append(falling_ensemble.name)
+                rabi_sequence[-1].repetitions = 0
+
+                rabi_sequence.append(alt_mw_ensembles[kk].name)
+                rabi_sequence[-1].repetitions = 0
+
+                rabi_sequence.append(rising_ensemble.name)
+                rabi_sequence[-1].repetitions = 0
+
+                rabi_sequence.append(readout_ensemble.name)
+                rabi_sequence[-1].repetitions = 0
+
         rabi_sequence.append(falling_ensemble.name)
         rabi_sequence[-1].repetitions = 0
 
@@ -994,12 +1074,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         rabi_sequence.refresh_parameters()
 
-        rabi_sequence.measurement_information['alternating'] = False
+        rabi_sequence.measurement_information['alternating'] = alternating
         rabi_sequence.measurement_information['laser_ignore_list'] = list()
         rabi_sequence.measurement_information['controlled_variable'] = tau_array
         rabi_sequence.measurement_information['units'] = ('s', '')
         rabi_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        rabi_sequence.measurement_information['number_of_lasers'] = num_of_points
+        rabi_sequence.measurement_information['number_of_lasers'] = 2 * num_of_points if alternating else num_of_points
         rabi_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
 
         created_sequences.append(rabi_sequence)
@@ -1008,11 +1088,27 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_dx_pulsedodmr_ao_trig(self, name='pODMR_ao_trig', freq_start=3.47e9, freq_stop=3.57e9,
                                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                         duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                        laser_duty=False):
+                                        laser_duty=False, alternating=False, alternating_mode=1):
         """
         Sequence-mode pulsed ODMR - identical structure to generate_dx_rabi_ao_trig, swept over
         frequency with a fixed pi-pulse length (self.rabi_period / 2) instead of swept tau.
         Requires self.rabi_period to already be calibrated.
+
+        Normal and alternating points are strictly interleaved (normal[0], alternating[0],
+        normal[1], alternating[1], ...) and the duty-cycle correction is only ever appended
+        once, after the entire loop - see generate_dx_rabi_ao_trig's docstring for the pairing
+        rationale.
+
+        alternating : bool
+            If True, each normal point is immediately followed by one alternating partner
+            point.
+        alternating_mode : int
+            1 -> the alternating trace replaces the pi-pulse with an idle wait of the same
+                 duration (MW never driven). Identical for every frequency point, so a single
+                 shared waveform is reused across the whole alternating sweep.
+            2 -> the alternating trace keeps the swept pi-pulse and appends one additional
+                 fixed pi-pulse afterwards (length self.rabi_period / 2, at
+                 self.microwave_frequency).
 
         Returns
         -------
@@ -1097,6 +1193,51 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
+        # ── Alternating MW ensemble(s) (only if alternating) ────────────────────────────
+        alt_mw_ensembles = dict()
+        shared_alt_ensemble = None
+        if alternating:
+            if alternating_mode not in (1, 2):
+                self.log.error(
+                    'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
+                alternating_mode = 1
+
+            if alternating_mode == 1:
+                # Identical for every frequency point (no MW driven) - build once and reuse.
+                alt_length = max(self.rabi_period / 2, self._MW_ELEMENT_MIN_LENGTH)
+                alt_element = self._get_pulser_off_idle_element(
+                    length=alt_length, increment=0, always_on_channel=always_on_channel)
+                alt_block = PulseBlock(name=name + '_alt_mw')
+                alt_block.append(alt_element)
+                self._pad_ensemble_to_granularity(
+                    alt_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                created_blocks.append(alt_block)
+
+                shared_alt_ensemble = PulseBlockEnsemble(name=name + '_alt_mw', rotating_frame=False)
+                shared_alt_ensemble.append((alt_block.name, 0))
+                created_ensembles.append(shared_alt_ensemble)
+            else:
+                for kk, freq in enumerate(freq_array):
+                    alt_elements = self._get_pulser_off_dx_mw_element_padded(
+                        length=self.rabi_period / 2, increment=0,
+                        amp=self.microwave_amplitude, freq=freq, phase=0,
+                        always_on_channel=always_on_channel)
+                    alt_elements += self._get_pulser_off_dx_mw_element_padded(
+                        length=self.rabi_period / 2, increment=0,
+                        amp=self.microwave_amplitude, freq=None, phase=0,
+                        always_on_channel=always_on_channel)
+
+                    alt_mw_block = PulseBlock(name='{0}_alt_mw_{1}'.format(name, kk))
+                    for elem in alt_elements:
+                        alt_mw_block.append(elem)
+                    self._pad_ensemble_to_granularity(
+                        alt_mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                    created_blocks.append(alt_mw_block)
+
+                    alt_mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_alt_mw_{1}'.format(name, kk), rotating_frame=False)
+                    alt_mw_ensembles[kk].append((alt_mw_block.name, 0))
+                    created_ensembles.append(alt_mw_ensembles[kk])
+
         pulsedodmr_sequence = PulseSequence(name=name, rotating_frame=False)
 
         # ── Trigger: sync (pulser OFF) merged into a one-off rising block (pulser ON) ───
@@ -1136,7 +1277,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         pulsedodmr_sequence.append(settle_readout_ensemble.name)
         pulsedodmr_sequence[-1].repetitions = 0
 
-        # ── Main measurement loop ────────────────────────────────────────────────────────
+        # ── Main measurement loop: normal and alternating strictly interleaved ─────────────
         for kk, freq in enumerate(freq_array):
             pulsedodmr_sequence.append(falling_ensemble.name)
             pulsedodmr_sequence[-1].repetitions = 0
@@ -1150,6 +1291,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             pulsedodmr_sequence.append(readout_ensemble.name)
             pulsedodmr_sequence[-1].repetitions = 0
 
+            if alternating:
+                pulsedodmr_sequence.append(falling_ensemble.name)
+                pulsedodmr_sequence[-1].repetitions = 0
+
+                alt_ensemble_name = shared_alt_ensemble.name if alternating_mode == 1 else alt_mw_ensembles[kk].name
+                pulsedodmr_sequence.append(alt_ensemble_name)
+                pulsedodmr_sequence[-1].repetitions = 0
+
+                pulsedodmr_sequence.append(rising_ensemble.name)
+                pulsedodmr_sequence[-1].repetitions = 0
+
+                pulsedodmr_sequence.append(readout_ensemble.name)
+                pulsedodmr_sequence[-1].repetitions = 0
+
         pulsedodmr_sequence.append(falling_ensemble.name)
         pulsedodmr_sequence[-1].repetitions = 0
 
@@ -1162,12 +1317,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         pulsedodmr_sequence.refresh_parameters()
 
-        pulsedodmr_sequence.measurement_information['alternating'] = False
+        pulsedodmr_sequence.measurement_information['alternating'] = alternating
         pulsedodmr_sequence.measurement_information['laser_ignore_list'] = list()
         pulsedodmr_sequence.measurement_information['controlled_variable'] = freq_array
         pulsedodmr_sequence.measurement_information['units'] = ('Hz', '')
         pulsedodmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
-        pulsedodmr_sequence.measurement_information['number_of_lasers'] = len(freq_array)
+        pulsedodmr_sequence.measurement_information['number_of_lasers'] = 2 * len(freq_array) if alternating else len(freq_array)
         pulsedodmr_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
 
         created_sequences.append(pulsedodmr_sequence)
@@ -1177,7 +1332,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                      num_of_points=50, mw_amp=0.2, mw_length=10e-6,
                                      always_on_channel='d_ch15', pulser_channel='d_ch3', pulser_mode=1,
                                      duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                     laser_duty=False):
+                                     laser_duty=False, alternating=False, alternating_mode=1):
         """
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
@@ -1186,8 +1341,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                       for the entire mw_block (default).
 
         Sequence structure: trigger (sync merged directly into point 0's mw block) -> [main
-        measurement loop] -> falling (pulser_mode == 1 only) -> [duty-cycle correction, if
-        needed] -> loop back.
+        measurement loop, normal and alternating points strictly interleaved as normal[0],
+        alternating[0], normal[1], alternating[1], ... when alternating=True] -> falling
+        (pulser_mode == 1 only) -> [duty-cycle correction, if needed] -> loop back.
+
+        Every normal point and its alternating partner are immediately preceded by the same
+        fixed "readout" block, so both start from an identical initial state - the duty-cycle
+        correction is only ever appended once, after the ENTIRE loop, so it can never be
+        inserted between a normal/alternating pair.
+
+        alternating : bool
+            If True, each normal point is immediately followed by one alternating partner
+            point.
+        alternating_mode : int
+            Only mode 1 is supported for CW ODMR (the microwave drive is replaced by a wait of
+            the same duration; MW never driven). Identical for every frequency point, so a
+            single shared waveform is reused across the whole alternating sweep. Passing 2
+            logs an error and falls back to mode 1.
 
         Returns
         -------
@@ -1256,6 +1426,38 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_ensembles[kk].append((mw_block.name, 0))
             created_ensembles.append(mw_ensembles[kk])
 
+        # ── Alternating mw+laser+delay ensemble (shared across all points, only if
+        #     alternating - only mode 1 is supported here) ────────────────────────────────
+        alt_mw_ensemble = None
+        if alternating:
+            if alternating_mode != 1:
+                self.log.error(
+                    'alternating_mode must be 1 for generate_dx_cw_odmr_ao_trig (got {0}); CW '
+                    'ODMR only supports replacing the microwave drive with a wait, not an extra '
+                    'pi-pulse. Falling back to alternating_mode = 1.'.format(alternating_mode))
+
+            if pulser_mode == 1:
+                alt_laser_gate_element = self._get_pulser_on_laser_gate_element(
+                    length=mw_length, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                alt_delay_elem = delay_element_on
+            else:
+                alt_laser_gate_element = self._get_pulser_off_laser_gate_element(
+                    length=mw_length, increment=0, always_on_channel=always_on_channel)
+                alt_delay_elem = delay_element_off
+
+            alt_mw_block = PulseBlock(name=name + '_alt_mw')
+            alt_mw_block.append(alt_laser_gate_element)
+            alt_mw_block.append(alt_delay_elem)
+            self._pad_ensemble_to_granularity(
+                alt_mw_block, on=(pulser_mode == 1),
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            created_blocks.append(alt_mw_block)
+
+            alt_mw_ensemble = PulseBlockEnsemble(name=name + '_alt_mw', rotating_frame=False)
+            alt_mw_ensemble.append((alt_mw_block.name, 0))
+            created_ensembles.append(alt_mw_ensemble)
+
         cw_odmr_sequence = PulseSequence(name=name, rotating_frame=False)
 
         # ── Trigger: sync (pulser OFF) merged directly into point 0's mw block ─────────────
@@ -1273,12 +1475,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         first_mw_ensemble.append((first_mw_block.name, 0))
         created_ensembles.append(first_mw_ensemble)
 
+        # ── Main measurement loop: normal and alternating strictly interleaved ─────────────
         for kk, freq in enumerate(freq_array):
             cw_odmr_sequence.append(first_mw_ensemble.name if kk == 0 else mw_ensembles[kk].name)
             cw_odmr_sequence[-1].repetitions = 0
 
             cw_odmr_sequence.append(readout_ensemble.name)
             cw_odmr_sequence[-1].repetitions = 0
+
+            if alternating:
+                cw_odmr_sequence.append(alt_mw_ensemble.name)
+                cw_odmr_sequence[-1].repetitions = 0
+
+                cw_odmr_sequence.append(readout_ensemble.name)
+                cw_odmr_sequence[-1].repetitions = 0
 
         if pulser_mode == 1:
             # ── Falling (shared, off) ────────────────────────────────────
@@ -1306,12 +1516,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         cw_odmr_sequence.refresh_parameters()
 
-        cw_odmr_sequence.measurement_information['alternating'] = False
+        cw_odmr_sequence.measurement_information['alternating'] = alternating
         cw_odmr_sequence.measurement_information['laser_ignore_list'] = list()
         cw_odmr_sequence.measurement_information['controlled_variable'] = freq_array
         cw_odmr_sequence.measurement_information['units'] = ('Hz', '')
         cw_odmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
-        cw_odmr_sequence.measurement_information['number_of_lasers'] = len(freq_array)
+        cw_odmr_sequence.measurement_information['number_of_lasers'] = 2 * len(freq_array) if alternating else len(freq_array)
         cw_odmr_sequence.measurement_information['counting_length'] = (mw_length + delay_element_on.init_length_s)
 
         created_sequences.append(cw_odmr_sequence)
