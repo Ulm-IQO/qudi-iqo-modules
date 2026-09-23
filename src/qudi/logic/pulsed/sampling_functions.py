@@ -22,7 +22,6 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import importlib
-import sys
 import inspect
 import copy
 import logging
@@ -30,8 +29,7 @@ import numpy as np
 from enum import Enum, EnumMeta
 from dataclasses import dataclass, field
 
-from qudi.util.helpers import iter_modules_recursive
-
+from qudi.util.module_finder import get_module_names_from_ns, iter_directory_module_names
 ##############################################################
 # Helper class for everything that need dynamical decoupling #
 ##############################################################
@@ -171,24 +169,15 @@ class SamplingFunctions:
         except NameError:
             import qudi.logic.pulsed.sampling_function_defs as _default_sf_ns
 
-        for mod_finder in iter_modules_recursive(_default_sf_ns.__path__,
-                                                 _default_sf_ns.__name__ + '.'):
+        for module_name in get_module_names_from_ns(_default_sf_ns):
+            module_names.append(module_name)
 
-            module_names.append(mod_finder.name)
 
         # Import from additional directories
         for path in path_list:
             if not os.path.exists(path):
                 continue
-            # Get all python modules to import from.
-            module_list = [name[:-3] for name in os.listdir(path) if
-                           os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
-
-            # append import path to sys.path
-            if path not in sys.path:
-                sys.path.append(path)
-
-            module_names.extend(str(name) for name in module_list)
+            module_names.extend(iter_directory_module_names(path))
 
         # Go through all modules and get all sampling function classes.
         param_dict = dict()

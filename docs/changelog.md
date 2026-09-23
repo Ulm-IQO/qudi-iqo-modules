@@ -18,6 +18,7 @@
 - Fixed data trace generation for `FastCounterDummy` in gated and ungated modes, so that measurements yield a clean oscillation for an arbitrary number of points
 
 ### New Features
+- Refactored pulsed logic modules to use module finder that was added to core
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 - Added pulse shaping to the `pulsed` tool chain

@@ -39,6 +39,7 @@ from qudi.util.paths import get_home_dir
 from qudi.util.helpers import natural_sort
 from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
+from qudi.util.module_finder import normalize_import_paths
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType, SamplingFunctions
@@ -179,46 +180,19 @@ class SequenceGeneratorLogic(LogicBase):
             os.makedirs(self._assets_storage_dir)
 
         # additional import paths for generator modules
-        self._predefined_path_list = list()
-        if self._additional_methods_import_path:
-            if isinstance(self._additional_methods_import_path, str):
-                self._additional_methods_import_path = [self._additional_methods_import_path]
-
-            if isinstance(self._additional_methods_import_path, (list, tuple, set)):
-                for method_import_path in self._additional_methods_import_path:
-                    if not os.path.exists(method_import_path):
-                        self.log.error(
-                            'Specified path "{0}" for import of additional generate methods does not exist.'.format(
-                                method_import_path
-                            )
-                        )
-                    else:
-                        self._predefined_path_list.append(method_import_path)
-            else:
-                self.log.error(
-                    'ConfigOption additional_predefined_methods_path needs to either be a string or a list of strings.'
-                )
+        self._predefined_path_list = normalize_import_paths(
+            self._additional_methods_import_path,
+            option_name='additional_predefined_methods_path',
+            logger=self.log,
+        )
 
         # Initialize SamplingFunctions class by handing over a list of paths to import additional
         # sampling functions from.
-        sf_path_list = list()
-        if self._sampling_functions_import_path:
-            if isinstance(self._sampling_functions_import_path, str):
-                self._sampling_functions_import_path = [self._sampling_functions_import_path]
-
-            if isinstance(self._sampling_functions_import_path, (list, tuple, set)):
-                for functions_import_path in self._sampling_functions_import_path:
-                    if not os.path.exists(functions_import_path):
-                        self.log.error(
-                            'Specified path "{0}" for import of additional_sampling_functions_path '
-                            'does not exist.'.format(functions_import_path)
-                        )
-                    else:
-                        sf_path_list.append(functions_import_path)
-            else:
-                self.log.error(
-                    'ConfigOption additional_sampling_functions_path needs to either be a string or a list of strings.'
-                )
+        sf_path_list = normalize_import_paths(
+            self._sampling_functions_import_path,
+            option_name='additional_sampling_functions_path',
+            logger=self.log,
+        )
         SamplingFunctions.import_sampling_functions(sf_path_list)
 
         # Read back settings from device and update instance variables accordingly
