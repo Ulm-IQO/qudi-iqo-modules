@@ -16,6 +16,7 @@
 - Fix NI IO for only analog input channels.
 - bug fixes for millennia eV laser
 - Fixed data trace generation for `FastCounterDummy` in gated and ungated modes, so that measurements yield a clean oscillation for an arbitrary number of points
+- Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
 - Refactored pulsed logic modules to use module finder that was added to core
@@ -58,6 +59,7 @@
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
 - Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
 - Restricted `gaussian` optimization logic to optimization range
+- Added ability to toggle laser polling in the laser GUI
 
 ### Other
 - Updated versions for Github actions to fix Node.js 20 deprecation warnings
