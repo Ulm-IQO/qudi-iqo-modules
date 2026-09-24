@@ -28,6 +28,7 @@
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
 - Added Magnet Toolchain
+- Added derived period and pi-pulse duration to pulsed sine-fit results
 
 ### Other
 - Disabled workflow triggers on a draft PR
