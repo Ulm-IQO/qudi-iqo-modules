@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
+import io
 import os
 import time
 try:
@@ -28,7 +29,7 @@ try:
 except ImportError:
     import visa
 import numpy as np
-from ftplib import FTP
+from ftplib import FTP, error_perm, all_errors as ftp_errors
 
 from qudi.util.paths import get_appdata_dir
 from qudi.util.helpers import natural_sort
@@ -111,6 +112,21 @@ class AWG7k(PulserInterface):
         self._marker_byte_dict = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03'}
         self._event_triggers = {'OFF': 'OFF', 'ON': 'ON'}
 
+        # Upload speed-ups (see write_waveform / write_sequence):
+        # Persistent FTP session, reconnected on demand by _ftp_run().
+        self._ftp = None
+        # Local mirror of the AWG waveform list. None = unknown, re-read from the device on
+        # the next get_waveform_names() call. Kept in sync on import/delete/clear/reset.
+        self._waveform_names_cache = None
+        # Sample rate used in the .wfm file footer, so it is not queried for every waveform.
+        self._sample_rate_cache = None
+        # In-memory .wfm file contents per waveform, while a chunked write is in progress.
+        self._wfm_buffers = dict()
+        # True once the sequencer element defaults have been confirmed on this device.
+        self._sequence_defaults_verified = False
+        # Timing statistics of the current upload batch, logged by _log_upload_stats().
+        self._upload_stats = None
+
     def on_activate(self):
         """ Initialisation performed during activation of the module. """
         if not os.path.exists(self._tmp_work_dir):
@@ -126,10 +142,14 @@ class AWG7k(PulserInterface):
                 'the connection by using for example "Agilent Connection Expert".'
                 ''.format(self._visa_address))
 
-        with FTP(self._ip_address) as ftp:
-            ftp.login(user=self._username, passwd=self._password)
-            ftp.cwd(self.ftp_working_dir)
-            self.log.debug('FTP working dir: {0}'.format(ftp.pwd()))
+        ftp = self._ftp_connect()
+        self.log.debug('FTP working dir: {0}'.format(ftp.pwd()))
+
+        self._waveform_names_cache = None
+        self._sample_rate_cache = None
+        self._wfm_buffers = dict()
+        self._sequence_defaults_verified = False
+        self._upload_stats = None
 
         idn = self.query('*IDN?').split(',')
         self.mfg, self.model, self.ser, self.fw_ver = idn
@@ -145,6 +165,7 @@ class AWG7k(PulserInterface):
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module. """
+        self._ftp_close()
         try:
             self.awg.close()
         except:
@@ -480,6 +501,8 @@ class AWG7k(PulserInterface):
 
         @return dict: Dictionary containing the actually loaded waveforms per channel.
         """
+        self._log_upload_stats('waveform')
+
         if isinstance(load_dict, list):
             new_dict = dict()
             for waveform in load_dict:
@@ -611,6 +634,14 @@ class AWG7k(PulserInterface):
         if '09' in self.installed_options:
             self.write('SLIS:SUBS:DEL ALL')
         self.write('SEQUENCE:LENGTH 0')
+        # Only the predefined ('*'-prefixed) waveforms survive DEL ALL. If the list is not
+        # known yet, read it now while it is short, so the waveforms imported next are tracked.
+        if self._waveform_names_cache is not None:
+            self._waveform_names_cache = {
+                wfm for wfm in self._waveform_names_cache if wfm.startswith('*')
+            }
+        else:
+            self.get_waveform_names(refresh=True)
         self._written_sequences = []
         self._loaded_sequences = []
         return 0
@@ -650,7 +681,8 @@ class AWG7k(PulserInterface):
         # Here we need to wait, because when the sampling rate is changed AWG is busy
         # and therefore the ask in get_sample_rate will return an empty string.
         time.sleep(1)
-        return self.get_sample_rate()
+        self._sample_rate_cache = self.get_sample_rate()
+        return self._sample_rate_cache
 
     def get_analog_level(self, amplitude=None, offset=None):
         """ Retrieve the analog amplitude and offset of the provided channels.
@@ -1016,91 +1048,67 @@ class AWG7k(PulserInterface):
             wfm_name = '{0}_ch{1:d}'.format(name, a_ch_num)
 
             start = time.time()
-            self._write_wfm(filename=wfm_name,
-                            analog_samples=analog_samples[a_ch],
-                            marker_bytes=mrk_bytes,
-                            is_first_chunk=is_first_chunk,
-                            is_last_chunk=is_last_chunk,
-                            total_number_of_samples=total_number_of_samples)
-            self.log.debug('Write WFM file: {0}'.format(time.time() - start))
+            wfm_data = self._write_wfm(filename=wfm_name + '.wfm',
+                                       analog_samples=analog_samples[a_ch],
+                                       marker_bytes=mrk_bytes,
+                                       is_first_chunk=is_first_chunk,
+                                       is_last_chunk=is_last_chunk,
+                                       total_number_of_samples=total_number_of_samples)
+            self._add_upload_time('build', time.time() - start)
+
+            # Chunked upload: the .wfm file is only complete (and sent) on the last chunk
+            if wfm_data is None:
+                waveforms.append(wfm_name)
+                continue
 
             start = time.time()
-            self._send_file(filename=wfm_name + '.wfm')
-            self.log.debug('Send WFM file: {0}'.format(time.time() - start))
+            try:
+                self._send_bytes(wfm_name + '.wfm', wfm_data)
+            except ftp_errors as exc:
+                self.log.error('write_waveform: FTP upload of "{0}" failed: {1}'.format(wfm_name, exc))
+                return -1, waveforms
+            self._add_upload_time('ftp', time.time() - start, n_bytes=len(wfm_data))
 
             start = time.time()
             self.write('MMEM:IMP "{0}","{1}",WFM'.format(wfm_name, wfm_name + '.wfm'))
-
-            # Timeout-bounded OPC wait. Original had NO timeout here — if the
-            # AWG's import silently stalls (e.g. out of memory), this spun
-            # forever with zero log output.
-            opc_timeout = 30.0
-            opc_elapsed = 0.0
-            opc_ok = False
-            while opc_elapsed < opc_timeout:
-                try:
-                    if int(self.query('*OPC?')) == 1:
-                        opc_ok = True
-                        break
-                except Exception as exc:
-                    self.log.error(
-                        'write_waveform: *OPC? query failed while importing '
-                        '"{0}": {1}'.format(wfm_name, exc)
-                    )
-                    return -1, waveforms
-                time.sleep(0.2)
-                opc_elapsed += 0.2
-
-            if not opc_ok:
+            if not self._wait_opc(timeout=30.0, context='importing "{0}"'.format(wfm_name)):
                 self.log.error(
-                    'write_waveform: MMEM:IMP for "{0}" did not complete within '
-                    '{1}s (*OPC? never returned 1).\n'
-                    'This commonly indicates the AWG has run out of waveform '
-                    'memory and silently rejected the import. Checking error '
-                    'queue...'.format(wfm_name, opc_timeout)
-                )
+                    'write_waveform: MMEM:IMP for "{0}" did not complete.\n'
+                    'This commonly indicates the AWG has run out of waveform memory and '
+                    'silently rejected the import. Checking error queue...'.format(wfm_name))
                 self.get_errors()
                 return -1, waveforms
+            self._add_upload_time('import', time.time() - start)
 
-            # Check AWG error queue immediately after import. Catches
-            # memory-exhaustion and other import errors that would otherwise
-            # sit silently in SYST:ERR while the next loop hangs.
+            # Check the error queue and confirm the import with ONE length query, instead of
+            # re-reading the whole waveform list (one query per waveform on the device).
+            start = time.time()
             if self.get_errors():
                 self.log.error(
-                    'write_waveform: AWG reported error(s) while importing '
-                    '"{0}". See messages above. Likely cause: AWG waveform '
-                    'memory exhausted after uploading multiple large unique '
-                    'waveforms.'.format(wfm_name)
-                )
+                    'write_waveform: AWG reported error(s) while importing "{0}". See messages '
+                    'above. Likely cause: AWG waveform memory exhausted after uploading '
+                    'multiple large unique waveforms.'.format(wfm_name))
                 return -1, waveforms
-
-            # Timeout-bounded wait for the waveform to appear in workspace.
-            # Original had NO timeout here either.
-            appear_timeout = 15.0
-            appear_elapsed = 0.0
-            appeared = False
-            while appear_elapsed < appear_timeout:
-                if wfm_name in self.get_waveform_names():
-                    appeared = True
-                    break
-                time.sleep(0.2)
-                appear_elapsed += 0.2
-
-            if not appeared:
+            try:
+                imported_length = int(self.query('WLIS:WAV:LENG? "{0}"'.format(wfm_name)))
+            except Exception as exc:
+                imported_length = None
+                self.log.error('write_waveform: could not query length of imported waveform '
+                               '"{0}": {1}'.format(wfm_name, exc))
+            if imported_length != total_number_of_samples:
                 self.log.error(
-                    'write_waveform: "{0}" did not appear in AWG workspace '
-                    'within {1}s after import.\n'
-                    'Total waveforms currently in workspace: {2}.\n'
-                    'This strongly suggests AWG waveform memory is exhausted. '
-                    'Consider: reducing total waveform count (reuse waveforms '
-                    'via sequence repetitions where possible), reducing '
-                    'per-waveform sample count, or enabling AWG memory '
+                    'write_waveform: "{0}" is not in the AWG workspace with the expected length '
+                    'after import (expected {1} samples, AWG reports {2}).\n'
+                    'This strongly suggests AWG waveform memory is exhausted. Consider: reducing '
+                    'total waveform count (reuse waveforms via sequence repetitions where '
+                    'possible), reducing per-waveform sample count, or enabling AWG memory '
                     'expansion option 01 if not already installed.'
-                    ''.format(wfm_name, appear_timeout, len(self.get_waveform_names()))
-                )
+                    ''.format(wfm_name, total_number_of_samples, imported_length))
+                self._waveform_names_cache = None
                 return -1, waveforms
-
-            self.log.debug('Load WFM file into workspace: {0}'.format(time.time() - start))
+            if self._waveform_names_cache is not None:
+                self._waveform_names_cache.add(wfm_name)
+            self._add_upload_time('verify', time.time() - start, n_waveforms=1)
 
             waveforms.append(wfm_name)
         return total_number_of_samples, waveforms
@@ -1173,160 +1181,226 @@ class AWG7k(PulserInterface):
         # Drain any pre-existing errors so the queue is clean before we start
         self.get_errors()
 
+        seq_start = time.time()
+
+        # Write all steps relying on the element defaults the AWG assigns after SEQ:LENG
+        # (TWAIT OFF, LOOP:INF OFF, LOOP:COUNT 1, GOTO:STATE OFF). These defaults are confirmed
+        # on the device once per session; if they do not hold, the sequence is rewritten with
+        # every command sent explicitly.
+        skip_defaults = True
+        result = self._write_sequence_steps(sequence_parameter_list, skip_defaults=True)
+        if result == 0 and not self._sequence_defaults_verified:
+            verified = self._verify_sequence_defaults(sequence_parameter_list)
+            if verified is None:
+                pass  # no step relies on the defaults, nothing to verify
+            elif verified:
+                self._sequence_defaults_verified = True
+            else:
+                self.log.warning(
+                    'write_sequence: AWG sequencer element defaults differ from the expected '
+                    '(TWAIT OFF, LOOP:INF OFF, LOOP:COUNT 1, GOTO:STATE OFF). Rewriting the '
+                    'sequence with every element parameter set explicitly.')
+                skip_defaults = False
+                result = self._write_sequence_steps(sequence_parameter_list, skip_defaults=False)
+        if result < 0:
+            return -1
+
+        self._add_upload_time('sequence', time.time() - seq_start)
+
+        self._written_sequences = [name]
+        self.log.info(
+            'write_sequence: successfully wrote {0} steps for sequence "{1}"{2}.'
+            ''.format(num_steps, name, '' if skip_defaults else ' (all parameters explicit)')
+        )
+        self._log_upload_stats('sequence "{0}"'.format(name))
+        return num_steps
+
+    def _sequence_step_commands(self, step, wfm_tuple, seq_params, skip_defaults):
+        """
+        SCPI commands for one sequence element.
+
+        @param bool skip_defaults: omit commands that only restate the element defaults set
+            by SEQ:LENG (TWAIT OFF, LOOP:INF OFF, LOOP:COUNT 1, GOTO:STATE OFF).
+
+        @return list of str, or None if the step parameters are invalid.
+        """
+        commands = list()
+        for waveform in wfm_tuple:
+            try:
+                ch_num = int(waveform.rsplit('_ch', 1)[1])
+            except (ValueError, IndexError):
+                self.log.error(
+                    'write_sequence: cannot extract channel number from waveform name "{0}" at '
+                    'step {1}.'.format(waveform, step))
+                return None
+            commands.append('SEQ:ELEM{0:d}:WAV{1:d} "{2}"'.format(step, ch_num, waveform))
+
+        jumpto = seq_params['event_jump_to']
+        if jumpto > 0:
+            commands.append('SEQ:ELEM{0:d}:JTAR:TYPE INDEX'.format(step))
+            commands.append('SEQ:ELEM{0:d}:JTAR:INDEX {1}'.format(step, jumpto))
+
+        trigger = self._event_triggers.get(seq_params['wait_for'])
+        if trigger is None:
+            self.log.error('Invalid trigger specifier "{0}" at step {1}.\nPlease choose one of: '
+                           '"OFF", "ON"'.format(seq_params['wait_for'], step))
+        elif trigger != 'OFF':
+            commands.append('SEQ:ELEM{0:d}:TWAIT ON'.format(step))
+        elif not skip_defaults:
+            commands.append('SEQ:ELEM{0:d}:TWAIT OFF'.format(step))
+
+        repeat = seq_params['repetitions']
+        if repeat < 0:
+            commands.append('SEQ:ELEM{0:d}:LOOP:INFINITE ON'.format(step))
+        else:
+            if not skip_defaults:
+                commands.append('SEQ:ELEM{0:d}:LOOP:INFINITE OFF'.format(step))
+            if repeat != 0 or not skip_defaults:
+                commands.append('SEQ:ELEM{0:d}:LOOP:COUNT {1:d}'.format(step, repeat + 1))
+
+        goto = seq_params['go_to']
+        if goto > 0:
+            commands.append('SEQ:ELEM{0:d}:GOTO:STATE ON'.format(step))
+            commands.append('SEQ:ELEM{0:d}:GOTO:INDEX {1:d}'.format(step, int(goto)))
+        elif not skip_defaults:
+            commands.append('SEQ:ELEM{0:d}:GOTO:STATE OFF'.format(step))
+        return commands
+
+    def _write_sequence_steps(self, sequence_parameter_list, skip_defaults):
+        """
+        (Re-)allocates the sequence and writes all its elements. The commands of up to
+        opc_check_interval steps are sent as ONE VISA write (joined with ';:'), followed by an
+        *OPC? / error queue checkpoint, so a failure is still reported with its step range.
+
+        @return int: 0 on success, -1 on failure.
+        """
+        num_steps = len(sequence_parameter_list)
+
         self.write('SEQ:LENG 0')
         self.write('SEQ:LENG {0:d}'.format(num_steps))
-
-        # FIX (#5): removed pointless 'while True:' wrapper — any exception
-        # inside the try-block always returns immediately, so the loop could
-        # never execute more than one iteration. A plain try/except achieves
-        # the identical behaviour with less code.
-        # FIX (#6 minor): removed redundant '(ValueError, Exception)' tuple —
-        # ValueError is already a subclass of Exception.
         try:
             current_len = int(self.query('SEQ:LENG?'))
         except Exception as exc:
             self.log.error(
-                'write_sequence: could not read back SEQ:LENG after '
-                'setting it to {0}. Communication error: {1}'
-                ''.format(num_steps, exc)
-            )
+                'write_sequence: could not read back SEQ:LENG after setting it to {0}. '
+                'Communication error: {1}'.format(num_steps, exc))
             return -1
-
         if current_len != num_steps:
             self.log.error(
-                'write_sequence: SEQ:LENG readback mismatch. '
-                'Requested {0} steps, AWG reports {1} steps allocated.\n'
-                'This usually means the sequence memory could not be '
-                'allocated (e.g. due to a prior incomplete sequence, '
-                'or insufficient AWG sequence memory).'
-                ''.format(num_steps, current_len)
-            )
+                'write_sequence: SEQ:LENG readback mismatch. Requested {0} steps, AWG reports {1} '
+                'steps allocated.\nThis usually means the sequence memory could not be allocated '
+                '(e.g. due to a prior incomplete sequence, or insufficient AWG sequence memory).'
+                ''.format(num_steps, current_len))
             return -1
 
-        # OPC checkpoint interval. For a 200-step sequence with ~6
-        # commands/step this is 1200+ writes. Checking OPC + error queue
-        # only at the very end means a failure at step 50 goes undetected
-        # until all 1200 writes have already been blindly sent. Checking
-        # every N steps catches failures immediately and reports exactly
-        # which step failed.
         opc_check_interval = 20
-
+        commands = list()
+        first_step = 1
         for step, (wfm_tuple, seq_params) in enumerate(sequence_parameter_list, 1):
-
-            if num_tracks == len(wfm_tuple):
-                for waveform in wfm_tuple:
-                    try:
-                        ch_num = int(waveform.rsplit('_ch', 1)[1])
-                    except (ValueError, IndexError):
-                        self.log.error(
-                            'write_sequence: cannot extract channel number from '
-                            'waveform name "{0}" at step {1}.'
-                            ''.format(waveform, step)
-                        )
-                        return -1
-                    self.sequence_set_waveform(waveform, step, ch_num)
-            else:
-                self.log.error(
-                    'Unable to write sequence at step {0}.\n'
-                    'Length of waveform tuple "{1}" does not '
-                    'match the number of sequence tracks ({2}).'
-                    ''.format(step, wfm_tuple, num_tracks)
-                )
+            step_commands = self._sequence_step_commands(step, wfm_tuple, seq_params, skip_defaults)
+            if step_commands is None:
                 return -1
+            commands.extend(step_commands)
 
-            self.sequence_set_event_jump(step, seq_params['event_jump_to'])
-            self.sequence_set_wait_trigger(step, seq_params['wait_for'])
-            self.sequence_set_repetitions(step, seq_params['repetitions'])
-            self.sequence_set_goto(step, seq_params['go_to'])
+            if step % opc_check_interval != 0 and step != num_steps:
+                continue
 
-            if step % opc_check_interval == 0 or step == num_steps:
-                opc_timeout = 10.0
-                opc_elapsed = 0.0
-                opc_ok = False
+            if commands:
+                self.write(';:'.join(commands))
+            commands = list()
 
-                while opc_elapsed < opc_timeout:
-                    try:
-                        if int(self.query('*OPC?')) == 1:
-                            opc_ok = True
-                            break
-                    except Exception as exc:
-                        self.log.error(
-                            'write_sequence: *OPC? query failed at step {0}: {1}\n'
-                            'AWG may have stopped responding. Aborting upload.'
-                            ''.format(step, exc)
-                        )
-                        return -1
-                    time.sleep(0.2)
-                    opc_elapsed += 0.2
-
-                if not opc_ok:
-                    self.log.error(
-                        'write_sequence: AWG did not complete pending operations '
-                        'within {0}s after step {1}/{2}. '
-                        'Upload appears STUCK — aborting.\n'
-                        'This is the exact point where the silent stall occurred.'
-                        ''.format(opc_timeout, step, num_steps)
-                    )
-                    return -1
-
-                if self.get_errors():
-                    self.log.error(
-                        'write_sequence: AWG reported error(s) after step {0}/{1}. '
-                        'See error messages above for details. Aborting upload.'
-                        ''.format(step, num_steps)
-                    )
-                    return -1
-
-                self.log.debug(
-                    'write_sequence: checkpoint OK at step {0}/{1}.'
-                    ''.format(step, num_steps)
-                )
-
-        final_timeout = 10.0
-        final_elapsed = 0.0
-        while final_elapsed < final_timeout:
-            try:
-                if int(self.query('*OPC?')) == 1:
-                    break
-            except Exception as exc:
+            context = 'sequence steps {0}-{1}'.format(first_step, step)
+            if not self._wait_opc(timeout=10.0, context=context):
                 self.log.error(
-                    'write_sequence: final *OPC? query failed: {0}'.format(exc)
-                )
+                    'write_sequence: AWG did not complete pending operations after steps '
+                    '{0}-{1}/{2}. Upload appears STUCK - aborting.'.format(first_step, step, num_steps))
                 return -1
-            time.sleep(0.25)
-            final_elapsed += 0.25
+            if self.get_errors():
+                self.log.error(
+                    'write_sequence: AWG reported error(s) in steps {0}-{1}/{2}. See error '
+                    'messages above for details. Aborting upload.'.format(first_step, step, num_steps))
+                return -1
+            self.log.debug('write_sequence: checkpoint OK at step {0}/{1}.'.format(step, num_steps))
+            first_step = step + 1
+        return 0
+
+    def _verify_sequence_defaults(self, sequence_parameter_list):
+        """
+        Checks on the device that a step written without explicit TWAIT/LOOP/GOTO commands
+        really has the expected defaults.
+
+        @return bool or None: True/False, or None if no step relies on the defaults.
+        """
+        for step, (_, seq_params) in enumerate(sequence_parameter_list, 1):
+            if (seq_params['repetitions'] == 0 and seq_params['go_to'] <= 0
+                    and seq_params['wait_for'] == 'OFF'):
+                break
         else:
-            self.log.error(
-                'write_sequence: AWG did not complete final operations '
-                'within {0}s.'.format(final_timeout)
-            )
-            return -1
+            return None
 
-        if self.get_errors():
-            self.log.error(
-                'write_sequence: AWG reported error(s) after completing all '
-                '{0} steps. Sequence may be incomplete or corrupted.'
-                ''.format(num_steps)
-            )
-            return -1
+        def _is_off(answer):
+            return answer.upper() in ('0', 'OFF')
 
-        self._written_sequences = [name]
+        try:
+            ok = (_is_off(self.query('SEQ:ELEM{0:d}:TWAIT?'.format(step)))
+                  and _is_off(self.query('SEQ:ELEM{0:d}:LOOP:INFINITE?'.format(step)))
+                  and int(self.query('SEQ:ELEM{0:d}:LOOP:COUNT?'.format(step))) == 1
+                  and _is_off(self.query('SEQ:ELEM{0:d}:GOTO:STATE?'.format(step))))
+        except Exception as exc:
+            self.log.warning('write_sequence: could not query defaults of sequence step {0}: {1}'
+                             ''.format(step, exc))
+            ok = False
+        self.log.debug('write_sequence: sequencer element defaults verified on step {0}: {1}'
+                       ''.format(step, ok))
+        return ok
+
+    def _add_upload_time(self, key, seconds, n_bytes=0, n_waveforms=0):
+        """ Accumulate upload timing statistics of the current batch (see _log_upload_stats). """
+        if self._upload_stats is None:
+            self._upload_stats = {'t_start': time.time() - seconds, 'times': dict(),
+                                  'bytes': 0, 'waveforms': 0}
+        stats = self._upload_stats
+        stats['times'][key] = stats['times'].get(key, 0.0) + seconds
+        stats['bytes'] += n_bytes
+        stats['waveforms'] += n_waveforms
+
+    def _log_upload_stats(self, label):
+        """
+        Logs one summary line for the upload batch since the last summary, then resets it.
+        'other' is the wall time not spent in this module, mostly qudi sampling the waveforms.
+        """
+        stats, self._upload_stats = self._upload_stats, None
+        if stats is None:
+            return
+        wall = time.time() - stats['t_start']
+        times = stats['times']
+        awg_total = sum(times.values())
+        parts = ', '.join('{0} {1:.1f} s'.format(key, times[key])
+                          for key in ('build', 'ftp', 'import', 'verify', 'sequence') if key in times)
         self.log.info(
-            'write_sequence: successfully wrote {0} steps for sequence "{1}".'
-            ''.format(num_steps, name)
-        )
-        return num_steps
+            'AWG upload summary ({0}): {1:d} waveform channel(s), {2:.1f} MB in {3:.1f} s wall '
+            'time. AWG module: {4:.1f} s ({5}); other (mostly qudi sampling): {6:.1f} s.'
+            ''.format(label, stats['waveforms'], stats['bytes'] / 1e6, wall, awg_total, parts,
+                      wall - awg_total))
 
-    def get_waveform_names(self):
+    def get_waveform_names(self, refresh=False):
         """ Retrieve the names of all uploaded waveforms on the device.
+
+        Served from a local mirror of the AWG waveform list, which is kept in sync on every
+        import/delete/clear done through this module. The device itself (WLIS:SIZE? plus one
+        WLIS:NAME? query per waveform) is only read if the mirror is unknown, e.g. after
+        activation or clear_all(), or if refresh=True.
+
+        @param bool refresh: force re-reading the list from the device.
 
         @return list: List of all uploaded waveform name strings in the device workspace.
         """
-        wfm_list_len = int(self.query('WLIS:SIZE?'))
-        wfm_list = list()
-        for index in range(wfm_list_len):
-            wfm_list.append(self.query('WLIS:NAME? {0:d}'.format(index)))
-        return natural_sort(wfm_list)
+        if refresh or self._waveform_names_cache is None:
+            wfm_list_len = int(self.query('WLIS:SIZE?'))
+            self._waveform_names_cache = {
+                self.query('WLIS:NAME? {0:d}'.format(index)) for index in range(wfm_list_len)
+            }
+        return natural_sort(self._waveform_names_cache)
 
     def get_sequence_names(self):
         """ Retrieve the names of all uploaded sequences on the device.
@@ -1345,11 +1419,12 @@ class AWG7k(PulserInterface):
         if isinstance(waveform_name, str):
             waveform_name = [waveform_name]
 
-        avail_waveforms = self.get_waveform_names()
+        avail_waveforms = set(self.get_waveform_names())
         deleted_waveforms = list()
         for waveform in waveform_name:
             if waveform in avail_waveforms:
                 self.write('WLIS:WAV:DEL "{0}"'.format(waveform))
+                self._waveform_names_cache.discard(waveform)
                 deleted_waveforms.append(waveform)
         return natural_sort(deleted_waveforms)
 
@@ -1426,6 +1501,8 @@ class AWG7k(PulserInterface):
         """
         self.write('*RST')
         self.write('*WAI')
+        self._waveform_names_cache = None
+        self._sample_rate_cache = None
         return 0
 
     def set_lowpass_filter(self, a_ch, cutoff_freq):
@@ -1475,17 +1552,66 @@ class AWG7k(PulserInterface):
                 return 1 if output_as_int else 'Software-Sequencer'
         return -1 if output_as_int else 'Request-Error'
 
+    def _ftp_connect(self):
+        """ (Re-)open the persistent FTP session in the AWG working directory. """
+        self._ftp_close()
+        ftp = FTP(self._ip_address)
+        ftp.login(user=self._username, passwd=self._password)
+        ftp.cwd(self.ftp_working_dir)
+        self._ftp = ftp
+        return ftp
+
+    def _ftp_close(self):
+        """ Close the persistent FTP session, if any. Never raises. """
+        ftp, self._ftp = self._ftp, None
+        if ftp is None:
+            return
+        try:
+            ftp.quit()
+        except ftp_errors:
+            try:
+                ftp.close()
+            except ftp_errors:
+                pass
+
+    def _ftp_run(self, func):
+        """
+        Run func(ftp) on the persistent FTP session. The AWG FTP server drops idle sessions
+        after a while, so on any FTP/socket error the session is re-opened and func is
+        retried once.
+        """
+        try:
+            ftp = self._ftp if self._ftp is not None else self._ftp_connect()
+            return func(ftp)
+        except ftp_errors as exc:
+            self.log.debug('FTP session error ({0}), reconnecting and retrying once.'.format(exc))
+            return func(self._ftp_connect())
+
     def _delete_file(self, filename):
-        """ Delete a file from FTP working directory. """
-        if filename in self._get_filenames_on_device():
-            with FTP(self._ip_address) as ftp:
-                ftp.login(user=self._username, passwd=self._password)
-                ftp.cwd(self.ftp_working_dir)
+        """ Delete a file from FTP working directory, if present. """
+        def _delete(ftp):
+            try:
                 ftp.delete(filename)
-        return
+            except error_perm:
+                pass  # file does not exist
+        self._ftp_run(_delete)
+
+    def _send_bytes(self, filename, data):
+        """
+        Upload a bytes object as file to the AWG via FTP. STOR overwrites an existing file;
+        only if the server refuses that, the file is deleted first and the upload retried.
+        """
+        def _store(ftp):
+            try:
+                ftp.storbinary('STOR ' + filename, io.BytesIO(data))
+            except error_perm:
+                ftp.delete(filename)
+                ftp.storbinary('STOR ' + filename, io.BytesIO(data))
+        self._ftp_run(_store)
+        return 0
 
     def _send_file(self, filename):
-        """ Upload a file to the AWG via FTP. """
+        """ Upload a file from the local tmp work dir to the AWG via FTP. """
         if not filename:
             self.log.error('No filename provided for file upload to awg!\nCommand will be ignored.')
             return -1
@@ -1496,28 +1622,24 @@ class AWG7k(PulserInterface):
                            ''.format(filename, self._tmp_work_dir))
             return -1
 
-        self._delete_file(filename)
-
-        with FTP(self._ip_address) as ftp:
-            ftp.login(user=self._username, passwd=self._password)
-            ftp.cwd(self.ftp_working_dir)
-            with open(filepath, 'rb') as file:
-                ftp.storbinary('STOR ' + filename, file)
-        return 0
+        with open(filepath, 'rb') as file:
+            return self._send_bytes(filename, file.read())
 
     def _get_filenames_on_device(self):
         """ Get list of filenames on device FTP directory. """
-        filename_list = list()
-        with FTP(self._ip_address) as ftp:
-            ftp.login(user=self._username, passwd=self._password)
-            ftp.cwd(self.ftp_working_dir)
-            log = list()
+        log = list()
+
+        def _list(ftp):
+            log.clear()
             ftp.retrlines('LIST', callback=log.append)
-            for line in log:
-                if '<DIR>' not in line:
-                    size_filename = line[18:].lstrip()
-                    filename = size_filename.split(' ', 1)[1].strip()
-                    filename_list.append(filename)
+        self._ftp_run(_list)
+
+        filename_list = list()
+        for line in log:
+            if '<DIR>' not in line:
+                size_filename = line[18:].lstrip()
+                filename = size_filename.split(' ', 1)[1].strip()
+                filename_list.append(filename)
         return filename_list
 
     def _get_all_channels(self):
@@ -1552,48 +1674,41 @@ class AWG7k(PulserInterface):
         """ Check if the device has the interleave option installed. """
         return '06' in self.installed_options
 
+    # Packed (5 bytes/sample) .wfm sample record: float32 analog value + uint8 marker bits.
+    _WFM_SAMPLE_DTYPE = np.dtype([('f0', '<f4'), ('f1', 'u1')])
+
     def _write_wfm(self, filename, analog_samples, marker_bytes, is_first_chunk, is_last_chunk,
                    total_number_of_samples):
         """
-        Appends a sampled chunk of a whole waveform to a wfm-file.
+        Appends a sampled chunk of a whole waveform to an in-memory .wfm file.
+
+        @return bytes or None: the complete .wfm file content on the last chunk, else None.
         """
-        tmp_bytes_overhead = 104857600  # 100 MB
-        tmp_samples = tmp_bytes_overhead // 5
-        if tmp_samples > len(analog_samples):
-            tmp_samples = len(analog_samples)
-
-        if not filename.endswith('.wfm'):
-            filename += '.wfm'
-        wfm_path = os.path.join(self._tmp_work_dir, filename)
-
         if is_first_chunk:
-            with open(wfm_path, 'wb') as wfm_file:
-                num_bytes = str(int(total_number_of_samples * 5))
-                num_digits = str(len(num_bytes))
-                header = 'MAGIC 1000\r\n#{0}{1}'.format(num_digits, num_bytes)
-                wfm_file.write(header.encode())
+            num_bytes = str(int(total_number_of_samples * self._WFM_SAMPLE_DTYPE.itemsize))
+            header = 'MAGIC 1000\r\n#{0}{1}'.format(len(num_bytes), num_bytes)
+            self._wfm_buffers[filename] = io.BytesIO()
+            self._wfm_buffers[filename].write(header.encode())
 
-        write_array = np.zeros(tmp_samples, dtype='float32, uint8')
+        records = np.zeros(len(analog_samples), dtype=self._WFM_SAMPLE_DTYPE)
+        records['f0'] = analog_samples
+        if marker_bytes is not None:
+            records['f1'] = marker_bytes
+        self._wfm_buffers[filename].write(records.tobytes())
 
-        samples_written = 0
-        with open(wfm_path, 'ab') as wfm_file:
-            while samples_written < len(analog_samples):
-                write_end = samples_written + write_array.size
-                write_array['f0'] = analog_samples[samples_written:write_end]
-                if marker_bytes is not None:
-                    write_array['f1'] = marker_bytes[samples_written:write_end]
-                wfm_file.write(write_array)
-                samples_written = write_end
-                if 0 < total_number_of_samples - samples_written < write_array.size:
-                    write_array.resize(total_number_of_samples - samples_written)
+        if not is_last_chunk:
+            return None
 
-        del write_array
+        footer = 'CLOCK {0:16.10E}\r\n'.format(self._get_cached_sample_rate())
+        buffer = self._wfm_buffers.pop(filename)
+        buffer.write(footer.encode())
+        return buffer.getvalue()
 
-        if is_last_chunk:
-            footer = 'CLOCK {0:16.10E}\r\n'.format(self.get_sample_rate())
-            with open(wfm_path, 'ab') as wfm_file:
-                wfm_file.write(footer.encode())
-        return
+    def _get_cached_sample_rate(self):
+        """ Sample rate for the .wfm footer, queried once and refreshed in set_sample_rate. """
+        if self._sample_rate_cache is None:
+            self._sample_rate_cache = self.get_sample_rate()
+        return self._sample_rate_cache
 
     def _configure_trigger_input_only(self, context='SEQ mode'):
         """
