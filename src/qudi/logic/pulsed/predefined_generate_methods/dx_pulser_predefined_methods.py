@@ -458,18 +458,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_always_on_channels(delay_gate_element, always_on_channel)
         return delay_gate_element
 
-    def _get_pulser_on_laser_only_element(self, length, increment, always_on_channel=None, pulser_channel=None):
-        """
-        Turns ON just the physical laser channel (self.laser_channel) for `length` seconds,
-        without toggling the detector gate channel. Used by the duty-cycle correction's
-        laser_duty feature when the correction step needs the pulser held ON.
-        """
-        element = self._get_idle_element(length=length, increment=increment)
-        self._set_always_on_channels(element, always_on_channel)
-        self._set_channel_high(element, pulser_channel)
-        self._set_channel_high(element, self.laser_channel)
-        return element
-
     def _get_pulser_off_dx_mw_element_padded(self, length, increment, amp=None, freq=None, phase=None,
                                               envelope: PulseEnvelope = PulseEnvelope(PulseEnvelopeType.from_gen_settings),
                                               min_length=None, always_on_channel=None):
@@ -521,8 +509,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._set_always_on_channels(sync_element, always_on_channel)
         return sync_element
 
-    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel,
-                                    extra_high_channels=None):
+    def _pad_ensemble_to_granularity(self, block, on, always_on_channel, pulser_channel):
         """
         Given a PulseBlock with its "real" elements already appended, measure its exact sample
         count via analyze_block_ensemble(), then append an idle pad element (state = on/off) so
@@ -532,11 +519,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         This prevents SequenceGeneratorLogic from later appending its own idle_extension block to
         fix granularity, which would force all digital channels LOW and whose length isn't known
         until after sampling.
-
-        @param extra_high_channels: optional channel string, or list of channel strings, that
-            must also be held HIGH throughout the pad element - needed whenever the padded block
-            contains a custom element asserting a channel that the idle-element helpers above
-            don't know about.
 
         @return (float, float): (pad_length_s added, final total length_s of the block including
                                 the pad)
@@ -569,11 +551,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 pad_element = self._get_pulser_off_idle_element(
                     length=pad_length_s, increment=0, always_on_channel=always_on_channel)
 
-            if extra_high_channels is not None:
-                channels = [extra_high_channels] if isinstance(extra_high_channels, str) else extra_high_channels
-                for ch in channels:
-                    self._set_channel_high(pad_element, ch)
-
             block.append(pad_element)
             self.save_block(block)
 
@@ -583,8 +560,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def _build_duty_cycle_correction(self, name, correction_length, correction_on,
                                     always_on_channel, pulser_channel,
                                     preferred_base_length,
-                                    created_blocks, created_ensembles,
-                                    laser_duty=False):
+                                    created_blocks, created_ensembles):
         """
         Build a duty-cycle correction PulseBlock/PulseBlockEnsemble whose base element is looped
         via sequence-step `repetitions` to reach `correction_length` in total (a single small
@@ -594,39 +570,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         _MAX_SEQUENCE_LOOP_COUNT consecutive plays, the base element's length is instead
         increased just enough to bring the required loop count back under the limit.
 
-        @param laser_duty: if True, the physical laser channel (self.laser_channel) is held HIGH
-            for the ENTIRE correction block, regardless of whether the block itself is a
-            pulser-ON or pulser-OFF correction. No detector gate channel is touched. If False
-            (default), the correction block behaves exactly as before - laser untouched.
-
         @return (PulseBlockEnsemble, int): the created correction ensemble, and the
             `repetitions` value to use for it in the sequence step (total plays = repetitions + 1).
         """
         def _make_block(length):
-            if laser_duty:
-                if correction_on:
-                    element = self._get_pulser_on_laser_only_element(
-                        length=length, increment=0,
-                        always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-                else:
-                    element = self._get_pulser_off_laser_only_element(
-                        length=length, increment=0, always_on_channel=always_on_channel)
+            if correction_on:
+                element = self._get_pulser_on_idle_element(
+                    length=length, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             else:
-                if correction_on:
-                    element = self._get_pulser_on_idle_element(
-                        length=length, increment=0,
-                        always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-                else:
-                    element = self._get_pulser_off_idle_element(
-                        length=length, increment=0, always_on_channel=always_on_channel)
+                element = self._get_pulser_off_idle_element(
+                    length=length, increment=0, always_on_channel=always_on_channel)
 
             block = PulseBlock(name=name + '_duty_correction')
             block.append(element)
-            extra_high_channels = self.laser_channel if laser_duty else None
             _, actual_length_s = self._pad_ensemble_to_granularity(
                 block, on=correction_on,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel,
-                extra_high_channels=extra_high_channels)
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
             return block, actual_length_s
 
         correction_block, actual_base_length = _make_block(preferred_base_length)
@@ -651,18 +611,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         reps = n_plays_needed - 1
         return correction_ensemble, reps
-
-    def _get_pulser_off_laser_only_element(self, length, increment, always_on_channel=None):
-        """
-        Turns ON just the physical laser channel (self.laser_channel) for `length` seconds,
-        WITHOUT toggling the detector gate channel and WITHOUT touching pulser_channel (stays
-        LOW). Used by the duty-cycle correction's laser_duty feature when the correction step
-        needs the pulser left OFF.
-        """
-        element = self._get_idle_element(length=length, increment=increment)
-        self._set_always_on_channels(element, always_on_channel)
-        self._set_channel_high(element, self.laser_channel)
-        return element
 
     def _get_pulser_on_laser_only_readout_element(self, length, increment, always_on_channel=None, pulser_channel=None):
         """
@@ -814,8 +762,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def _apply_duty_cycle_correction(self, sequence, created_blocks, created_ensembles,
                                     always_on_channel, pulser_channel, duty_cycle,
-                                    name, preferred_on_base_length, preferred_off_base_length,
-                                    laser_duty=False):
+                                    name, preferred_on_base_length, preferred_off_base_length):
         """
         Given an already fully-built PulseSequence (ALL real content already appended, and
         go_to already pointing back to the intended loop-back step), this measures the
@@ -845,10 +792,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         @param preferred_on_base_length, preferred_off_base_length: preferred base element
             duration for the correction loop, depending on whether ON or OFF time needs to be
             added (see _build_duty_cycle_correction).
-        @param laser_duty: if True, the appended correction step holds the physical laser
-            channel HIGH for its entire duration (no gate channel), regardless of whether the
-            correction itself is pulser-ON or pulser-OFF. Passed straight through to
-            _build_duty_cycle_correction. Default False (laser untouched, as before).
 
         @return bool: True if a correction step was appended.
         """
@@ -874,8 +817,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             name=name, correction_length=correction_length, correction_on=correction_on,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel,
             preferred_base_length=preferred_base_length,
-            created_blocks=created_blocks, created_ensembles=created_ensembles,
-            laser_duty=laser_duty)
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
 
         loop_back_target = sequence[-1].go_to
         sequence.append(correction_ensemble.name)
@@ -892,7 +834,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def _prepare_distributed_duty_cycle_correction(self, block_plays, always_on_channel, pulser_channel,
                                                     duty_cycle, name, preferred_on_base_length,
                                                     preferred_off_base_length, num_slots,
-                                                    created_blocks, created_ensembles, laser_duty=False):
+                                                    created_blocks, created_ensembles):
         """
         Prepares a duty-cycle correction that gets DISTRIBUTED across up to `num_slots`
         insertion points, instead of being appended once as a single lump-sum block. Use this
@@ -958,8 +900,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             name=name, correction_length=correction_length, correction_on=correction_on,
             always_on_channel=always_on_channel, pulser_channel=pulser_channel,
             preferred_base_length=preferred_base_length,
-            created_blocks=created_blocks, created_ensembles=created_ensembles,
-            laser_duty=laser_duty)
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
 
         total_plays = correction_reps + 1
         plays_per_slot = self._distribute_correction_plays(total_plays, num_slots)
@@ -991,49 +932,159 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     #                       Generation methods with pulser + always-on channel                     #
     ################################################################################################
 
+    def _register_block(self, block, on, always_on_channel, pulser_channel,
+                        created_blocks, created_ensembles):
+        """
+        Pads `block` to the pulse generator granularity (see _pad_ensemble_to_granularity),
+        wraps it into a single-block PulseBlockEnsemble of the same name and appends both to
+        the created_* lists.
+
+        @return PulseBlockEnsemble: the created ensemble.
+        """
+        self._pad_ensemble_to_granularity(
+            block, on=on, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        created_blocks.append(block)
+        ensemble = PulseBlockEnsemble(name=block.name, rotating_frame=False)
+        ensemble.append((block.name, 0))
+        created_ensembles.append(ensemble)
+        return ensemble
+
+    def _build_dx_pulsed_sequence(self, name, points, always_on_channel, pulser_channel,
+                                  duty_cycle, duty_cycle_channel, rising_time, falling_time,
+                                  distributed_correction, repolarize,
+                                  created_blocks, created_ensembles):
+        """
+        Builds the shared sequence of generate_dx_rabi_ao_trig and generate_dx_pulsedodmr_ao_trig
+        around an ordered list of already registered MW points (normal and alternating points
+        already interleaved by the caller).
+
+        Per point:  [falling] -> mw -> rising -> readout (laser + gate) -> [slot]
+        The very first point's falling carries the sync trigger and is also the loop-back
+        target, so every point is preceded by exactly one falling ramp.
+
+        [slot] = duty-cycle correction (if any plays fall onto that slot) followed by the
+        repolarization block (if repolarize=True; rising -> laser without gate -> laser_delay,
+        all pulser ON). With distributed_correction=True there is one slot after every point,
+        otherwise a single slot after the last point.
+
+        @param list points: list of (PulseBlock, PulseBlockEnsemble) MW points in play order.
+        @param str duty_cycle_channel: channel measured/driven by the duty-cycle correction.
+            Falls back to pulser_channel if empty.
+
+        @return PulseSequence: the sequence (go_to and refresh_parameters already applied,
+            measurement_information still to be filled in by the caller).
+        """
+        correction_channel = duty_cycle_channel or pulser_channel
+
+        def _make(suffix, elements, on):
+            block = PulseBlock(name='{0}_{1}'.format(name, suffix))
+            for element in elements:
+                block.append(element)
+            ensemble = self._register_block(block, on, always_on_channel, pulser_channel,
+                                            created_blocks, created_ensembles)
+            return block, ensemble
+
+        falling_element = self._get_pulser_off_idle_element(
+            length=falling_time, increment=0, always_on_channel=always_on_channel)
+        rising_element = self._get_pulser_on_idle_element(
+            length=rising_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        waiting_element = self._get_pulser_on_idle_element(
+            length=self.wait_time, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        laser_element = self._get_pulser_on_laser_gate_element(
+            length=self.laser_length, increment=0,
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        delay_element = self._get_pulser_on_delay_gate_element(
+            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
+
+        trigger = _make('trigger_falling', [sync_element, falling_element], on=False)
+        falling = _make('falling', [falling_element], on=False)
+        rising = _make('rising', [rising_element], on=True)
+        readout = _make('readout', [laser_element, delay_element, waiting_element], on=True)
+
+        repolarization = None
+        if repolarize:
+            repolarize_laser_element = self._get_pulser_on_laser_only_readout_element(
+                length=self.laser_length, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            repolarize_delay_element = self._get_pulser_on_idle_element(
+                length=self.laser_delay, increment=0,
+                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+            repolarization = _make(
+                'repolarize', [rising_element, repolarize_laser_element, repolarize_delay_element],
+                on=True)
+
+        # Planned play order, with None marking a duty-cycle correction slot
+        slot_points = set(range(len(points))) if distributed_correction else {len(points) - 1}
+        plan = list()
+        for ii, point in enumerate(points):
+            plan.append(trigger if ii == 0 else falling)
+            plan.extend((point, rising, readout))
+            if ii in slot_points:
+                plan.append(None)
+                if repolarization is not None:
+                    plan.append(repolarization)
+
+        block_plays = [(item[0], 1) for item in plan if item is not None]
+        correction_ensemble, reps_per_slot = self._prepare_distributed_duty_cycle_correction(
+            block_plays, always_on_channel=always_on_channel, pulser_channel=correction_channel,
+            duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
+            preferred_off_base_length=falling_time, num_slots=len(slot_points),
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
+
+        sequence = PulseSequence(name=name, rotating_frame=False)
+        slot_reps = iter(reps_per_slot)
+        for item in plan:
+            if item is None:
+                reps = next(slot_reps)
+                if reps is None:
+                    continue
+                sequence.append(correction_ensemble.name)
+                sequence[-1].repetitions = reps
+            else:
+                sequence.append(item[1].name)
+                sequence[-1].repetitions = 0
+
+        # AWG step indices are 1-based: loop back onto the trigger falling block
+        sequence[-1].go_to = 1
+        sequence.refresh_parameters()
+        return sequence
+
     def generate_dx_rabi_ao_trig(self, name='rabi_ao_trig', tau_start=10.0e-9, tau_step=10.0e-9,
                                   num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
-                                  duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                  laser_duty=False, alternating=False, alternating_mode=1,
-                                  settle_readout=True):
+                                  duty_cycle=0.2, duty_cycle_channel='', distributed_correction=True,
+                                  repolarize=True, rising_time=50e-6, falling_time=50e-6,
+                                  alternating=False, alternating_mode=1):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
+        The pulser is OFF during the MW pulse and ON during readout. See
+        _build_dx_pulsed_sequence for the sequence structure.
 
-        Sequence structure (settle_readout=True): trigger (sync merged into a one-off rising
-        block) -> settle readout (laser only, no gate, not counted as data) -> [falling -> mw
-        -> rising -> readout] per point -> falling -> [duty-cycle correction, if needed] ->
-        loop back.
-        Sequence structure (settle_readout=False): trigger (sync merged into a one-off falling
-        block, serving as point 0's falling) -> [mw -> rising -> readout] for point 0, then
-        [falling -> mw -> rising -> readout] per further point -> [duty-cycle correction, if
-        needed] -> loop back onto the trigger falling block.
-
-        When alternating=True, normal and alternating points are strictly interleaved
-        (normal[0], alternating[0], normal[1], alternating[1], ...) as required by qudi's data
-        ordering convention, and the duty-cycle correction is distributed across ONE insertion
-        slot immediately after EVERY individual point (normal[0], correction, alternating[0],
-        correction, normal[1], correction, ...) rather than as a single lump sum. This keeps
-        the actual real-time duty cycle close to target throughout the whole measurement
-        instead of only on average by the very end, while every point (normal or alternating)
-        is still always immediately preceded by the same fixed falling block, so a normal
-        point and its alternating partner always start from an identical initial state
-        regardless of how much correction has run before either of them. See
-        _prepare_distributed_duty_cycle_correction for the distribution mechanism.
-
+        pulser_channel : str
+            Channel held ON during rising, readout and repolarization. Leave empty to never
+            drive the pulser during the measurement itself.
+        duty_cycle : float
+            Target fraction of the total sequence time with duty_cycle_channel HIGH.
+        duty_cycle_channel : str
+            Channel measured and driven by the duty-cycle correction. Empty (default) ->
+            pulser_channel.
+        distributed_correction : bool
+            True (default): one correction slot after every point (normal or alternating),
+            keeping the real-time duty cycle close to target throughout the sweep.
+            False: a single correction block at the end of the sequence.
+        repolarize : bool
+            If True (default), every correction slot is followed by a repolarization block
+            (rising -> laser without gate -> laser_delay, all pulser ON), so the polarization
+            does not decay during long corrections before the next MW pulse.
         alternating : bool
-            If True, each normal point is immediately followed by one alternating partner
-            point.
+            If True, each normal point is immediately followed by one alternating point.
         alternating_mode : int
-            1 -> the alternating trace replaces the swept MW pulse with an idle wait of the
-                 same duration (MW never driven).
-            2 -> the alternating trace keeps the swept MW pulse and appends one additional
-                 fixed pi-pulse afterwards (length self.rabi_period / 2, at
-                 self.microwave_frequency).
-        settle_readout : bool
-            If True (default), a one-off rising block and a laser-only settle readout (no
-            gate, not counted as data) are played after the trigger. If False, both are
-            omitted, together with the trailing falling block: the trigger is merged into
-            point 0's falling block instead (see sequence structure above).
+            1 -> the alternating point replaces the MW pulse with an idle wait of the same
+                 duration (MW never driven).
+            2 -> the alternating point keeps the swept MW pulse and appends one additional
+                 fixed pi-pulse (length self.rabi_period / 2, at self.microwave_frequency).
 
         Returns
         -------
@@ -1041,7 +1092,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles : list
         created_sequences : list
         """
-
         mw_frequency = self.microwave_frequency
         self.log.warning(f'Rabi drive frequency: {mw_frequency/1e9:.6f} GHz, '
                         f'amp={self.microwave_amplitude} V')
@@ -1052,304 +1102,76 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         tau_array = tau_start + np.arange(num_of_points) * tau_step
 
-        falling_element = self._get_pulser_off_idle_element(
-            length=falling_time, increment=0, always_on_channel=always_on_channel)
-        rising_element = self._get_pulser_on_idle_element(
-            length=rising_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        waiting_element = self._get_pulser_on_idle_element(
-            length=self.wait_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        waiting_delay_element = self._get_pulser_on_idle_element(
-            length=self.laser_delay, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        laser_element = self._get_pulser_on_laser_gate_element(
-            length=self.laser_length, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        delay_element = self._get_pulser_on_delay_gate_element(
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        if alternating and alternating_mode not in (1, 2):
+            self.log.error(
+                'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
+            alternating_mode = 1
 
-        # ── Falling (shared, off) ────────────────────────────────────────
-        falling_block = PulseBlock(name='{0}_falling'.format(name))
-        falling_block.append(falling_element)
-        self._pad_ensemble_to_granularity(
-            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(falling_block)
+        def _register(block_name, elements):
+            block = PulseBlock(name=block_name)
+            for element in elements:
+                block.append(element)
+            ensemble = self._register_block(block, False, always_on_channel, pulser_channel,
+                                            created_blocks, created_ensembles)
+            return block, ensemble
 
-        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
-        falling_ensemble.append((falling_block.name, 0))
-        created_ensembles.append(falling_ensemble)
-
-        # ── Rising (shared, on) ──────────────────────────────────────────
-        rising_block = PulseBlock(name='{0}_rising'.format(name))
-        rising_block.append(rising_element)
-        self._pad_ensemble_to_granularity(
-            rising_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(rising_block)
-
-        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
-        rising_ensemble.append((rising_block.name, 0))
-        created_ensembles.append(rising_ensemble)
-
-        # ── Readout (shared, on) ─────────────────────────────────────────
-        readout_block = PulseBlock(name='{0}_readout'.format(name))
-        readout_block.append(laser_element)
-        readout_block.append(delay_element)
-        readout_block.append(waiting_element)
-        self._pad_ensemble_to_granularity(
-            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(readout_block)
-
-        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
-        readout_ensemble.append((readout_block.name, 0))
-        created_ensembles.append(readout_ensemble)
-
-        # ── One MW ensemble per tau point (off), each padded individually ──
-        mw_blocks = dict()
-        mw_ensembles = dict()
+        points = list()
         for kk, tau in enumerate(tau_array):
             mw_elements = self._get_pulser_off_dx_mw_element_padded(
-                length=tau, increment=0,
-                amp=self.microwave_amplitude, freq=None, phase=0,
+                length=tau, increment=0, amp=self.microwave_amplitude, freq=None, phase=0,
                 always_on_channel=always_on_channel)
+            points.append(_register('{0}_mw_{1}'.format(name, kk), mw_elements))
 
-            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
-            for mw_elem in mw_elements:
-                mw_block.append(mw_elem)
-            self._pad_ensemble_to_granularity(
-                mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            created_blocks.append(mw_block)
-            mw_blocks[kk] = mw_block
+            if not alternating:
+                continue
+            if alternating_mode == 1:
+                alt_elements = [self._get_pulser_off_idle_element(
+                    length=max(tau, self._MW_ELEMENT_MIN_LENGTH), increment=0,
+                    always_on_channel=always_on_channel)]
+            else:
+                alt_elements = self._get_pulser_off_dx_mw_element_padded(
+                    length=tau, increment=0, amp=self.microwave_amplitude, freq=None, phase=0,
+                    always_on_channel=always_on_channel)
+                alt_elements += self._get_pulser_off_dx_mw_element_padded(
+                    length=self.rabi_period / 2, increment=0, amp=self.microwave_amplitude,
+                    freq=None, phase=0, always_on_channel=always_on_channel)
+            points.append(_register('{0}_alt_mw_{1}'.format(name, kk), alt_elements))
 
-            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
-            mw_ensembles[kk].append((mw_block.name, 0))
-            created_ensembles.append(mw_ensembles[kk])
-
-        # ── One alternating MW ensemble per tau point (only if alternating) ──
-        alt_mw_blocks = dict()
-        alt_mw_ensembles = dict()
-        if alternating:
-            if alternating_mode not in (1, 2):
-                self.log.error(
-                    'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
-                alternating_mode = 1
-
-            for kk, tau in enumerate(tau_array):
-                if alternating_mode == 1:
-                    alt_length = max(tau, self._MW_ELEMENT_MIN_LENGTH)
-                    alt_elements = [self._get_pulser_off_idle_element(
-                        length=alt_length, increment=0, always_on_channel=always_on_channel)]
-                else:
-                    alt_elements = self._get_pulser_off_dx_mw_element_padded(
-                        length=tau, increment=0,
-                        amp=self.microwave_amplitude, freq=None, phase=0,
-                        always_on_channel=always_on_channel)
-                    alt_elements += self._get_pulser_off_dx_mw_element_padded(
-                        length=self.rabi_period / 2, increment=0,
-                        amp=self.microwave_amplitude, freq=None, phase=0,
-                        always_on_channel=always_on_channel)
-
-                alt_mw_block = PulseBlock(name='{0}_alt_mw_{1}'.format(name, kk))
-                for elem in alt_elements:
-                    alt_mw_block.append(elem)
-                self._pad_ensemble_to_granularity(
-                    alt_mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-                created_blocks.append(alt_mw_block)
-                alt_mw_blocks[kk] = alt_mw_block
-
-                alt_mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_alt_mw_{1}'.format(name, kk), rotating_frame=False)
-                alt_mw_ensembles[kk].append((alt_mw_block.name, 0))
-                created_ensembles.append(alt_mw_ensembles[kk])
-
-        # ── Trigger: sync (pulser OFF) merged into a one-off rising block (pulser ON) ───
-        # ── Trigger: with settle readout, sync (pulser OFF) is merged into a one-off rising
-        #    block (pulser ON) feeding the settle readout. Without it, sync is merged into a
-        #    one-off falling block serving as point 0's falling, and the trailing falling is
-        #    dropped since the loop-back lands on this falling block anyway ─────────────
-        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
-        if settle_readout:
-            trigger_block = PulseBlock(name='{0}_trigger_rising'.format(name))
-            trigger_block.append(sync_element)
-            trigger_block.append(rising_element)
-        else:
-            trigger_block = PulseBlock(name='{0}_trigger_falling'.format(name))
-            trigger_block.append(sync_element)
-            trigger_block.append(falling_element)
-        self._pad_ensemble_to_granularity(
-            trigger_block, on=settle_readout,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(trigger_block)
-
-        trigger_ensemble = PulseBlockEnsemble(name=trigger_block.name, rotating_frame=False)
-        trigger_ensemble.append((trigger_block.name, 0))
-        created_ensembles.append(trigger_ensemble)
-
-        # ── Settle readout (optional): laser only, no gate, not counted as data ────────
-        settle_readout_block = None
-        settle_readout_ensemble = None
-        if settle_readout:
-            settle_readout_element = self._get_pulser_on_laser_only_readout_element(
-                length=self.laser_length, increment=0,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            settle_readout_block = PulseBlock(name=name + '_settle_readout')
-            settle_readout_block.append(settle_readout_element)
-            settle_readout_block.append(waiting_delay_element)
-            settle_readout_block.append(waiting_element)
-            self._pad_ensemble_to_granularity(
-                settle_readout_block, on=True,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            created_blocks.append(settle_readout_block)
-
-            settle_readout_ensemble = PulseBlockEnsemble(name=name + '_settle_readout', rotating_frame=False)
-            settle_readout_ensemble.append((settle_readout_block.name, 0))
-            created_ensembles.append(settle_readout_ensemble)
-
-        rabi_sequence = PulseSequence(name=name, rotating_frame=False)
-
-        rabi_sequence.append(trigger_ensemble.name)
-        rabi_sequence[-1].repetitions = 0
-
-        if settle_readout:
-            rabi_sequence.append(settle_readout_ensemble.name)
-            rabi_sequence[-1].repetitions = 0
-
-        if alternating:
-            # One correction insertion slot after EVERY individual point (normal or
-            # alternating) - never between two points, but with twice as many slots as pairs,
-            # so the achieved duty cycle stays close to target throughout the whole
-            # measurement rather than drifting until a single lump-sum correction at the end.
-            num_slots = 2 * num_of_points
-            block_plays = [(trigger_block, 1)]
-            if settle_readout:
-                block_plays.append((settle_readout_block, 1))
-            for kk in range(num_of_points):
-                if settle_readout or kk > 0:
-                    block_plays.append((falling_block, 1))
-                block_plays.append((mw_blocks[kk], 1))
-                block_plays.append((rising_block, 1))
-                block_plays.append((readout_block, 1))
-                block_plays.append((falling_block, 1))
-                block_plays.append((alt_mw_blocks[kk], 1))
-                block_plays.append((rising_block, 1))
-                block_plays.append((readout_block, 1))
-            if settle_readout:
-                block_plays.append((falling_block, 1))
-
-            correction_ensemble, reps_per_slot = self._prepare_distributed_duty_cycle_correction(
-                block_plays, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
-                duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
-                preferred_off_base_length=falling_time, num_slots=num_slots,
-                created_blocks=created_blocks, created_ensembles=created_ensembles, laser_duty=laser_duty)
-
-            for kk in range(num_of_points):
-                if settle_readout or kk > 0:
-                    rabi_sequence.append(falling_ensemble.name)
-                    rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(mw_ensembles[kk].name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(rising_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(readout_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                if reps_per_slot[2 * kk] is not None:
-                    rabi_sequence.append(correction_ensemble.name)
-                    rabi_sequence[-1].repetitions = reps_per_slot[2 * kk]
-
-                rabi_sequence.append(falling_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(alt_mw_ensembles[kk].name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(rising_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(readout_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                if reps_per_slot[2 * kk + 1] is not None:
-                    rabi_sequence.append(correction_ensemble.name)
-                    rabi_sequence[-1].repetitions = reps_per_slot[2 * kk + 1]
-
-            if settle_readout:
-                rabi_sequence.append(falling_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-            rabi_sequence[-1].go_to = 1
-        else:
-            for kk in range(num_of_points):
-                if settle_readout or kk > 0:
-                    rabi_sequence.append(falling_ensemble.name)
-                    rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(mw_ensembles[kk].name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(rising_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-                rabi_sequence.append(readout_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-            if settle_readout:
-                rabi_sequence.append(falling_ensemble.name)
-                rabi_sequence[-1].repetitions = 0
-
-            rabi_sequence[-1].go_to = 1
-
-            self._apply_duty_cycle_correction(
-                rabi_sequence, created_blocks, created_ensembles,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-                name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time,
-                laser_duty=laser_duty)
-
-        rabi_sequence.refresh_parameters()
+        rabi_sequence = self._build_dx_pulsed_sequence(
+            name, points, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+            duty_cycle=duty_cycle, duty_cycle_channel=duty_cycle_channel,
+            rising_time=rising_time, falling_time=falling_time,
+            distributed_correction=distributed_correction, repolarize=repolarize,
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
 
         rabi_sequence.measurement_information['alternating'] = alternating
         rabi_sequence.measurement_information['laser_ignore_list'] = list()
         rabi_sequence.measurement_information['controlled_variable'] = tau_array
         rabi_sequence.measurement_information['units'] = ('s', '')
         rabi_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        rabi_sequence.measurement_information['number_of_lasers'] = 2 * num_of_points if alternating else num_of_points
-        rabi_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
+        rabi_sequence.measurement_information['number_of_lasers'] = len(points)
+        rabi_sequence.measurement_information['counting_length'] = self.laser_length + self.laser_delay
 
         created_sequences.append(rabi_sequence)
         return created_blocks, created_ensembles, created_sequences
 
     def generate_dx_pulsedodmr_ao_trig(self, name='pODMR_ao_trig', freq_start=3.47e9, freq_stop=3.57e9,
                                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
-                                        duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                        laser_duty=False, alternating=False, alternating_mode=1,
-                                        settle_readout=True):
+                                        duty_cycle=0.2, duty_cycle_channel='', distributed_correction=True,
+                                        repolarize=True, rising_time=50e-6, falling_time=50e-6,
+                                        alternating=False, alternating_mode=1):
         """
         Sequence-mode pulsed ODMR - identical structure to generate_dx_rabi_ao_trig, swept over
         frequency with a fixed pi-pulse length (self.rabi_period / 2) instead of swept tau.
-        Requires self.rabi_period to already be calibrated.
+        Requires self.rabi_period to already be calibrated. See generate_dx_rabi_ao_trig for
+        the shared parameters.
 
-        Normal and alternating points are strictly interleaved when alternating=True, and the
-        duty-cycle correction is distributed across one insertion slot immediately after EVERY
-        individual point (normal or alternating), not just after each pair - see
-        generate_dx_rabi_ao_trig's docstring for the full rationale.
-
-        alternating : bool
-            If True, each normal point is immediately followed by one alternating partner
-            point.
         alternating_mode : int
-            1 -> the alternating trace replaces the pi-pulse with an idle wait of the same
+            1 -> the alternating point replaces the pi-pulse with an idle wait of the same
                  duration (MW never driven). Identical for every frequency point, so a single
                  shared waveform is reused across the whole alternating sweep.
-            2 -> the alternating trace keeps the swept pi-pulse and appends one additional
-                 fixed pi-pulse afterwards (length self.rabi_period / 2, at
-                 self.microwave_frequency).
-        settle_readout : bool
-            If True (default), a one-off rising block and a laser-only settle readout (no
-            gate, not counted as data) are played after the trigger. If False, both are
-            omitted, together with the trailing falling block: the trigger is merged into
-            point 0's falling block instead (see sequence structure above).
+            2 -> the alternating point keeps the swept pi-pulse and appends one additional
+                 fixed pi-pulse (length self.rabi_period / 2, at self.microwave_frequency).
 
         Returns
         -------
@@ -1362,281 +1184,61 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_sequences = list()
 
         freq_array = np.linspace(freq_start, freq_stop, num_of_points)
+        pi_length = self.rabi_period / 2
 
-        falling_element = self._get_pulser_off_idle_element(
-            length=falling_time, increment=0, always_on_channel=always_on_channel)
-        rising_element = self._get_pulser_on_idle_element(
-            length=rising_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        waiting_element = self._get_pulser_on_idle_element(
-            length=self.wait_time, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        waiting_delay_element = self._get_pulser_on_idle_element(
-            length=self.laser_delay, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        laser_element = self._get_pulser_on_laser_gate_element(
-            length=self.laser_length, increment=0,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        delay_element = self._get_pulser_on_delay_gate_element(
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+        if alternating and alternating_mode not in (1, 2):
+            self.log.error(
+                'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
+            alternating_mode = 1
 
-        # ── Falling (shared, off) ────────────────────────────────────────
-        falling_block = PulseBlock(name='{0}_falling'.format(name))
-        falling_block.append(falling_element)
-        self._pad_ensemble_to_granularity(
-            falling_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(falling_block)
+        def _register(block_name, elements):
+            block = PulseBlock(name=block_name)
+            for element in elements:
+                block.append(element)
+            ensemble = self._register_block(block, False, always_on_channel, pulser_channel,
+                                            created_blocks, created_ensembles)
+            return block, ensemble
 
-        falling_ensemble = PulseBlockEnsemble(name='{0}_falling'.format(name), rotating_frame=False)
-        falling_ensemble.append((falling_block.name, 0))
-        created_ensembles.append(falling_ensemble)
+        shared_alt_point = None
+        if alternating and alternating_mode == 1:
+            shared_alt_point = _register(name + '_alt_mw', [self._get_pulser_off_idle_element(
+                length=max(pi_length, self._MW_ELEMENT_MIN_LENGTH), increment=0,
+                always_on_channel=always_on_channel)])
 
-        # ── Rising (shared, on) ──────────────────────────────────────────
-        rising_block = PulseBlock(name='{0}_rising'.format(name))
-        rising_block.append(rising_element)
-        self._pad_ensemble_to_granularity(
-            rising_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(rising_block)
-
-        rising_ensemble = PulseBlockEnsemble(name='{0}_rising'.format(name), rotating_frame=False)
-        rising_ensemble.append((rising_block.name, 0))
-        created_ensembles.append(rising_ensemble)
-
-        # ── Readout (shared, on) ─────────────────────────────────────────
-        readout_block = PulseBlock(name='{0}_readout'.format(name))
-        readout_block.append(laser_element)
-        readout_block.append(delay_element)
-        readout_block.append(waiting_element)
-        self._pad_ensemble_to_granularity(
-            readout_block, on=True, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(readout_block)
-
-        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
-        readout_ensemble.append((readout_block.name, 0))
-        created_ensembles.append(readout_ensemble)
-
-        # ── One MW (pi-pulse) ensemble per frequency point (off), padded individually ──
-        mw_blocks = dict()
-        mw_ensembles = dict()
+        points = list()
         for kk, freq in enumerate(freq_array):
             mw_elements = self._get_pulser_off_dx_mw_element_padded(
-                length=self.rabi_period / 2, increment=0,
-                amp=self.microwave_amplitude, freq=freq, phase=0,
+                length=pi_length, increment=0, amp=self.microwave_amplitude, freq=freq, phase=0,
                 always_on_channel=always_on_channel)
+            points.append(_register('{0}_mw_{1}'.format(name, kk), mw_elements))
 
-            mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
-            for mw_elem in mw_elements:
-                mw_block.append(mw_elem)
-            self._pad_ensemble_to_granularity(
-                mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            created_blocks.append(mw_block)
-            mw_blocks[kk] = mw_block
-
-            mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_mw_{1}'.format(name, kk), rotating_frame=False)
-            mw_ensembles[kk].append((mw_block.name, 0))
-            created_ensembles.append(mw_ensembles[kk])
-
-        # ── Alternating MW ensemble(s) (only if alternating) ────────────────────────────
-        alt_mw_blocks = dict()
-        alt_mw_ensembles = dict()
-        shared_alt_block = None
-        shared_alt_ensemble = None
-        if alternating:
-            if alternating_mode not in (1, 2):
-                self.log.error(
-                    'alternating_mode must be 1 or 2 (got {0}); treating as 1.'.format(alternating_mode))
-                alternating_mode = 1
-
+            if not alternating:
+                continue
             if alternating_mode == 1:
-                # Identical for every frequency point (no MW driven) - build once and reuse.
-                alt_length = max(self.rabi_period / 2, self._MW_ELEMENT_MIN_LENGTH)
-                alt_element = self._get_pulser_off_idle_element(
-                    length=alt_length, increment=0, always_on_channel=always_on_channel)
-                shared_alt_block = PulseBlock(name=name + '_alt_mw')
-                shared_alt_block.append(alt_element)
-                self._pad_ensemble_to_granularity(
-                    shared_alt_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-                created_blocks.append(shared_alt_block)
-
-                shared_alt_ensemble = PulseBlockEnsemble(name=name + '_alt_mw', rotating_frame=False)
-                shared_alt_ensemble.append((shared_alt_block.name, 0))
-                created_ensembles.append(shared_alt_ensemble)
+                points.append(shared_alt_point)
             else:
-                for kk, freq in enumerate(freq_array):
-                    alt_elements = self._get_pulser_off_dx_mw_element_padded(
-                        length=self.rabi_period / 2, increment=0,
-                        amp=self.microwave_amplitude, freq=freq, phase=0,
-                        always_on_channel=always_on_channel)
-                    alt_elements += self._get_pulser_off_dx_mw_element_padded(
-                        length=self.rabi_period / 2, increment=0,
-                        amp=self.microwave_amplitude, freq=None, phase=0,
-                        always_on_channel=always_on_channel)
+                alt_elements = self._get_pulser_off_dx_mw_element_padded(
+                    length=pi_length, increment=0, amp=self.microwave_amplitude, freq=freq,
+                    phase=0, always_on_channel=always_on_channel)
+                alt_elements += self._get_pulser_off_dx_mw_element_padded(
+                    length=pi_length, increment=0, amp=self.microwave_amplitude, freq=None,
+                    phase=0, always_on_channel=always_on_channel)
+                points.append(_register('{0}_alt_mw_{1}'.format(name, kk), alt_elements))
 
-                    alt_mw_block = PulseBlock(name='{0}_alt_mw_{1}'.format(name, kk))
-                    for elem in alt_elements:
-                        alt_mw_block.append(elem)
-                    self._pad_ensemble_to_granularity(
-                        alt_mw_block, on=False, always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-                    created_blocks.append(alt_mw_block)
-                    alt_mw_blocks[kk] = alt_mw_block
-
-                    alt_mw_ensembles[kk] = PulseBlockEnsemble(name='{0}_alt_mw_{1}'.format(name, kk), rotating_frame=False)
-                    alt_mw_ensembles[kk].append((alt_mw_block.name, 0))
-                    created_ensembles.append(alt_mw_ensembles[kk])
-
-        # ── Trigger: with settle readout, sync (pulser OFF) is merged into a one-off rising
-        #    block (pulser ON) feeding the settle readout. Without it, sync is merged into a
-        #    one-off falling block serving as point 0's falling, and the trailing falling is
-        #    dropped since the loop-back lands on this falling block anyway ─────────────
-        sync_element = self._get_pulser_off_sync_element(always_on_channel=always_on_channel)
-        if settle_readout:
-            trigger_block = PulseBlock(name='{0}_trigger_rising'.format(name))
-            trigger_block.append(sync_element)
-            trigger_block.append(rising_element)
-        else:
-            trigger_block = PulseBlock(name='{0}_trigger_falling'.format(name))
-            trigger_block.append(sync_element)
-            trigger_block.append(falling_element)
-        self._pad_ensemble_to_granularity(
-            trigger_block, on=settle_readout,
-            always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-        created_blocks.append(trigger_block)
-
-        trigger_ensemble = PulseBlockEnsemble(name=trigger_block.name, rotating_frame=False)
-        trigger_ensemble.append((trigger_block.name, 0))
-        created_ensembles.append(trigger_ensemble)
-
-        # ── Settle readout (optional): laser only, no gate, not counted as data ────────
-        settle_readout_block = None
-        settle_readout_ensemble = None
-        if settle_readout:
-            settle_readout_element = self._get_pulser_on_laser_only_readout_element(
-                length=self.laser_length, increment=0,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            settle_readout_block = PulseBlock(name=name + '_settle_readout')
-            settle_readout_block.append(settle_readout_element)
-            settle_readout_block.append(waiting_delay_element)
-            settle_readout_block.append(waiting_element)
-            self._pad_ensemble_to_granularity(
-                settle_readout_block, on=True,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel)
-            created_blocks.append(settle_readout_block)
-
-            settle_readout_ensemble = PulseBlockEnsemble(name=name + '_settle_readout', rotating_frame=False)
-            settle_readout_ensemble.append((settle_readout_block.name, 0))
-            created_ensembles.append(settle_readout_ensemble)
-
-        pulsedodmr_sequence = PulseSequence(name=name, rotating_frame=False)
-
-        pulsedodmr_sequence.append(trigger_ensemble.name)
-        pulsedodmr_sequence[-1].repetitions = 0
-
-        if settle_readout:
-            pulsedodmr_sequence.append(settle_readout_ensemble.name)
-            pulsedodmr_sequence[-1].repetitions = 0
-
-        if alternating:
-            num_slots = 2 * num_of_points
-            block_plays = [(trigger_block, 1)]
-            if settle_readout:
-                block_plays.append((settle_readout_block, 1))
-            for kk in range(num_of_points):
-                alt_block_ref = shared_alt_block if alternating_mode == 1 else alt_mw_blocks[kk]
-                if settle_readout or kk > 0:
-                    block_plays.append((falling_block, 1))
-                block_plays.append((mw_blocks[kk], 1))
-                block_plays.append((rising_block, 1))
-                block_plays.append((readout_block, 1))
-                block_plays.append((falling_block, 1))
-                block_plays.append((alt_block_ref, 1))
-                block_plays.append((rising_block, 1))
-                block_plays.append((readout_block, 1))
-            if settle_readout:
-                block_plays.append((falling_block, 1))
-
-            correction_ensemble, reps_per_slot = self._prepare_distributed_duty_cycle_correction(
-                block_plays, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
-                duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
-                preferred_off_base_length=falling_time, num_slots=num_slots,
-                created_blocks=created_blocks, created_ensembles=created_ensembles, laser_duty=laser_duty)
-
-            for kk, freq in enumerate(freq_array):
-                alt_ensemble_name = shared_alt_ensemble.name if alternating_mode == 1 else alt_mw_ensembles[kk].name
-
-                if settle_readout or kk > 0:
-                    pulsedodmr_sequence.append(falling_ensemble.name)
-                    pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(mw_ensembles[kk].name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(rising_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(readout_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                if reps_per_slot[2 * kk] is not None:
-                    pulsedodmr_sequence.append(correction_ensemble.name)
-                    pulsedodmr_sequence[-1].repetitions = reps_per_slot[2 * kk]
-
-                pulsedodmr_sequence.append(falling_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(alt_ensemble_name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(rising_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(readout_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                if reps_per_slot[2 * kk + 1] is not None:
-                    pulsedodmr_sequence.append(correction_ensemble.name)
-                    pulsedodmr_sequence[-1].repetitions = reps_per_slot[2 * kk + 1]
-
-            if settle_readout:
-                pulsedodmr_sequence.append(falling_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-            pulsedodmr_sequence[-1].go_to = 1
-        else:
-            for kk, freq in enumerate(freq_array):
-                if settle_readout or kk > 0:
-                    pulsedodmr_sequence.append(falling_ensemble.name)
-                    pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(mw_ensembles[kk].name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(rising_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-                pulsedodmr_sequence.append(readout_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-            if settle_readout:
-                pulsedodmr_sequence.append(falling_ensemble.name)
-                pulsedodmr_sequence[-1].repetitions = 0
-
-            pulsedodmr_sequence[-1].go_to = 1
-
-            self._apply_duty_cycle_correction(
-                pulsedodmr_sequence, created_blocks, created_ensembles,
-                always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-                name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time,
-                laser_duty=laser_duty)
-
-        pulsedodmr_sequence.refresh_parameters()
+        pulsedodmr_sequence = self._build_dx_pulsed_sequence(
+            name, points, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+            duty_cycle=duty_cycle, duty_cycle_channel=duty_cycle_channel,
+            rising_time=rising_time, falling_time=falling_time,
+            distributed_correction=distributed_correction, repolarize=repolarize,
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
 
         pulsedodmr_sequence.measurement_information['alternating'] = alternating
         pulsedodmr_sequence.measurement_information['laser_ignore_list'] = list()
         pulsedodmr_sequence.measurement_information['controlled_variable'] = freq_array
         pulsedodmr_sequence.measurement_information['units'] = ('Hz', '')
         pulsedodmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
-        pulsedodmr_sequence.measurement_information['number_of_lasers'] = 2 * len(freq_array) if alternating else len(freq_array)
-        pulsedodmr_sequence.measurement_information['counting_length'] = (self.laser_length + delay_element.init_length_s)
+        pulsedodmr_sequence.measurement_information['number_of_lasers'] = len(points)
+        pulsedodmr_sequence.measurement_information['counting_length'] = self.laser_length + self.laser_delay
 
         created_sequences.append(pulsedodmr_sequence)
         return created_blocks, created_ensembles, created_sequences
@@ -1645,7 +1247,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                      num_of_points=50, mw_amp=0.2, mw_length=10e-6,
                                      always_on_channel='d_ch15', pulser_channel='d_ch3', pulser_mode=1,
                                      duty_cycle=0.2, rising_time=50e-6, falling_time=50e-6,
-                                     laser_duty=False, alternating=False, alternating_mode=1):
+                                     alternating=False, alternating_mode=1):
         """
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
@@ -1847,7 +1449,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                     block_plays, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
                     duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
                     preferred_off_base_length=falling_time, num_slots=num_slots,
-                    created_blocks=created_blocks, created_ensembles=created_ensembles, laser_duty=laser_duty)
+                    created_blocks=created_blocks, created_ensembles=created_ensembles)
 
                 for kk, freq in enumerate(freq_array):
                     cw_odmr_sequence.append(first_rising_ensemble.name if kk == 0 else rising_ensemble.name)
@@ -1902,8 +1504,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 self._apply_duty_cycle_correction(
                     cw_odmr_sequence, created_blocks, created_ensembles,
                     always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-                    name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time,
-                    laser_duty=laser_duty)
+                    name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
         else:
             # pulser_mode == 0: mw/readout/alt_mw blocks never drive pulser_channel
             # themselves, but the duty-cycle correction still may, briefly, to hit the
@@ -1951,7 +1552,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                     block_plays, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
                     duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
                     preferred_off_base_length=falling_time, num_slots=num_slots,
-                    created_blocks=created_blocks, created_ensembles=created_ensembles, laser_duty=laser_duty)
+                    created_blocks=created_blocks, created_ensembles=created_ensembles)
 
                 for kk, freq in enumerate(freq_array):
                     cw_odmr_sequence.append(first_falling_ensemble.name if kk == 0 else falling_ensemble.name)
@@ -1997,8 +1598,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 self._apply_duty_cycle_correction(
                     cw_odmr_sequence, created_blocks, created_ensembles,
                     always_on_channel=always_on_channel, pulser_channel=pulser_channel, duty_cycle=duty_cycle,
-                    name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time,
-                    laser_duty=laser_duty)
+                    name=name, preferred_on_base_length=self.wait_time, preferred_off_base_length=falling_time)
 
         cw_odmr_sequence.refresh_parameters()
 
