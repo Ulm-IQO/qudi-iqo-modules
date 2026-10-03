@@ -694,6 +694,13 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             if self.module_state() == 'locked':
                 self.module_state.unlock()
 
+    def _line_reversed(self, axis: str) -> bool:
+        """True if line scans along `axis` deliver their pixels in reversed order, i.e. the
+        scanner mirrors this axis (PIE727Scanner invert_axes) while still ramping upward in
+        controller coordinates. Scanners without is_axis_inverted() never reverse."""
+        is_inverted = getattr(self._scanner(), 'is_axis_inverted', None)
+        return bool(is_inverted(axis)) if callable(is_inverted) else False
+
     # =========================================================================
     # 1D scan -- ramp-based ('clock' / 'position_distance' modes)
     # =========================================================================
@@ -757,6 +764,11 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
             self.log.error(f'Counter read failed: {exc}')
             counts_dict = None
 
+        # Mirrored axis: pixels arrived in reversed position order
+        if counts_dict is not None and self._line_reversed(axis):
+            counts_dict = {ch: (None if raw is None else np.asarray(raw)[::-1])
+                           for ch, raw in counts_dict.items()}
+
         # 5. Store
         self._store_1d(counts_dict=counts_dict, n_pts=n_pts, t_pixel=t_pixel)
         self._scanner().sync_position()
@@ -792,6 +804,8 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
         fast_pos = np.linspace(fast_range[0], fast_range[1], n_fast).tolist()
         slow_pos = np.linspace(slow_range[0], slow_range[1], n_slow).tolist()
         channels = self._scan_settings.channels
+        # Mirrored fast axis: each line's pixels arrive in reversed position order
+        reverse_line = self._line_reversed(fast_axis)
 
         # Accumulate raw counts; (n_fast, n_slow) -- not yet divided by t_pixel
         data_accum = {
@@ -862,7 +876,7 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
                 for ch in channels:
                     raw = line_counts.get(ch)
                     if raw is not None and len(raw) == n_fast:
-                        data_accum[ch][:, i_slow] = raw
+                        data_accum[ch][:, i_slow] = raw[::-1] if reverse_line else raw
                     else:
                         self.log.warning(
                             f'Line {i_slow} channel "{ch}": '
