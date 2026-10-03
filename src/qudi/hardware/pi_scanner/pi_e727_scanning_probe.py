@@ -47,6 +47,13 @@ YAML configuration:
                 wave_generator_rate_hz: 20000.0
                 max_acceleration_um_s2: 3000.0
                 min_speedup_time_s: 0.005
+                invert_axes: []           # e.g. ['x', 'y', 'z'] to mirror the movement
+
+invert_axes mirrors the listed axes within their travel range: a qudi position p
+corresponds to the controller position (min + max - p). All motion, position read-back and
+scan commands are converted at this module's interface, so scans run physically mirrored
+while pixels and positions stay consistent. Positions saved before changing this option
+(e.g. POIs) refer to the old, unmirrored coordinates.
 """
 
 import ctypes
@@ -693,14 +700,32 @@ class PIE727Scanner(PIE710ScannerInterface):
     _wave_generator_rate_hz = ConfigOption('wave_generator_rate_hz', default=20000.0)
     _max_acceleration_um_s2 = ConfigOption('max_acceleration_um_s2', default=3000.0)
     _min_speedup_time_s     = ConfigOption('min_speedup_time_s', default=0.005)
+    _invert_axes            = ConfigOption('invert_axes', default=[])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._ctrl: Optional[PIE727Controller] = None
-        # Internal target position cache -- always micrometers.
+        # Internal target position cache -- always micrometers, in qudi (i.e. possibly
+        # mirrored, see invert_axes) coordinates.
         self._target_pos: Dict[str, float] = {'x': 0.0, 'y': 0.0, 'z': 0.0}
         self._axis_of: Dict[str, str] = {}
         self._active_scan_axis: Optional[str] = None
+        self._inverted = frozenset()
+
+    def is_axis_inverted(self, axis: str) -> bool:
+        """True if `axis` is mirrored (invert_axes). Line scans along a mirrored axis still ramp
+        upward in controller coordinates, so their pixels arrive in reversed qudi order and
+        must be reversed by the caller (see PIE710CounterInterfuse)."""
+        return axis in self._inverted
+
+    def _mirror_um(self, axis: str, value_um: float) -> float:
+        """Converts a position of `axis` (um) between qudi and controller coordinates. Identity
+        unless the axis is listed in invert_axes; the mirroring is its own inverse, so it works
+        in both directions."""
+        if axis not in self._inverted:
+            return value_um
+        lo_um, hi_um = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
+        return lo_um + hi_um - value_um
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -716,6 +741,15 @@ class PIE727Scanner(PIE710ScannerInterface):
                     f"axis_ids config must have 3 entries (x,y,z); got {ids}")
             self._axis_of = {'x': ids[0], 'y': ids[1], 'z': ids[2]}
             self._ctrl._axes = ids
+
+            invert = [str(ax).lower() for ax in (self._invert_axes or [])]
+            unknown = sorted(set(invert) - {'x', 'y', 'z'})
+            if unknown:
+                raise PIE727Error(
+                    f"invert_axes may only contain 'x', 'y', 'z'; got {unknown}")
+            self._inverted = frozenset(invert)
+            if self._inverted:
+                self.log.info(f"Mirrored (inverted) axes: {sorted(self._inverted)}")
 
             idn = self._ctrl.get_identification()
             self.log.info(f"PI E-727 connected: {idn}")
@@ -738,7 +772,7 @@ class PIE727Scanner(PIE710ScannerInterface):
             self._z_range = [mn[2], mx[2]]
 
             pos = self._ctrl.get_position(ids)
-            self._target_pos = {'x': pos[0], 'y': pos[1], 'z': pos[2]}
+            self._target_pos = {ax: self._mirror_um(ax, p) for ax, p in zip('xyz', pos)}
             self.log.info(
                 f"Position  x={pos[0]:.3f}  y={pos[1]:.3f}  z={pos[2]:.3f} um"
             )
@@ -843,7 +877,7 @@ class PIE727Scanner(PIE710ScannerInterface):
 
         ids = [self._axis_of['x'], self._axis_of['y'], self._axis_of['z']]
         self._ctrl.move_absolute(
-            ids, [target_um['x'], target_um['y'], target_um['z']])
+            ids, [self._mirror_um(ax, target_um[ax]) for ax in ('x', 'y', 'z')])
         self._target_pos = target_um
         if blocking:
             self._ctrl.wait_for_motion(ids, timeout=60.0)
@@ -863,9 +897,7 @@ class PIE727Scanner(PIE710ScannerInterface):
         try:
             ids = [self._axis_of['x'], self._axis_of['y'], self._axis_of['z']]
             pos_um = self._ctrl.get_position(ids)
-            return {'x': pos_um[0] * _M_PER_UM,
-                    'y': pos_um[1] * _M_PER_UM,
-                    'z': pos_um[2] * _M_PER_UM}
+            return {ax: self._mirror_um(ax, p) * _M_PER_UM for ax, p in zip('xyz', pos_um)}
         except PIE727Error:
             return {ax: v * _M_PER_UM for ax, v in self._target_pos.items()}
 
@@ -874,7 +906,7 @@ class PIE727Scanner(PIE710ScannerInterface):
         try:
             ids = [self._axis_of['x'], self._axis_of['y'], self._axis_of['z']]
             pos_um = self._ctrl.get_position(ids)
-            self._target_pos = {'x': pos_um[0], 'y': pos_um[1], 'z': pos_um[2]}
+            self._target_pos = {ax: self._mirror_um(ax, p) for ax, p in zip('xyz', pos_um)}
         except PIE727Error as exc:
             self.log.warning(f"sync_position failed: {exc}")
 
@@ -919,7 +951,14 @@ class PIE727Scanner(PIE710ScannerInterface):
 
         axis = axes[0]
         axis_num = int(self._axis_of[axis])
-        pos_array_um = [p * _UM_PER_M for p in positions[0]]  # m -> um
+        # m -> um, qudi -> controller coordinates
+        pos_array_um = [self._mirror_um(axis, p * _UM_PER_M) for p in positions[0]]
+        if axis in self._inverted:
+            # Mirroring turns the line into a downward ramp, which scan_axis does not support
+            # (negative trigger step). Keep the controller ramp upward instead; the pixel
+            # order is then reversed relative to the qudi positions, which the interfuse
+            # corrects via is_axis_inverted().
+            pos_array_um = pos_array_um[::-1]
         disable_threshold = max(self._x_range[1], self._y_range[1], self._z_range[1]) + 1.0
 
         scan_kwargs = dict(
@@ -933,15 +972,16 @@ class PIE727Scanner(PIE710ScannerInterface):
         self._active_scan_axis = axis
 
         # Stage ends the scan at the far end of the ramp, not the start.
-        self._target_pos[axis] = pos_array_um[-1]
+        self._target_pos[axis] = self._mirror_um(axis, pos_array_um[-1])
 
         return duration_s
 
     def retrigger_line(self) -> float:
         duration_s = self._ctrl.retrigger_line()
         if self._active_scan_axis is not None:
-            positions_um = self._ctrl._last_scan_kwargs['positions']
-            self._target_pos[self._active_scan_axis] = positions_um[-1]
+            positions_um = self._ctrl._last_scan_kwargs['positions']  # controller coordinates
+            self._target_pos[self._active_scan_axis] = self._mirror_um(
+                self._active_scan_axis, positions_um[-1])
         return duration_s
 
     def wait_for_scan_complete(
