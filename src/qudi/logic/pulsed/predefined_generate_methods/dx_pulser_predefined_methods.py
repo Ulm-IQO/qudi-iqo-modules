@@ -983,7 +983,10 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         trigger -> [mw -> readout] per point, without rising/falling ramps, duty-cycle
         correction or repolarization.
 
-        @param list points: list of (PulseBlock, PulseBlockEnsemble) MW points in play order.
+        @param list points: MW points in play order. Each point is either one
+            (PulseBlock, PulseBlockEnsemble), or a list of (PulseBlock, PulseBlockEnsemble,
+            repetitions) sequence steps played in that order (e.g. a long wait built from a
+            short block looped via sequence repetitions).
         @param str duty_cycle_channel: channel measured/driven by the duty-cycle correction.
             Falls back to pulser_channel if empty.
 
@@ -1050,22 +1053,28 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             slot_points = set(range(len(points)))
         else:
             slot_points = {len(points) - 1}
-        plan = list()
+        def _steps(item):
+            # a point is either one (block, ensemble) or a list of (block, ensemble, repetitions)
+            if isinstance(item, list):
+                return item
+            return [(item[0], item[1], 0)]
+
+        plan = list()   # (block, ensemble, repetitions) steps, None = correction slot
         for ii, point in enumerate(points):
             if ii == 0:
-                plan.append(trigger)
+                plan.extend(_steps(trigger))
             elif falling is not None:
-                plan.append(falling)
-            plan.append(point)
+                plan.extend(_steps(falling))
+            plan.extend(_steps(point))
             if rising is not None:
-                plan.append(rising)
-            plan.append(readout)
+                plan.extend(_steps(rising))
+            plan.extend(_steps(readout))
             if ii in slot_points:
                 plan.append(None)
                 if repolarization is not None:
-                    plan.append(repolarization)
+                    plan.extend(_steps(repolarization))
 
-        block_plays = [(item[0], 1) for item in plan if item is not None]
+        block_plays = [(item[0], item[2] + 1) for item in plan if item is not None]
         correction_ensemble, reps_per_slot = self._prepare_distributed_duty_cycle_correction(
             block_plays, always_on_channel=always_on_channel, pulser_channel=correction_channel,
             duty_cycle=duty_cycle, name=name, preferred_on_base_length=self.wait_time,
@@ -1084,7 +1093,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 sequence[-1].repetitions = reps
             else:
                 sequence.append(item[1].name)
-                sequence[-1].repetitions = 0
+                sequence[-1].repetitions = item[2]
 
         # AWG step indices are 1-based: loop back onto the trigger block
         sequence[-1].go_to = 1
@@ -1287,6 +1296,151 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         pulsedodmr_sequence.measurement_information['counting_length'] = self.laser_length + self.laser_delay
 
         created_sequences.append(pulsedodmr_sequence)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_dx_t1_ao_trig(self, name='t1_ao_trig', tau_start=1.0e-6, tau_step=1.0e-6,
+                                num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
+                                duty_cycle_correction=True, duty_cycle=0.2, duty_cycle_channel='',
+                                distributed_correction=True, repolarize=True,
+                                rising_time=50e-6, falling_time=50e-6, alternating=False):
+        """
+        Sequence-mode T1 with linearly spaced tau, analogous to the basic generate_t1, with the
+        pulser/duty-cycle features of generate_dx_rabi_ao_trig (see there and
+        _build_dx_pulsed_sequence for the shared parameters and the sequence structure).
+
+        Per point the NV relaxes in the dark for tau with the pulser OFF (like the MW pulses of
+        the Rabi/pODMR methods). Note that the readout's wait_time and the rising/falling ramps
+        add a constant dark time to every point.
+
+        alternating : bool
+            If True, each normal point is followed by an alternating point with a pi-pulse
+            (self.rabi_period / 2 at self.microwave_frequency) right before the tau wait.
+
+        Long waits are built from a short idle block looped via sequence repetitions plus a
+        small per-point remainder block, so tau can reach milliseconds without exhausting the
+        AWG waveform memory. The controlled variable holds the actually played tau values
+        (rounded to the pulse generator granularity).
+        """
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+        return self._generate_dx_t1(
+            name, tau_array, always_on_channel, pulser_channel, duty_cycle_correction, duty_cycle,
+            duty_cycle_channel, distributed_correction, repolarize, rising_time, falling_time,
+            alternating)
+
+    def generate_dx_t1_exponential_ao_trig(self, name='t1_exp_ao_trig', tau_start=1.0e-6,
+                                            tau_end=1.0e-3, num_of_points=50,
+                                            always_on_channel='d_ch15', pulser_channel='d_ch3',
+                                            duty_cycle_correction=True, duty_cycle=0.2,
+                                            duty_cycle_channel='', distributed_correction=True,
+                                            repolarize=True, rising_time=50e-6, falling_time=50e-6,
+                                            alternating=False):
+        """
+        Sequence-mode T1 with exponentially (log) spaced tau from tau_start to tau_end,
+        analogous to the basic generate_t1_exponential. Otherwise identical to
+        generate_dx_t1_ao_trig (see there).
+        """
+        if tau_start == 0.0:
+            tau_array = np.insert(np.geomspace(1e-9, tau_end, num_of_points - 1), 0, 0.0)
+        else:
+            tau_array = np.geomspace(tau_start, tau_end, num_of_points)
+        return self._generate_dx_t1(
+            name, tau_array, always_on_channel, pulser_channel, duty_cycle_correction, duty_cycle,
+            duty_cycle_channel, distributed_correction, repolarize, rising_time, falling_time,
+            alternating)
+
+    def _generate_dx_t1(self, name, tau_array, always_on_channel, pulser_channel,
+                        duty_cycle_correction, duty_cycle, duty_cycle_channel,
+                        distributed_correction, repolarize, rising_time, falling_time,
+                        alternating):
+        """ Shared implementation of generate_dx_t1_ao_trig / generate_dx_t1_exponential_ao_trig. """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        sample_rate = self.pulse_generator_settings['sample_rate']
+        min_samples = int(self.pulse_generator_constraints.waveform_length.min)
+        step_samples = int(self.pulse_generator_constraints.waveform_length.step)
+
+        def _register(block_name, elements):
+            block = PulseBlock(name=block_name)
+            for element in elements:
+                block.append(element)
+            ensemble = self._register_block(block, False, always_on_channel, pulser_channel,
+                                            created_blocks, created_ensembles)
+            length_s = sum(elem.init_length_s for elem in block.element_list)
+            return block, ensemble, length_s
+
+        def _idle(length_s):
+            return self._get_pulser_off_idle_element(
+                length=length_s, increment=0, always_on_channel=always_on_channel)
+
+        # Shared base block of the long waits: ~1 us, a whole number of granularity steps (so it
+        # is not padded), lengthened if needed to stay below the AWG loop count limit.
+        base_samples = max(int(round(1e-6 * sample_rate)),
+                           int(np.ceil(max(tau_array) * sample_rate / self._MAX_SEQUENCE_LOOP_COUNT)))
+        base_samples = max(step_samples, int(np.ceil(base_samples / step_samples)) * step_samples)
+        base_samples = max(base_samples, int(np.ceil(min_samples / step_samples)) * step_samples)
+        base_block = base_ensemble = None
+
+        if alternating:
+            pi_elements = self._get_pulser_off_dx_mw_element_padded(
+                length=self.rabi_period / 2, increment=0, amp=self.microwave_amplitude, freq=None,
+                phase=0, always_on_channel=always_on_channel)
+            pi_length_s = sum(elem.init_length_s for elem in pi_elements)
+
+        def _wait_point(label, kk, tau, prefix_elements=(), prefix_length_s=0.0):
+            """ Steps playing prefix_elements followed by a tau wait. Returns (steps, tau played). """
+            nonlocal base_block, base_ensemble
+            tau_samples = int(round(tau * sample_rate))
+            # remainder block (prefix + rest of the wait) must reach the minimum waveform length
+            prefix_samples = int(round(prefix_length_s * sample_rate))
+            rest_needed = max(0, min_samples - prefix_samples)
+            n_base = max(0, (tau_samples - rest_needed) // base_samples)
+            rest_samples = tau_samples - n_base * base_samples   # >= rest_needed >= 0
+            elements = list(prefix_elements)
+            if rest_samples > 0:
+                elements.append(_idle(rest_samples / sample_rate))
+            if not elements:
+                elements.append(_idle(min_samples / sample_rate))
+            block, ensemble, _ = _register('{0}_{1}_{2:d}'.format(name, label, kk), elements)
+            played_s = (sum(elem.init_length_s for elem in block.element_list) - prefix_length_s
+                        + n_base * base_samples / sample_rate)
+            steps = [(block, ensemble, 0)]
+            if n_base > 0:
+                if base_block is None:
+                    base_block, base_ensemble, _ = _register(
+                        '{0}_wait_base'.format(name), [_idle(base_samples / sample_rate)])
+                steps.append((base_block, base_ensemble, n_base - 1))
+            return steps, played_s
+
+        points = list()
+        played_taus = list()
+        for kk, tau in enumerate(tau_array):
+            steps, played = _wait_point('wait', kk, tau)
+            points.append(steps)
+            played_taus.append(played)
+            if alternating:
+                steps, _ = _wait_point('alt_wait', kk, tau, prefix_elements=pi_elements,
+                                       prefix_length_s=pi_length_s)
+                points.append(steps)
+
+        t1_sequence = self._build_dx_pulsed_sequence(
+            name, points, always_on_channel=always_on_channel, pulser_channel=pulser_channel,
+            duty_cycle=duty_cycle, duty_cycle_channel=duty_cycle_channel,
+            rising_time=rising_time, falling_time=falling_time,
+            duty_cycle_correction=duty_cycle_correction,
+            distributed_correction=distributed_correction, repolarize=repolarize,
+            created_blocks=created_blocks, created_ensembles=created_ensembles)
+
+        t1_sequence.measurement_information['alternating'] = alternating
+        t1_sequence.measurement_information['laser_ignore_list'] = list()
+        t1_sequence.measurement_information['controlled_variable'] = np.array(played_taus)
+        t1_sequence.measurement_information['units'] = ('s', '')
+        t1_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        t1_sequence.measurement_information['number_of_lasers'] = len(points)
+        t1_sequence.measurement_information['counting_length'] = self.laser_length + self.laser_delay
+
+        created_sequences.append(t1_sequence)
         return created_blocks, created_ensembles, created_sequences
 
     def generate_dx_cw_odmr_ao_trig(self, name='cw_odmr_ao_trig', freq_start=3.4e9, freq_stop=3.6e9,
