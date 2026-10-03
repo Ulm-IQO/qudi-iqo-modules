@@ -448,7 +448,8 @@ def move_xy_only(drift_corrector, location_xy):
 # =============================================================================
 
 def run_field_mapping_experiment(locations, wire_settings, use_daq1, odmr_kwargs,
-                                 num_sweeps, drift_corrector, seq_name='cw_odmr_gradient_meas'):
+                                 num_sweeps, drift_corrector, seq_name='cw_odmr_gradient_meas',
+                                 thermal_stabilization_time=0.0):
     """
     Full field-mapping pipeline: for every (location, wire_setting) pair,
     set the wire currents, drift-correct (xy cross-correlation + z
@@ -482,6 +483,14 @@ def run_field_mapping_experiment(locations, wire_settings, use_daq1, odmr_kwargs
         Must already have set_reference() called (see tracking.py).
     seq_name : str
         Name to use for the generated sequence.
+    thermal_stabilization_time : float
+        Time (s) to wait AFTER changing the wire currents but BEFORE
+        starting the drift-correction scan for that (location,
+        wire_setting) pair. Useful if changing wire currents causes
+        transient (e.g. resistive) heating that induces a rapid initial
+        thermal drift, which would otherwise corrupt the drift-correction
+        cross-correlation/z-optimization if scanned immediately.
+        Defaults to 0 (no wait), matching prior behavior.
 
     Returns
     -------
@@ -517,6 +526,13 @@ def run_field_mapping_experiment(locations, wire_settings, use_daq1, odmr_kwargs
 
             # 1. Set wire currents
             set_wire_currents(currents, use_daq1=use_daq1)
+
+            # 1b. Optional wait for thermal stabilization before scanning,
+            # in case the wire current change induces a transient thermal
+            # drift that would otherwise corrupt the drift-correction step.
+            if thermal_stabilization_time > 0:
+                print(f'  Waiting {thermal_stabilization_time:.1f} s for thermal stabilization...')
+                time.sleep(thermal_stabilization_time)
 
             # 2. Drift correction: xy cross-correlation + z optimization AT reference_target
             _laser_on_for_scanning()

@@ -21,6 +21,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
+import copy
+import ftplib
 import os
 import time
 try:
@@ -67,6 +69,16 @@ class AWG7k(PulserInterface):
             # and sequences from AWG memory before uploading a new
             # waveform/sequence batch (once per upload batch, re-armed after
             # load_waveform()/load_sequence()).
+            delete_files_after_import: True  # delete each .wfm file from the
+            # AWG's FTP directory and the local tmp_work_dir once it has been
+            # imported into AWG memory (the files are no longer needed and
+            # otherwise accumulate by the GB).
+
+    Upload speed: the list of waveform names in AWG memory is cached
+    (queried in full only once, then kept up to date on every write/delete/
+    clear), as are the constraints; each .wfm file is sent in a single FTP
+    session. Call get_waveform_names(refresh=True) to force a full re-read,
+    e.g. after changing waveforms from the AWG front panel.
     """
 
     # config options
@@ -84,6 +96,7 @@ class AWG7k(PulserInterface):
     _trigger_slope = ConfigOption(name='trigger_slope', default='POS', missing='nothing')
     _trigger_impedance = ConfigOption(name='trigger_impedance', default='50OHM', missing='nothing')
     _clear_device_before_upload = ConfigOption(name='clear_device_before_upload', default=False, missing='nothing')
+    _delete_files_after_import = ConfigOption(name='delete_files_after_import', default=True, missing='nothing')
 
     # The AWG7000 series has no SCPI query to list or identify sequences
     # (unlike waveforms, which support WLIS:NAME?/WLIS:SIZE? -- a genuine
@@ -110,6 +123,9 @@ class AWG7k(PulserInterface):
         #self._loaded_sequences = []
         self._marker_byte_dict = {0: b'\x00', 1: b'\x01', 2: b'\x02', 3: b'\x03'}
         self._event_triggers = {'OFF': 'OFF', 'ON': 'ON'}
+        # Upload-speed caches (see class docstring). None = unknown -> query.
+        self._waveform_name_cache = None
+        self._constraints_cache = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module. """
@@ -141,6 +157,8 @@ class AWG7k(PulserInterface):
         ))
 
         self.write('MMEM:CDIR "{0}"'.format(os.path.join(self._ftp_dir, self.ftp_working_dir)))
+        self._waveform_name_cache = None
+        self._constraints_cache = None
         return
 
     def on_deactivate(self):
@@ -225,8 +243,18 @@ class AWG7k(PulserInterface):
         """
         Retrieve the hardware constrains from the Pulsing device.
 
+        Built once (it takes several instrument queries) and cached; the
+        cache is invalidated when the interleave state changes and on
+        (re)activation. A copy is returned, so callers may modify it.
+
         @return constraints object: object with pulser constraints as attributes.
         """
+        if self._constraints_cache is None:
+            self._constraints_cache = self._build_constraints()
+        return copy.deepcopy(self._constraints_cache)
+
+    def _build_constraints(self):
+        """Query the device and build its PulserConstraints (see get_constraints)."""
         constraints = PulserConstraints()
 
         if self.model == 'AWG7122C':
@@ -504,7 +532,8 @@ class AWG7k(PulserInterface):
                            'One or more channels to set are not active.')
             return self.get_loaded_assets()[0]
 
-        if not set(load_dict.values()).issubset(self.get_waveform_names()):
+        if not (set(load_dict.values()).issubset(self.get_waveform_names())
+                or set(load_dict.values()).issubset(self.get_waveform_names(refresh=True))):
             self.log.error('Unable to load waveforms into channels.\n'
                            'One or more waveforms to load are missing on device memory.')
             return self.get_loaded_assets()[0]
@@ -613,6 +642,8 @@ class AWG7k(PulserInterface):
         self.write('SEQUENCE:LENGTH 0')
         self._written_sequences = []
         self._loaded_sequences = []
+        # Predefined waveforms (if any) survive DEL ALL -> re-read on next use.
+        self._waveform_name_cache = None
         return 0
 
     def get_status(self):
@@ -1074,13 +1105,24 @@ class AWG7k(PulserInterface):
                 )
                 return -1, waveforms
 
-            # Timeout-bounded wait for the waveform to appear in workspace.
-            # Original had NO timeout here either.
+            # Confirm the waveform is in the workspace. Fast path: one
+            # WLIS:SIZE? query against the cached name list (the count must
+            # have grown by one, or stayed the same if this name was
+            # overwritten). Only if that does not match is the full list
+            # re-read (one query per stored waveform), with a timeout.
+            known = self.get_waveform_names()
+            expected_size = len(known) + (0 if wfm_name in known else 1)
+            appeared = False
+            try:
+                appeared = int(self.query('WLIS:SIZE?')) == expected_size
+            except Exception:
+                appeared = False
+            if appeared:
+                self._waveform_name_cache = natural_sort(set(known) | {wfm_name})
             appear_timeout = 15.0
             appear_elapsed = 0.0
-            appeared = False
-            while appear_elapsed < appear_timeout:
-                if wfm_name in self.get_waveform_names():
+            while not appeared and appear_elapsed < appear_timeout:
+                if wfm_name in self.get_waveform_names(refresh=True):
                     appeared = True
                     break
                 time.sleep(0.2)
@@ -1101,6 +1143,14 @@ class AWG7k(PulserInterface):
                 return -1, waveforms
 
             self.log.debug('Load WFM file into workspace: {0}'.format(time.time() - start))
+
+            # The imported file is no longer needed on either side.
+            if is_last_chunk and self._delete_files_after_import:
+                self._delete_file(wfm_name + '.wfm')
+                try:
+                    os.remove(os.path.join(self._tmp_work_dir, wfm_name + '.wfm'))
+                except OSError:
+                    pass
 
             waveforms.append(wfm_name)
         return total_number_of_samples, waveforms
@@ -1143,6 +1193,9 @@ class AWG7k(PulserInterface):
             return -1
 
         avail_waveforms = set(self.get_waveform_names())
+        needed = {w for waveform_tuple, _ in sequence_parameter_list for w in waveform_tuple}
+        if not avail_waveforms.issuperset(needed):  # cache stale? re-read once
+            avail_waveforms = set(self.get_waveform_names(refresh=True))
         for waveform_tuple, param_dict in sequence_parameter_list:
             if not avail_waveforms.issuperset(waveform_tuple):
                 self.log.error(
@@ -1317,16 +1370,23 @@ class AWG7k(PulserInterface):
         )
         return num_steps
 
-    def get_waveform_names(self):
+    def get_waveform_names(self, refresh=False):
         """ Retrieve the names of all uploaded waveforms on the device.
+
+        Reading the list takes one query per stored waveform, so it is done
+        once and cached; the cache is kept up to date by write_waveform(),
+        delete_waveform() and clear_all(). Pass refresh=True to re-read the
+        device (e.g. after changing waveforms from the front panel).
 
         @return list: List of all uploaded waveform name strings in the device workspace.
         """
-        wfm_list_len = int(self.query('WLIS:SIZE?'))
-        wfm_list = list()
-        for index in range(wfm_list_len):
-            wfm_list.append(self.query('WLIS:NAME? {0:d}'.format(index)))
-        return natural_sort(wfm_list)
+        if refresh or self._waveform_name_cache is None:
+            wfm_list_len = int(self.query('WLIS:SIZE?'))
+            wfm_list = list()
+            for index in range(wfm_list_len):
+                wfm_list.append(self.query('WLIS:NAME? {0:d}'.format(index)))
+            self._waveform_name_cache = natural_sort(wfm_list)
+        return list(self._waveform_name_cache)
 
     def get_sequence_names(self):
         """ Retrieve the names of all uploaded sequences on the device.
@@ -1351,6 +1411,9 @@ class AWG7k(PulserInterface):
             if waveform in avail_waveforms:
                 self.write('WLIS:WAV:DEL "{0}"'.format(waveform))
                 deleted_waveforms.append(waveform)
+        if deleted_waveforms:
+            self._waveform_name_cache = natural_sort(
+                set(avail_waveforms) - set(deleted_waveforms))
         return natural_sort(deleted_waveforms)
 
     def delete_sequence(self, sequence_name):
@@ -1387,6 +1450,7 @@ class AWG7k(PulserInterface):
             self.write('AWGC:INT:STAT {0:d}'.format(int(state)))
             # FIX (#2): bounded wait instead of unbounded loop
             self._wait_opc(timeout=10.0, context='set_interleave')
+            self._constraints_cache = None  # sample-rate / length limits depend on it
         return self.get_interleave()
 
     def write(self, command):
@@ -1426,6 +1490,8 @@ class AWG7k(PulserInterface):
         """
         self.write('*RST')
         self.write('*WAI')
+        self._waveform_name_cache = None
+        self._constraints_cache = None
         return 0
 
     def set_lowpass_filter(self, a_ch, cutoff_freq):
@@ -1475,17 +1541,28 @@ class AWG7k(PulserInterface):
                 return 1 if output_as_int else 'Software-Sequencer'
         return -1 if output_as_int else 'Request-Error'
 
+    def _ftp_try_delete(self, ftp, filename):
+        """Delete `filename` in an open FTP session if it exists. Deleting
+        directly (and ignoring "file not found") avoids listing the whole
+        directory first, which gets slower with every file stored."""
+        try:
+            ftp.delete(filename)
+        except ftplib.error_perm:
+            pass  # 550: no such file
+
     def _delete_file(self, filename):
-        """ Delete a file from FTP working directory. """
-        if filename in self._get_filenames_on_device():
+        """ Delete a file from FTP working directory (no-op if absent). """
+        try:
             with FTP(self._ip_address) as ftp:
                 ftp.login(user=self._username, passwd=self._password)
                 ftp.cwd(self.ftp_working_dir)
-                ftp.delete(filename)
+                self._ftp_try_delete(ftp, filename)
+        except ftplib.all_errors as exc:
+            self.log.warning('Could not delete "{0}" on the AWG via FTP: {1}'.format(filename, exc))
         return
 
     def _send_file(self, filename):
-        """ Upload a file to the AWG via FTP. """
+        """ Upload a file to the AWG via FTP (one session: delete old copy, store). """
         if not filename:
             self.log.error('No filename provided for file upload to awg!\nCommand will be ignored.')
             return -1
@@ -1496,11 +1573,10 @@ class AWG7k(PulserInterface):
                            ''.format(filename, self._tmp_work_dir))
             return -1
 
-        self._delete_file(filename)
-
         with FTP(self._ip_address) as ftp:
             ftp.login(user=self._username, passwd=self._password)
             ftp.cwd(self.ftp_working_dir)
+            self._ftp_try_delete(ftp, filename)
             with open(filepath, 'rb') as file:
                 ftp.storbinary('STOR ' + filename, file)
         return 0

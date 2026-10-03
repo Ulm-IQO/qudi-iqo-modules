@@ -2367,3 +2367,214 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     
             created_sequences.append(cw_odmr_sequence)
             return created_blocks, created_ensembles, created_sequences
+
+    def generate_bd_cw_odmr_compact(self, name='cw_odmr_compact', freq_start=2.8e9, freq_stop=3e9,
+                                    num_of_points=10, mw_amp=0.2, mw_length=10e-6,
+                                    chunk_length=0.0, test_time=1e-3, test_chunk_length=10e-6):
+        """
+        Memory-efficient CW ODMR sequence for the combined AWG + PulseBlaster
+        setup: same measurement as generate_bd_cw_odmr, but each frequency
+        point stores only ONE short microwave chunk (`chunk_length`) on the
+        AWG, which the sequence repeats to give `mw_length` of continuous
+        microwave + laser + gate. The gate delay / wait time and the final
+        `test` step are shared waveforms instead of being baked into every
+        point. AWG memory per point drops from (mw_length + delay +
+        wait_time) to chunk_length -- e.g. 252k -> 12k samples at 12 GS/s,
+        so ~1000+ points fit easily instead of ~257.
+
+        Phase continuity: a repeated chunk only joins seamlessly if it holds
+        a WHOLE number of sine periods. The chunk has n samples (a multiple
+        of the pulse generator's length granularity -- for the AWG +
+        PulseBlaster interfuse that is the PB's minimum instruction in AWG
+        samples, e.g. 180), and every frequency is snapped to the nearest
+        multiple of the grid sample_rate / n. The snapped frequencies are
+        what is stored as the measurement's x-axis.
+
+        chunk_length=0 (default) picks n automatically: the shortest chunk
+        whose grid divides the frequency step exactly, so the requested
+        frequencies are reproduced exactly (e.g. 1 MHz steps at 12 GS/s with
+        granularity 180 -> n = lcm(12000, 180) = 36000 samples = 3 us, grid
+        333 kHz). If that would not fit in waveform memory, the shortest
+        chunk with grid <= frequency step is used instead (points stay
+        distinct but are snapped by up to half a grid step; warned).
+
+        Per-point readout time = (number of chunk plays) x chunk duration,
+        i.e. mw_length rounded to a whole number of chunks.
+
+        Sequence: trigger | (chunk_k x plays, tail) for every k | test (looped)
+        -- 2 * num_of_points + 2 steps (AWG7k limit 8000 -> <= 3999 points).
+
+        Parameters
+        ----------
+        name : str
+        freq_start, freq_stop : float
+            Frequency range, Hz.
+        num_of_points : int
+        mw_amp : float
+            Microwave amplitude.
+        mw_length : float
+            Microwave/readout time per point, s (rounded to whole chunks).
+        chunk_length : float
+            Duration of the stored, repeated microwave chunk, s. 0 (default):
+            automatic, see above. If > 0, it is used as the MINIMUM chunk
+            length (rounded up to the exact-grid / granularity multiple as
+            above).
+        test_time : float
+            Duration of the final idle step, s (realized by looping a
+            `test_chunk_length` idle waveform).
+        test_chunk_length : float
+            Base length of the looped final idle waveform, s.
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        sample_rate = self.pulse_generator_settings['sample_rate']
+        constraints = self.pulse_generator_constraints
+        min_samples = int(constraints.waveform_length.min)
+        step_samples = int(constraints.waveform_length.step)
+        max_steps = int(constraints.sequence_steps.max)
+
+        if 2 * num_of_points + 2 > max_steps:
+            raise ValueError('generate_bd_cw_odmr_compact: {0} points need {1} sequence steps, '
+                             'more than the AWG maximum of {2}.'.format(
+                                 num_of_points, 2 * num_of_points + 2, max_steps))
+
+        # ── Chunk length (samples) ───────────────────────────────────────────
+        # Multiple of the length granularity, and if possible such that the
+        # frequency grid sample_rate / n divides the frequency step exactly.
+        base = step_samples
+        n_floor = int(np.ceil(min_samples / base)) * base
+        if chunk_length > 0:
+            n_floor = max(n_floor, int(np.ceil(chunk_length * sample_rate / base - 1e-9)) * base)
+        memory_budget = 0.9 * float(constraints.waveform_length.max)  # leave room for tail etc.
+        freq_step = (freq_stop - freq_start) / (num_of_points - 1) if num_of_points > 1 else None
+        n_chunk = None
+        if freq_step:
+            q = sample_rate / abs(freq_step)          # samples per period of the step frequency
+            if abs(q - round(q)) < 1e-6 * q:
+                n_exact = int(np.lcm(base, int(round(q))))
+                n_try = n_exact * int(np.ceil(n_floor / n_exact))
+                if n_try * num_of_points <= memory_budget:
+                    n_chunk = n_try
+            if n_chunk is None:
+                n_chunk = max(n_floor, int(np.ceil(q / base - 1e-9)) * base)
+                self.log.warning(
+                    'generate_bd_cw_odmr_compact: no chunk length that reproduces the {0:.4e} Hz '
+                    'frequency step exactly fits in memory; using {1} samples (grid {2:.4e} Hz), so '
+                    'frequencies are snapped by up to {3:.3e} Hz.'.format(
+                        freq_step, n_chunk, sample_rate / n_chunk, 0.5 * sample_rate / n_chunk))
+        else:
+            n_chunk = n_floor
+        if n_chunk * num_of_points > float(constraints.waveform_length.max):
+            raise ValueError(
+                'generate_bd_cw_odmr_compact: {0} points x {1} samples per chunk = {2:.3e} samples '
+                'exceeds the waveform memory ({3:.3e}). Use fewer points or a coarser frequency '
+                'step.'.format(num_of_points, n_chunk, num_of_points * n_chunk,
+                               float(constraints.waveform_length.max)))
+        chunk_s = n_chunk / sample_rate
+        grid = sample_rate / n_chunk
+
+        # ── Frequencies snapped to whole periods per chunk ───────────────────
+        requested = np.linspace(freq_start, freq_stop, num_of_points)
+        freq_array = np.round(requested / grid) * grid
+        if num_of_points > 1 and np.any(np.diff(freq_array) == 0):
+            self.log.warning(
+                'generate_bd_cw_odmr_compact: the frequency step ({0:.3e} Hz) is finer than '
+                'the {1:.3e} Hz grid of a {2:.3e} s chunk, so some points coincide. Use '
+                'chunk_length >= {3:.3e} s for distinct points.'.format(
+                    (freq_stop - freq_start) / (num_of_points - 1), grid, chunk_s,
+                    1.0 / abs((freq_stop - freq_start) / (num_of_points - 1))))
+
+        plays = max(1, int(round(mw_length / chunk_s)))
+        if plays > self._MAX_SEQUENCE_LOOP_COUNT:
+            raise ValueError('generate_bd_cw_odmr_compact: mw_length / chunk_length = {0} plays '
+                             'exceeds the AWG loop limit of {1}; increase chunk_length.'.format(
+                                 plays, self._MAX_SEQUENCE_LOOP_COUNT))
+        readout_s = plays * chunk_s
+        self.log.info(
+            'generate_bd_cw_odmr_compact: chunk {0} samples ({1:.3e} s), frequency grid '
+            '{2:.3e} Hz, {3} plays per point -> {4:.3e} s readout; AWG memory ~{5:.2e} '
+            'samples for the frequency chunks.'.format(
+                n_chunk, chunk_s, grid, plays, readout_s, n_chunk * num_of_points))
+
+        # ── 1. Trigger (sequence step 1, TWAIT=ON set by the interfuse) ──────
+        trigger_block = PulseBlock(name='{0}_trigger'.format(name))
+        trigger_block.append(self._get_sync_element())
+        self._pad_ensemble_to_granularity(trigger_block, on=False, always_on_channel=None,
+                                          pulser_channel=None)
+        created_blocks.append(trigger_block)
+        trigger_ensemble = PulseBlockEnsemble(name='{0}_trigger'.format(name), rotating_frame=False)
+        trigger_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(trigger_ensemble)
+
+        # ── 2. One short microwave+laser+gate chunk per frequency ───────────
+        chunk_ensembles = list()
+        for kk, freq in enumerate(freq_array):
+            chunk_block = PulseBlock(name='{0}_f{1}'.format(name, kk))
+            chunk_block.append(self._get_mw_laser_gate_element(
+                length=chunk_s, increment=0, amp=mw_amp, freq=freq, phase=0))
+            pad_s, _ = self._pad_ensemble_to_granularity(
+                chunk_block, on=False, always_on_channel=None, pulser_channel=None)
+            if pad_s > 0:
+                # Would break the laser/gate/phase continuity between plays.
+                raise RuntimeError('generate_bd_cw_odmr_compact: chunk of {0} samples needed '
+                                   'padding ({1:.3e} s); expected an exact length.'.format(
+                                       n_chunk, pad_s))
+            created_blocks.append(chunk_block)
+            chunk_ensemble = PulseBlockEnsemble(name=chunk_block.name, rotating_frame=False)
+            chunk_ensemble.append((chunk_block.name, 0))
+            created_ensembles.append(chunk_ensemble)
+            chunk_ensembles.append(chunk_ensemble)
+
+        # ── 3. Shared tail: gate delay + wait time (same for every point) ────
+        delay_element = self._get_delay_gate_element()
+        tail_block = PulseBlock(name='{0}_tail'.format(name))
+        tail_block.append(delay_element)
+        tail_block.append(self._get_idle_element(length=self.wait_time, increment=0))
+        self._pad_ensemble_to_granularity(tail_block, on=False, always_on_channel=None,
+                                          pulser_channel=None)
+        created_blocks.append(tail_block)
+        tail_ensemble = PulseBlockEnsemble(name=tail_block.name, rotating_frame=False)
+        tail_ensemble.append((tail_block.name, 0))
+        created_ensembles.append(tail_ensemble)
+
+        # ── 4. Final idle 'test' step, looped from a short idle waveform ─────
+        test_block = PulseBlock(name='{0}_test'.format(name))
+        test_block.append(self._get_idle_element(length=min(test_time, test_chunk_length),
+                                                  increment=0))
+        _, test_base_s = self._pad_ensemble_to_granularity(
+            test_block, on=False, always_on_channel=None, pulser_channel=None)
+        created_blocks.append(test_block)
+        test_ensemble = PulseBlockEnsemble(name=test_block.name, rotating_frame=False)
+        test_ensemble.append((test_block.name, 0))
+        created_ensembles.append(test_ensemble)
+        test_plays = min(max(1, int(np.ceil(test_time / test_base_s))),
+                         self._MAX_SEQUENCE_LOOP_COUNT)
+
+        # =========================================================================
+        # SEQUENCE CONSTRUCTION
+        # =========================================================================
+        sequence = PulseSequence(name=name, rotating_frame=False)
+        sequence.append(trigger_ensemble.name)
+        sequence[-1].repetitions = 0
+        for chunk_ensemble in chunk_ensembles:
+            sequence.append(chunk_ensemble.name)
+            sequence[-1].repetitions = plays - 1      # total plays = repetitions + 1
+            sequence.append(tail_ensemble.name)
+            sequence[-1].repetitions = 0
+        sequence.append(test_ensemble.name)
+        sequence[-1].repetitions = test_plays - 1
+        sequence[-1].go_to = 1                        # back to the trigger step
+        sequence.refresh_parameters()
+
+        sequence.measurement_information['alternating'] = False
+        sequence.measurement_information['laser_ignore_list'] = list()
+        sequence.measurement_information['controlled_variable'] = freq_array
+        sequence.measurement_information['units'] = ('Hz', '')
+        sequence.measurement_information['labels'] = ('Frequency', 'Signal')
+        sequence.measurement_information['number_of_lasers'] = len(freq_array)
+        sequence.measurement_information['counting_length'] = readout_s + delay_element.init_length_s
+
+        created_sequences.append(sequence)
+        return created_blocks, created_ensembles, created_sequences

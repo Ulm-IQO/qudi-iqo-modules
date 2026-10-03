@@ -27,6 +27,12 @@ Provides two independent pieces of functionality:
    single-cycle shifts, and supports a reference scan with a DIFFERENT
    (typically higher) resolution than the fast iterative tracking scans.
 
+3. ZTracker:
+   z-only re-optimization (full z window, Gaussian fit, laser switched on
+   via the PulseBlaster bypass) between successive measurements -- for
+   setups where only z drifts. Usable as the `before_each` hook of
+   coil_characterization's measurement functions.
+
 This file assumes the following qudi objects are available as GLOBAL
 variables in the calling namespace (as they would be if this file's
 contents were pasted directly into a Jupyter notebook connected to a
@@ -1026,3 +1032,305 @@ class DriftCorrector:
             scanning_probe_logic.log.info('Drift tracking stopped by user (KeyboardInterrupt).')
         finally:
             plt.close(fig)
+
+
+
+# =============================================================================
+# ZTracker: z-only re-optimization between measurements
+# =============================================================================
+
+class ZTracker:
+    """
+    Re-optimize only the z position (no xy scans) between successive
+    measurements, for setups where z is the only coordinate that drifts.
+
+    Each call (`tracker()`):
+      1. switches the PulseBlaster to a continuous laser-on pattern
+         (start_laser_tracking(measurement_action='stop'); the AWG is
+         untouched and any running pulsed measurement is stopped);
+      2. finds the best z over the full window `z_range` at the current
+         xy position, by `method`:
+           'gaussian'  -- ScanningOptimizeLogic's 1D Gaussian-fit
+                          optimizer (same routine as
+                          DriftCorrector._optimize_z()), which moves the
+                          scanner to the fitted peak;
+           'brightest' -- a plain 1D z scan; the signal is blended over
+                          `n_average` neighbouring points (so a single
+                          spurious point cannot win) and the scanner is
+                          moved to the brightest blended point. Always
+                          lands inside the window: if the true peak has
+                          drifted out of range, z simply sits at the
+                          brightest point still available (signal somewhat
+                          lower, measurement unaffected otherwise). The
+                          `n_average` points are blended by a moving
+                          median by default (`average`);
+      3. reloads the previously loaded pulsed asset
+         (stop_laser_tracking_and_resume(resume_mode='none')), leaving the
+         measurement stopped so the caller can start the next one.
+
+    Fail-safe: if the optimization fails (fit failure / optimum outside
+    `z_range` for 'gaussian'; unusable scan data for 'brightest'), z is
+    moved back to the last good position (the starting one on the first
+    call), a warning is logged, and the call returns normally -- a long
+    measurement series is not aborted by one bad cycle (set
+    `raise_on_failure=True` to raise instead). An optimum within
+    `edge_fraction` of either end of the window is noted (the true peak
+    may lie outside it; widen the window if the signal suffers).
+
+    Usable directly as the `before_each` hook of coil_characterization's
+    run_linearity_scans / measure_mixed_currents_odmr /
+    sweep_single_coil_odmr: the returned {'z': ..., 'counts': ...} is then
+    saved with every point (as 'tracking_z', 'tracking_counts'; counts =
+    averaged signal at the chosen z for 'brightest', NaN otherwise and on
+    calls skipped by every_n / min_interval).
+
+    The 'brightest' scan temporarily sets the z scan range / resolution /
+    frequency of scanning_probe_logic and disables saving to the scan
+    history; the previous values are restored afterwards.
+
+    Requires the injected globals scanning_probe_logic,
+    scanning_optimize_logic and pulsed_master_logic (see module
+    docstring).
+
+    Parameters
+    ----------
+    z_range : (float, float)
+        Allowed z window (scanner units, e.g. m), scanned in full each time.
+    z_axis : str, default 'z'
+    channel : str, default 'Sum'
+        Data channel to maximize.
+    z_resolution : int, default 100
+        Points in the z scan.
+    z_frequency : float, default 50.0
+        z scan frequency, Hz.
+    method : {'gaussian', 'brightest'}, default 'gaussian'
+    n_average : int, default 1
+        'brightest' only: number of neighbouring scan points blended
+        (centred window; at the edges only the points available).
+    average : {'median', 'mean'}, default 'median'
+        'brightest' only: how the n_average points are blended. The
+        median ignores a single spurious point entirely (n_average >= 3);
+        the mean only dilutes it (and less so near the window edges).
+    every_n : int, default 1
+        Optimize on every n-th call only (other calls return the last z).
+    min_interval : float, optional
+        Also skip calls less than this many seconds after the last
+        optimization.
+    laser_channel : str, optional
+        Passed to start_laser_tracking (default: from the pulsed logic's
+        generation parameters).
+    edge_fraction : float, default 0.05
+    raise_on_failure : bool, default False
+    verbose : bool, default True
+
+    Attributes
+    ----------
+    history : list of dict
+        One entry per optimization attempt: {'time', 'z_before', 'z',
+        'counts', 'success', 'message'}.
+    last_scan : dict or None
+        'brightest' only: {'z', 'counts', 'smoothed'} arrays of the most
+        recent z scan (see plot_last_scan()).
+    """
+
+    def __init__(self, z_range, z_axis='z', channel='Sum', z_resolution=100, z_frequency=50.0,
+                 method='gaussian', n_average=1, average='median', every_n=1, min_interval=None,
+                 laser_channel=None, edge_fraction=0.05, raise_on_failure=False, verbose=True):
+        lo, hi = sorted(float(v) for v in z_range)
+        if not hi > lo:
+            raise ValueError(f'z_range must have nonzero width, got {z_range}.')
+        if method not in ('gaussian', 'brightest'):
+            raise ValueError(f"method must be 'gaussian' or 'brightest', got {method!r}.")
+        self.z_range = (lo, hi)
+        self.z_axis = z_axis
+        self.channel = channel
+        self.method = method
+        self.n_average = max(1, int(n_average))
+        if average not in ('median', 'mean'):
+            raise ValueError(f"average must be 'median' or 'mean', got {average!r}.")
+        self.average = average
+        self.last_scan = None
+        self.every_n = max(1, int(every_n))
+        self.min_interval = min_interval
+        self.laser_channel = laser_channel
+        self.edge_fraction = edge_fraction
+        self.raise_on_failure = raise_on_failure
+        self.verbose = verbose
+        self.history = []
+        self._n_calls = 0
+        self._last_time = None
+        self._last_good_z = None
+
+        # Reuse DriftCorrector's tested z optimization (full-window Gaussian fit).
+        self._dc = DriftCorrector(z_axis=z_axis, channel=channel,
+                                  position_bounds={z_axis: self.z_range})
+        self._dc.z_resolution = int(z_resolution)
+        self._dc.z_frequency = float(z_frequency)
+
+    def _current_z(self):
+        return DriftCorrector._to_float(scanning_probe_logic.scanner_target[self.z_axis])
+
+    def _move_z(self, z):
+        target = {ax: DriftCorrector._to_float(v)
+                  for ax, v in dict(scanning_probe_logic.scanner_target).items()}
+        target[self.z_axis] = float(z)
+        scanning_probe_logic.set_target_position(target, move_blocking=True)
+
+    def _brightest_z(self):
+        """1D z scan over the window; move to the brightest point of the
+        n_average-point moving average. Returns (z, averaged counts)."""
+        spl = scanning_probe_logic
+        z_ax = self.z_axis
+        lo, hi = self.z_range
+        prev_range = spl.scan_ranges.get(z_ax)
+        prev_res = spl.scan_resolution.get(z_ax)
+        prev_freq = spl.scan_frequency.get(z_ax)
+        prev_hist = spl.save_to_history
+        try:
+            spl.save_to_history = False
+            spl.set_scan_range(z_ax, (lo, hi))
+            spl.set_scan_resolution(z_ax, int(self._dc.z_resolution))
+            spl.set_scan_frequency(z_ax, float(self._dc.z_frequency))
+            data = self._dc._run_scan_and_wait((z_ax,))
+            counts = DriftCorrector._to_plain_array(data.data[self.channel]).ravel()
+            scan_lo, scan_hi = (DriftCorrector._to_float(v) for v in data.settings.range[0])
+        finally:
+            if prev_range is not None:
+                spl.set_scan_range(z_ax, tuple(prev_range))
+            if prev_res is not None:
+                spl.set_scan_resolution(z_ax, prev_res)
+            if prev_freq is not None:
+                spl.set_scan_frequency(z_ax, prev_freq)
+            spl.save_to_history = prev_hist
+
+        z = np.linspace(scan_lo, scan_hi, counts.size)
+        if not np.any(np.isfinite(counts)):
+            raise RuntimeError('z scan returned no valid data')
+        # Centred moving median (default) or mean over n_average points; the
+        # median ignores isolated spurious points, including at the edges.
+        half = self.n_average // 2
+        reduce = np.nanmedian if self.average == 'median' else np.nanmean
+        smoothed = np.array([reduce(counts[max(0, k - half):k + half + 1])
+                             if np.any(np.isfinite(counts[max(0, k - half):k + half + 1]))
+                             else np.nan for k in range(counts.size)])
+        i = int(np.nanargmax(smoothed))
+        self.last_scan = {'z': z, 'counts': counts, 'smoothed': smoothed}
+        z_best = float(np.clip(z[i], lo, hi))
+        self._move_z(z_best)
+        return z_best, float(smoothed[i])
+
+    def optimize(self):
+        """Run one z optimization now (regardless of every_n/min_interval).
+        Returns the z position afterwards."""
+        lo, hi = self.z_range
+        z_before = self._current_z()
+        if self._last_good_z is None:
+            self._last_good_z = float(np.clip(z_before, lo, hi))
+        record = {'time': time.time(), 'z_before': z_before, 'counts': float('nan')}
+
+        start_laser_tracking(laser_channel=self.laser_channel, measurement_action='stop')
+        try:
+            try:
+                if self.method == 'brightest':
+                    z_new, record['counts'] = self._brightest_z()
+                else:
+                    z_new = self._dc._optimize_z()
+                    if not lo <= z_new <= hi:
+                        raise RuntimeError(f'optimum z = {z_new:.6g} outside the window '
+                                           f'[{lo:.6g}, {hi:.6g}]')
+            except Exception as exc:
+                self._move_z(self._last_good_z)
+                record.update(z=self._last_good_z, success=False, message=str(exc))
+                self.history.append(record)
+                msg = (f'z optimization failed ({exc}); z restored to the last good '
+                       f'position {self._last_good_z:.6g}.')
+                scanning_probe_logic.log.warning(msg)
+                if self.verbose:
+                    print(f'  ZTracker: {msg}')
+                if self.raise_on_failure:
+                    raise
+                return self._last_good_z
+        finally:
+            stop_laser_tracking_and_resume(resume_mode='none')
+
+        width = hi - lo
+        near_edge = min(z_new - lo, hi - z_new) < self.edge_fraction * width
+        if not near_edge:
+            message = ''
+        elif self.method == 'brightest':
+            # Expected when the true peak drifts out of range -- just a note.
+            message = 'brightest point at the edge of the z window (true peak likely outside)'
+        else:
+            message = 'optimum near the edge of the z window -- consider widening it'
+            scanning_probe_logic.log.warning(f'ZTracker: {message} (z = {z_new:.6g}).')
+        self._last_good_z = z_new
+        record.update(z=z_new, success=True, message=message)
+        self.history.append(record)
+        if self.verbose:
+            counts = (f', signal {record["counts"]:.4g}' if np.isfinite(record['counts'])
+                      else '')
+            print(f'  ZTracker: z {z_before:.6g} -> {z_new:.6g}{counts}'
+                  + (f'  ({message})' if message else ''))
+        return z_new
+
+    def __call__(self):
+        """Hook entry point: optimize if due (every_n / min_interval), and
+        return {'z': current z, 'counts': signal at it (NaN if not
+        measured this call)} for saving with the measurement."""
+        self._n_calls += 1
+        now = time.time()
+        due = (self._n_calls - 1) % self.every_n == 0
+        if self.min_interval is not None and self._last_time is not None:
+            due = due and (now - self._last_time) >= self.min_interval
+        if due:
+            self._last_time = now
+            z = self.optimize()
+            counts = self.history[-1]['counts'] if self.history[-1]['success'] else float('nan')
+        else:
+            z, counts = self._current_z(), float('nan')
+        return {'z': z, 'counts': counts}
+
+    def plot_last_scan(self, ax=None):
+        """'brightest' mode: plot the most recent z scan (raw and averaged)
+        and the chosen z."""
+        if self.last_scan is None:
+            print('No z scan recorded yet (method="brightest" only).')
+            return None
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(7, 3.5))
+        else:
+            fig = ax.figure
+        s = self.last_scan
+        ax.plot(s['z'], s['counts'], '.', color='0.6', label='scan')
+        ax.plot(s['z'], s['smoothed'], '-', label=f'{self.n_average}-point {self.average}')
+        ax.axvline(self._last_good_z, color='r', ls='--', label='chosen z')
+        ax.set_xlabel(self.z_axis)
+        ax.set_ylabel(self.channel)
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig, ax
+
+    def plot_history(self, ax=None):
+        """Plot optimized z vs elapsed time (failed attempts in red)."""
+        if not self.history:
+            print('No z optimizations recorded yet.')
+            return None
+        t0 = self.history[0]['time']
+        t = np.array([(h['time'] - t0) / 60.0 for h in self.history])
+        z = np.array([h['z'] for h in self.history])
+        ok = np.array([h['success'] for h in self.history])
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(7, 3.5))
+        else:
+            fig = ax.figure
+        ax.plot(t, z, '-', color='0.6')
+        ax.plot(t[ok], z[ok], 'o', label='optimized')
+        if np.any(~ok):
+            ax.plot(t[~ok], z[~ok], 'x', color='r', label='failed (restored)')
+        for edge in self.z_range:
+            ax.axhline(edge, color='k', ls=':', lw=0.8)
+        ax.set_xlabel('Elapsed time (min)')
+        ax.set_ylabel(f'{self.z_axis}')
+        ax.legend(fontsize=8)
+        fig.tight_layout()
+        return fig, ax
