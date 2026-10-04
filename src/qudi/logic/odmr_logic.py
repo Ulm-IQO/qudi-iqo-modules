@@ -36,6 +36,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import TextDataStorage
 from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface
 from qudi.interface.microwave_interface import MicrowaveInterface
+from qudi.logic.measurement_saver_logic import MeasurementSaverLogic
 from qudi.util.enums import SamplingOutputMode
 
 
@@ -57,6 +58,8 @@ class OdmrLogic(LogicBase):
     # declare connectors
     _microwave = Connector(name='microwave', interface=MicrowaveInterface)
     _data_scanner = Connector(name='data_scanner', interface=FiniteSamplingInputInterface)
+    _measurement_saver_logic = Connector(name='measurement_saver_logic', interface=MeasurementSaverLogic)
+
 
     # declare config options
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
@@ -751,50 +754,48 @@ class OdmrLogic(LogicBase):
     def save_odmr_data(self, tag=None):
         """ Saves the current ODMR data to a file."""
         with self._threadlock:
-            # Create and configure storage helper instance
-            timestamp = datetime.datetime.now()
+            saver = self._measurement_saver_logic()
             metadata = self._get_metadata()
-            tag = tag + '_' if tag else ''
+            with saver.save_session(root_dir=self.module_default_data_dir,
+                                column_formats='.15e') as s:
 
-            # Save raw data in a separate file per data channel
-            data_storage = TextDataStorage(root_dir=self.module_default_data_dir,
-                                           column_formats='.15e')
-            for channel, range_data in self._raw_data.items():
-                metadata['Channel Name'] = channel
-                column_headers = self._get_raw_column_headers(channel)
-                nametag = f'{tag}ODMR_{channel}_raw'
-                data = self._join_channel_raw_data(channel)
+                # Save raw data in a separate file per data channel
+                for channel, range_data in self._raw_data.items():
+                    metadata['Channel Name'] = channel
+                    column_headers = self._get_raw_column_headers(channel)
+                    nametag = saver.join_nametag(tag, 'ODMR', channel, 'raw')      
 
-                # Save raw data for channel
-                file_path, _, _ = data_storage.save_data(data,
-                                                         metadata=metadata,
-                                                         nametag=nametag,
-                                                         timestamp=timestamp,
-                                                         column_headers=column_headers,
-                                                         column_dtypes=float)
+                    data = self._join_channel_raw_data(channel)
 
-                # Save plot images if required. This takes by far the most time to complete.
-                if self._save_thumbnails:
-                    fig_path_stump = file_path.rsplit('_raw.', 1)[0] + '_range'
-                    for range_index, _ in enumerate(range_data):
-                        fig = self._draw_figure(channel, range_index)
-                        fig_path = f'{fig_path_stump}{range_index:d}'
-                        data_storage.save_thumbnail(fig, file_path=fig_path)
+                    # Save raw data for channel
+                    file_path, _, _ = s.save_data(data,
+                                                            metadata=metadata,
+                                                            nametag=nametag,
+                                                            column_headers=column_headers,
+                                                            column_dtypes=float)
 
-            # Save signal data in a single file for all data channels
-            del metadata['Channel Name']
-            metadata['Averaged Scans (#)'] = self._scans_to_average
-            column_headers = self._get_signal_column_headers()
-            nametag = f'{tag}ODMR_signal'
-            data = self._join_signal_data()
+                    # Save plot images if required. This takes by far the most time to complete.
+                    if self._save_thumbnails:
+                        fig_path_stump = file_path.rsplit('_raw.', 1)[0] + '_range'
+                        for range_index, _ in enumerate(range_data):
+                            fig = self._draw_figure(channel, range_index)
+                            fig_path = f'{fig_path_stump}{range_index:d}'
+                            s.save_thumbnail(fig, file_path=fig_path)
 
-            # Save signal data
-            data_storage.save_data(data,
-                                   metadata=metadata,
-                                   nametag=nametag,
-                                   timestamp=timestamp,
-                                   column_headers=column_headers,
-                                   column_dtypes=[float] * len(column_headers))
+                # Save signal data in a single file for all data channels
+                del metadata['Channel Name']
+                metadata['Averaged Scans (#)'] = self._scans_to_average
+                column_headers = self._get_signal_column_headers()
+                nametag = saver.join_nametag(tag, 'ODMR', 'signal')    
+
+                data = self._join_signal_data()
+
+                # Save signal data
+                s.save_data(data,
+                                    metadata=metadata,
+                                    nametag=nametag,
+                                    column_headers=column_headers,
+                                    column_dtypes=[float] * len(column_headers))
 
     def _draw_figure(self, channel, range_index):
         """ Draw the summary figure to save with the data.
