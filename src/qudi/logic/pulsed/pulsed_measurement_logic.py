@@ -39,6 +39,8 @@ from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
 from qudi.logic.pulsed.pulse_alt_plot import AltPlotAnalyzer
+from qudi.logic.measurement_saver_logic import MeasurementSaverLogic
+
 
 from qudi.interface.pulser_interface import PulserInterface
 from qudi.interface.fast_counter_interface import FastCounterInterface
@@ -77,6 +79,8 @@ class PulsedMeasurementLogic(LogicBase):
     _fastcounter = Connector(name='fastcounter', interface=FastCounterInterface)
     _pulsegenerator = Connector(name='pulsegenerator', interface=PulserInterface)
     _microwave = Connector(name='microwave', interface=MicrowaveInterface, optional=True)
+    _measurement_saver_logic = Connector(name='measurement_saver_logic', interface=MeasurementSaverLogic)
+
 
     # Config options
     # Optional additional paths to import from
@@ -1468,6 +1472,8 @@ class PulsedMeasurementLogic(LogicBase):
         @param bool save_figure: select whether a thumbnail plot should be saved
         @param str notes: optional, string that is included in the metadata "as-is" without a field
         """
+        saver = self._measurement_saver_logic()
+
         # Use default data storage type if none has been given explicitly
         if storage_cls is None:
             storage_cls = self._default_data_storage_cls
@@ -1484,75 +1490,79 @@ class PulsedMeasurementLogic(LogicBase):
         if save_figure is None:
             save_figure = self._save_thumbnails
 
-        # Create common timestamp for all files to save
-        timestamp = datetime.datetime.now()
+
 
         # get and initialize data storage object. Daily sub-directory behaviour is already
         # included in self.module_default_data_dir.
         data_storage = storage_cls(root_dir=data_dir)
+        with saver.save_session(root_dir=data_dir) as s:
 
-        ###############
-        # Save raw data
-        ###############
-        # Use either a name tag or a fixed file name
-        save_filename, nametag = self._get_patched_filename_nametag(file_name,
-                                                                    tag,
-                                                                    '_raw_timetrace')
-        # Save data to file
-        data_storage.save_data(
-            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
-            metadata=self._get_raw_metadata(),
-            nametag=nametag,
-            filename=save_filename,
-            timestamp=timestamp,
-            notes=notes,
-            column_headers='Signal (counts)'
-        )
-
-        ###########################
-        # Save extracted laser data
-        ###########################
-        if save_laser_pulses:
-            save_filename, nametag = self._get_patched_filename_nametag(file_name,
-                                                                        tag,
-                                                                        '_laser_pulses')
-            data_storage.save_data(self.laser_data,
-                                   metadata=self._get_laser_metadata(),
-                                   nametag=nametag,
-                                   filename=save_filename,
-                                   timestamp=timestamp,
-                                   notes=notes,
-                                   column_headers='Signal (counts)')
-
-        ############################
-        # Save evaluated signal data
-        ############################
-        if save_pulsed_measurement:
-            save_filename, nametag = self._get_patched_filename_nametag(file_name,
-                                                                        tag,
-                                                                        '_pulsed_measurement')
-
-            # Format data to save
-            if with_error:
-                data = np.vstack((self.signal_data, self.measurement_error[1:])).transpose()
+            ###############
+            # Save raw data
+            ###############
+            # Use either a name tag or a fixed file name
+            
+            if file_name:
+                filename, nametag = saver.patch_filename(file_name, 'raw_timetrace'), None
             else:
-                data = self.signal_data.transpose()
+                filename, nametag = None, saver.join_nametag(tag, 'raw_timetrace')
 
-            save_path, _, _ = data_storage.save_data(
-                data,
-                metadata=self._get_signal_metadata(),
+            # Save data to file
+            data_storage.save_data(
+                self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
+                metadata=self._get_raw_metadata(),
                 nametag=nametag,
-                filename=save_filename,
-                timestamp=timestamp,
+                filename=filename,
                 notes=notes,
-                column_headers=self._get_signal_column_headers(with_error)
+                column_headers='Signal (counts)'
             )
 
-            # save thumbnail figure if required
-            if save_figure:
-                fig = self._plot_pulsed_thumbnail(with_error=with_error)
-                fig_path = save_path.rsplit('.', 1)[0]
-                data_storage.save_thumbnail(fig, file_path=fig_path)
+            ###########################
+            # Save extracted laser data
+            ###########################
+            if save_laser_pulses:
+                if file_name:
+                    filename, nametag = saver.patch_filename(file_name, 'laser_pulses'), None
+                else:
+                    filename, nametag = None, saver.join_nametag(tag, 'laser_pulses')
+                
+                data_storage.save_data(self.laser_data,
+                                    metadata=self._get_laser_metadata(),
+                                    nametag=nametag,
+                                    filename=filename,
+                                    notes=notes,
+                                    column_headers='Signal (counts)')
+
+            ############################
+            # Save evaluated signal data
+            ############################
+            if save_pulsed_measurement:
+  
+                if file_name:
+                    filename, nametag = saver.patch_filename(file_name, 'pulsed_measurement'), None
+                else:
+                    filename, nametag = None, saver.join_nametag(tag, 'pulsed_measurement')  
+
+                # Format data to save
+                if with_error:
+                    data = np.vstack((self.signal_data, self.measurement_error[1:])).transpose()
+                else:
+                    data = self.signal_data.transpose()
+
+                save_path, _, _ = data_storage.save_data(
+                    data,
+                    metadata=self._get_signal_metadata(),
+                    nametag=nametag,
+                    filename=filename,
+                    notes=notes,
+                    column_headers=self._get_signal_column_headers(with_error)
+                )
+
+                # save thumbnail figure if required
+                if save_figure:
+                    fig = self._plot_pulsed_thumbnail(with_error=with_error)
+                    fig_path = save_path.rsplit('.', 1)[0]
+                    data_storage.save_thumbnail(fig, file_path=fig_path)
 
     def _plot_pulsed_thumbnail(self, with_error=False):
 
