@@ -42,7 +42,7 @@ General Pulse Creation Procedure:
 """
 
 
-class BasicPredefinedGenerator(PredefinedGeneratorBase):
+class DXPredefinedGenerator(PredefinedGeneratorBase):
     """
     A collection of basic pulse sequences.
     """
