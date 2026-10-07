@@ -2374,6 +2374,11 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
             trig_chunks: List[np.ndarray] = []
             total_edges = 0
             poll_deadline = time.monotonic() + max(0.0, self._pt_read_poll_timeout_s)
+            # The stage can lag the wave generator, so the last edges may arrive only just
+            # before this read. Keep recording for 2 more pixel times once all expected edges
+            # are there, so late edges and expected boundary times lie inside the trace.
+            tail_s = 2.0 * t_pixel
+            complete_at = None
 
             while True:
                 n_ci   = ci_task.in_stream.avail_samp_per_chan
@@ -2395,9 +2400,13 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
                     trig_chunks.append(trig_chunk)
                     total_edges = int(trig_chunk[-1]) if len(trig_chunk) else total_edges
 
-                if total_edges >= expected:
+                now = time.monotonic()
+                if total_edges >= expected and complete_at is None:
+                    complete_at = now
+                if complete_at is not None and now >= complete_at + tail_s:
                     break
-                if time.monotonic() > poll_deadline:
+                if now > poll_deadline and (complete_at is None
+                                            or now > poll_deadline + tail_s):
                     break
                 time.sleep(0.01)
 
@@ -2439,62 +2448,108 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         step_samples = t_pixel * fs
         tol_samples  = self._pt_match_tolerance_frac * step_samples
 
-        # Sequential matching: each expected position anchored to the
-        # PREVIOUS real match, not a fixed grid from edge 0 (see module
-        # docstring, "EXPECTATION-BASED EDGE MATCHING").
-        matched_indices = np.empty(expected, dtype=np.int64)
-        matched_indices[0] = all_edges[0]
-        search_from = 1
+        # Boundaries without a real edge within tolerance (e.g. the last trigger arriving only
+        # while the stage brakes) may be replaced by their expected time: the APD count is
+        # sampled continuously, so the count at that time is still known.
+        max_missing = 2
 
-        for k in range(1, expected):
-            if search_from >= len(all_edges):
-                raise RuntimeError(
-                    f'NIXSeriesCounter.read_position_trigger(): ran out of '
-                    f'real trigger edges while matching pixel boundary '
-                    f'{k}/{expected - 1} -- found {len(all_edges)} real '
-                    f'edges total, expected {expected}. Consider '
-                    f'counter_trigger_mode="point_by_point" for finer '
-                    f'steps. Raw traces: _pt_last_ci_raw / _pt_last_trig_raw.'
-                )
+        def _match_from(anchor):
+            """ Sequential matching (see module docstring, "EXPECTATION-BASED EDGE MATCHING"):
+            boundary 0 is all_edges[anchor], each further boundary is the real edge nearest to
+            the PREVIOUS match + one pixel time, or that expected time if there is no real edge
+            within tolerance (at most max_missing times). Returns (matched indices, list of
+            filled-in boundaries, None) or (None, None, (failed boundary, expected index)). """
+            matched = np.empty(expected, dtype=np.int64)
+            matched[0] = all_edges[anchor]
+            search_from = anchor + 1
+            filled = list()
+            for k in range(1, expected):
+                target = matched[k - 1] + step_samples
+                sub = all_edges[search_from:]
+                best_local = None
+                if len(sub):
+                    pos = np.searchsorted(sub, target)
+                    candidates = [i for i in (pos, pos - 1) if 0 <= i < len(sub)]
+                    best_local = min(candidates, key=lambda i: abs(sub[i] - target))
+                    if abs(sub[best_local] - target) > tol_samples:
+                        best_local = None
+                if best_local is None and k == expected - 1 and len(sub):
+                    # Last boundary: the PI fires on the stage's real position, which at the end
+                    # of the ramp can lag/lead the timing grid by more than the tolerance. Any
+                    # real edge after the previous boundary marks the true end of the line;
+                    # take the one closest to the expected time.
+                    pos = np.searchsorted(sub, target)
+                    candidates = [i for i in (pos, pos - 1) if 0 <= i < len(sub)]
+                    best_local = min(candidates, key=lambda i: abs(sub[i] - target))
+                if best_local is None:
+                    if len(filled) >= max_missing or int(round(target)) >= len(trig_raw):
+                        return None, None, (k, target)
+                    matched[k] = int(round(target))
+                    filled.append(k)
+                    search_from += int(np.searchsorted(sub, matched[k], side='right'))
+                    continue
+                matched[k] = sub[best_local]
+                # Any unselected edges before this one are discarded as spurious.
+                search_from = search_from + best_local + 1
+            return matched, filled, None
 
-            target = matched_indices[k - 1] + step_samples
-            sub = all_edges[search_from:]
-            pos = np.searchsorted(sub, target)
+        # The line does not necessarily start at the very first real edge: spurious edges can
+        # arrive before it (e.g. while the stage returns to the line start). Try the real edges
+        # in order as boundary 0 and use the first one from which the pixel boundaries are found
+        # at pixel spacing (complete matches preferred) -- spurious bursts are much denser than
+        # one edge per t_pixel and do not form such a sequence.
+        best = None   # (number of filled-in boundaries, anchor, matched, filled)
+        first_failure = None
+        for anchor in range(max(1, len(all_edges) - expected + 1 + max_missing)):
+            if anchor >= len(all_edges):
+                break
+            matched, filled, failure = _match_from(anchor)
+            if matched is None:
+                if first_failure is None:
+                    first_failure = failure
+                continue
+            if best is None or len(filled) < best[0]:
+                best = (len(filled), anchor, matched, filled)
+            if not filled:
+                break
 
-            candidates = []
-            if pos < len(sub):
-                candidates.append(pos)
-            if pos > 0:
-                candidates.append(pos - 1)
+        if best is None:
+            k, target = first_failure
+            spacing = np.round(np.diff(all_edges) / step_samples, 2)
+            self.log.warning(
+                f'read_position_trigger: edge spacing in units of t_pixel '
+                f'({t_pixel * 1e3:.3f} ms), {len(all_edges)} real edges: {spacing.tolist()}')
+            raise RuntimeError(
+                f'NIXSeriesCounter.read_position_trigger(): no real '
+                f'trigger edge found within tolerance '
+                f'({tol_samples:.1f} samples = '
+                f'{tol_samples / fs * 1e3:.3f} ms) of expected pixel '
+                f'boundary {k}/{expected - 1}, measured from the '
+                f'PREVIOUS real match (expected sample index '
+                f'{target:.1f}), for any choice of the line start among the '
+                f'{len(all_edges)} real edges found (expected {expected}), even allowing '
+                f'{max_missing} missing edges. Consider '
+                f'counter_trigger_mode="point_by_point" for finer '
+                f'steps. Raw traces: _pt_last_ci_raw / _pt_last_trig_raw.'
+            )
 
-            best_local = min(candidates, key=lambda i: abs(sub[i] - target))
-            diff = abs(sub[best_local] - target)
+        _, anchor, matched_indices, filled = best
+        if filled:
+            self.log.warning(
+                f'read_position_trigger: no trigger edge within tolerance for pixel '
+                f'boundar{"y" if len(filled) == 1 else "ies"} {filled} of {expected - 1} -- '
+                f'used the expected time (previous boundary + t_pixel) instead.')
 
-            if diff > tol_samples:
-                raise RuntimeError(
-                    f'NIXSeriesCounter.read_position_trigger(): no real '
-                    f'trigger edge found within tolerance '
-                    f'({tol_samples:.1f} samples = '
-                    f'{tol_samples / fs * 1e3:.3f} ms) of expected pixel '
-                    f'boundary {k}/{expected - 1}, measured from the '
-                    f'PREVIOUS real match (expected sample index '
-                    f'{target:.1f}). Found {len(all_edges)} real edges '
-                    f'total, expected {expected}. Consider '
-                    f'counter_trigger_mode="point_by_point" for finer '
-                    f'steps. Raw traces: _pt_last_ci_raw / _pt_last_trig_raw.'
-                )
-
-            matched_indices[k] = sub[best_local]
-            # Any unselected edges before this one are discarded as spurious.
-            search_from = search_from + best_local + 1
-
-        n_discarded = len(all_edges) - expected
-        if n_discarded > 0:
-            self.log.debug(
-                f'read_position_trigger: matched {expected} real edges '
-                f'to expected pixel boundaries, discarded {n_discarded} '
-                f'extra real edge(s) as spurious (sequential nearest-'
-                f'match selection).'
+        n_before = anchor
+        n_after  = int(np.count_nonzero(all_edges > matched_indices[-1]))
+        n_inside = len(all_edges) - (expected - len(filled)) - n_before - n_after
+        pixel_time_s = float(np.mean(np.diff(matched_indices))) / fs
+        if n_before or n_inside or n_after:
+            self.log.info(
+                f'read_position_trigger: {len(all_edges)} real edges for {expected} '
+                f'pixel boundaries -- ignored {n_before} before the line, {n_inside} '
+                f'within it and {n_after} after it. Measured pixel time '
+                f'{pixel_time_s * 1e3:.3f} ms (nominal {t_pixel * 1e3:.3f} ms).'
             )
 
         counts_at_edges  = ci_raw[matched_indices]

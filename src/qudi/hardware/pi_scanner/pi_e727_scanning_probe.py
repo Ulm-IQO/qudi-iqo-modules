@@ -830,6 +830,7 @@ class PIE727Scanner(PIE710ScannerInterface):
     def get_scan_safe_range(
         self, axis: str,
         t_pixel: Optional[float] = None, n_points: Optional[int] = None,
+        span: Optional[float] = None,
     ) -> List[float]:
         """Sub-range of this axis' real travel that stays within travel
         limits after automatic padding, for a scan with this specific
@@ -844,6 +845,13 @@ class PIE727Scanner(PIE710ScannerInterface):
 
         Only affects scan-range clamping in the interfuse -- ordinary
         motion (move_absolute etc.) always uses the full x/y/z_range.
+
+        If `span` (meters, the planned line's |stop - start|) is given, the
+        padding is computed for exactly that span, with the same formula
+        scan_axis() uses (padding per side = span * (1 - ratio) / (2 * ratio)).
+        The padding grows with the line's speed, so small lines (e.g. the
+        optimizer's) need far less room than the full-travel worst case and
+        can then also be scanned close to the travel limits.
         """
         full_um = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
         lo_um, hi_um = full_um
@@ -854,6 +862,32 @@ class PIE727Scanner(PIE710ScannerInterface):
                 f"parameters -- returning the full, unclamped travel range."
             )
             return [lo_um * _M_PER_UM, hi_um * _M_PER_UM]
+
+        if span is not None:
+            span_um = abs(float(span)) * _UM_PER_M
+            if span_um <= 0:
+                return [lo_um * _M_PER_UM, hi_um * _M_PER_UM]
+            travel_um = hi_um - lo_um
+
+            def _pad(s_um):
+                ratio = self._ctrl._effective_ratio(t_pixel, n_points, s_um)
+                return 0.0 if ratio >= 1.0 else s_um * (1.0 - ratio) / (2.0 * ratio)
+
+            pad_um = _pad(span_um)
+            if span_um + 2.0 * pad_um > travel_um:
+                # The requested line does not fit with its padding at all: use the largest span
+                # that does (padding grows with the span), so the clamp shrinks the line to it.
+                fit_lo, fit_hi = 0.0, min(span_um, travel_um)
+                for _ in range(60):
+                    mid = 0.5 * (fit_lo + fit_hi)
+                    if mid + 2.0 * _pad(mid) <= travel_um:
+                        fit_lo = mid
+                    else:
+                        fit_hi = mid
+                pad_um = _pad(fit_lo) if fit_lo > 0 else travel_um / 2.0
+            pad_um = min(pad_um, travel_um / 2.0)
+            return [round((lo_um + pad_um) * _M_PER_UM, 12),
+                    round((hi_um - pad_um) * _M_PER_UM, 12)]
 
         amp_true = hi_um - lo_um
         ratio = self._ctrl._effective_ratio(t_pixel, n_points, amp_true)
