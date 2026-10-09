@@ -35,11 +35,17 @@ Sequence structure (Rabi / pulsed ODMR):
     trigger -> [mw_k -> readout] for every point k -> loop back to the trigger
     trigger: sync pulse on sync_channel (on this setup also the PulseBlaster -> AWG trigger)
     mw_k:    MW pulse of point k
-    readout: laser + gate (laser_length) -> gate (laser_delay) -> wait (wait_time), shared by all
-             points, so it is uploaded only once
+    readout: laser + gate (laser_length) -> gate (laser_delay) -> [repolarization] -> wait
+             (wait_time), shared by all points, so it is uploaded only once
 Sequence structure (CW ODMR):
     trigger -> [mw_laser_k -> readout] per point; mw_laser_k is MW + laser + gate together
-    (mw_length), followed by gate (laser_delay); readout is only the wait (wait_time).
+    (mw_length), followed by gate (laser_delay); readout is [repolarization] -> wait (wait_time).
+
+Repolarization (repolarization_time > 0): a laser-only pulse (gate off, so it is not counted) at
+the start of every wait, i.e. between every readout and the next point. Use it if the laser alone
+does not reset the spins within one readout, e.g. at low laser power: then the next point (and
+in particular the reference point of the alternating trace) starts with the spin state left
+behind by the previous point, and the reference shows the same ODMR/Rabi signal as the signal.
 
 Granularity correction: every block is padded with idle time to the pulse generator's minimum
 waveform length and length step, so the sequence generator never has to append its own
@@ -68,9 +74,13 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
     ################################################################################################
 
     def generate_nmri_rabi(self, name='nmri_rabi', tau_start=10.0e-9, tau_step=10.0e-9,
-                           num_of_points=50, alternating=False, alternating_mode=1):
+                           num_of_points=50, alternating=False, alternating_mode=1,
+                           repolarization_time=0.0):
         """
         Rabi as sequence: trigger -> [MW pulse of length tau -> readout] per tau.
+
+        repolarization_time : float
+            Length of a laser-only pulse (not counted) after every readout, in s. 0: none.
 
         alternating : bool
             If True, each tau point is directly followed by a reference point.
@@ -101,7 +111,9 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
                 '{0}_alt_mw_{1}'.format(name, kk), alt_elements,
                 created_blocks, created_ensembles, pad_at_start=True))
 
-        sequence = self._build_nmri_sequence(name, points, created_blocks, created_ensembles)
+        sequence = self._build_nmri_sequence(
+            name, points, created_blocks, created_ensembles,
+            readout_elements=self._get_readout_elements(repolarization_time))
         self._set_measurement_information(
             sequence, alternating, tau_array, units=('s', ''),
             labels=('Tau<sub>pulse spacing</sub>', 'Signal'), num_points=len(points),
@@ -110,10 +122,14 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_nmri_pulsedodmr(self, name='nmri_pODMR', freq_start=2.82e9, freq_stop=2.92e9,
-                                 num_of_points=50, alternating=False, alternating_mode=1):
+                                 num_of_points=50, alternating=False, alternating_mode=1,
+                                 repolarization_time=0.0):
         """
         Pulsed ODMR as sequence: trigger -> [pi pulse (rabi_period / 2) at frequency f -> readout]
         per frequency. Requires a calibrated rabi_period.
+
+        repolarization_time : float
+            Length of a laser-only pulse (not counted) after every readout, in s. 0: none.
 
         alternating : bool
             If True, each frequency point is directly followed by a reference point.
@@ -151,7 +167,9 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
                      self._get_nmri_mw_element(pi_length)],
                     created_blocks, created_ensembles, pad_at_start=True))
 
-        sequence = self._build_nmri_sequence(name, points, created_blocks, created_ensembles)
+        sequence = self._build_nmri_sequence(
+            name, points, created_blocks, created_ensembles,
+            readout_elements=self._get_readout_elements(repolarization_time))
         self._set_measurement_information(
             sequence, alternating, freq_array, units=('Hz', ''), labels=('Frequency', 'Signal'),
             num_points=len(points), counting_length=self.laser_length + self.laser_delay)
@@ -159,7 +177,8 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_nmri_cw_odmr(self, name='nmri_cw_odmr', freq_start=2.82e9, freq_stop=2.92e9,
-                              num_of_points=50, mw_amp=0.2, mw_length=10e-6, alternating=False):
+                              num_of_points=50, mw_amp=0.2, mw_length=10e-6, alternating=False,
+                              repolarization_time=0.0):
         """
         CW ODMR as sequence: trigger -> [MW at frequency f together with laser + gate for
         mw_length -> gate for laser_delay -> wait] per frequency.
@@ -172,6 +191,8 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
             If True, each frequency point is directly followed by a reference point with laser
             and gate only (no MW). It is the same for every frequency, so one shared waveform is
             used.
+        repolarization_time : float
+            Length of a laser-only pulse (not counted) after every point, in s. 0: none.
         """
         created_blocks, created_ensembles, created_sequences = list(), list(), list()
 
@@ -195,8 +216,9 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
             if alternating:
                 points.append(shared_alt_point)
 
-        sequence = self._build_nmri_sequence(name, points, created_blocks, created_ensembles,
-                                             readout_elements=self._get_wait_elements())
+        sequence = self._build_nmri_sequence(
+            name, points, created_blocks, created_ensembles,
+            readout_elements=self._get_wait_elements(repolarization_time))
         self._set_measurement_information(
             sequence, alternating, freq_array, units=('Hz', ''), labels=('Frequency', 'Signal'),
             num_points=len(points), counting_length=mw_length + self.laser_delay)
@@ -214,16 +236,20 @@ class NMRIPredefinedGenerator(PredefinedGeneratorBase):
             length=length, increment=0, amp=self.microwave_amplitude,
             freq=self.microwave_frequency if freq is None else freq, phase=0)
 
-    def _get_readout_elements(self):
-        """ laser + gate (laser_length) -> gate (laser_delay) -> wait (wait_time) """
+    def _get_readout_elements(self, repolarization_time=0.0):
+        """ laser + gate (laser_length) -> gate (laser_delay) -> [repolarization] -> wait """
         return [self._get_laser_gate_element(length=self.laser_length, increment=0),
-                self._get_delay_gate_element()] + self._get_wait_elements()
+                self._get_delay_gate_element()] + self._get_wait_elements(repolarization_time)
 
-    def _get_wait_elements(self):
-        """ wait (wait_time), or nothing if wait_time is 0 """
+    def _get_wait_elements(self, repolarization_time=0.0):
+        """ [laser-only repolarization pulse, gate off] -> wait (wait_time); either is left out
+        if its length is 0 """
+        elements = list()
+        if repolarization_time > 0:
+            elements.append(self._get_laser_element(length=repolarization_time, increment=0))
         if self.wait_time > 0:
-            return [self._get_idle_element(length=self.wait_time, increment=0)]
-        return list()
+            elements.append(self._get_idle_element(length=self.wait_time, increment=0))
+        return elements
 
     def _check_alternating_mode(self, alternating, alternating_mode, allowed):
         if alternating and alternating_mode not in allowed:

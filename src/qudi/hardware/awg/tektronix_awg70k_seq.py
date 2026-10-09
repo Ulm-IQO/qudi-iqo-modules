@@ -879,6 +879,10 @@ class AWG70K(PulserInterface):
     def get_sequence_names(self):
         """ Retrieve the names of all uploaded sequence on the device.
 
+        The sequence written last through this module (or, if unknown, the one loaded into
+        channel 1) comes first: the AWG/PulseBlaster interfuse treats the first entry as "the
+        sequence currently on the AWG", as the AWG7000 module only ever reports that one.
+
         @return list: List of all uploaded sequence name strings in the device workspace.
         """
         sequence_list = list()
@@ -892,6 +896,14 @@ class AWG70K(PulserInterface):
                 sequence_list.append(self.query('SLIS:NAME? {0:d}'.format(ii + 1)))
         except visa.VisaIOError:
             self.log.error('Unable to read sequence list from device. VisaIOError occurred.')
+
+        current = self._last_written_sequence
+        if current not in sequence_list:
+            loaded = self._query_loaded_asset(1).rsplit(',', 1)
+            current = loaded[0] if len(loaded) > 1 else None
+        if current in sequence_list:
+            sequence_list.remove(current)
+            sequence_list.insert(0, current)
         return sequence_list
 
     def delete_waveform(self, waveform_name):

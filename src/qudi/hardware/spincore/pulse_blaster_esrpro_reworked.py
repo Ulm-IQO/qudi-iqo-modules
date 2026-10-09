@@ -1966,56 +1966,40 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         Example: three consecutive samples all with channel 0 high becomes
         one entry: {'active_channels': [0], 'length': 3 * GRAN_MIN}
         """
-        ch_list     = sorted(digital_samples.keys())
-        num_entries = len(digital_samples[ch_list[0]])
+        ch_list = sorted(digital_samples.keys())
+        # Convert 'd_ch0' → 0, 'd_ch1' → 1, … (in ch_list order)
+        ch_numbers = [int(ch_name.replace('d_ch', '')) for ch_name in ch_list]
 
-        last_sequence_dict = None
-        pb_sequence_list   = []
+        # One row per channel. The run boundaries are found with array operations instead of
+        # a Python loop over every sample: long waveforms have millions of samples, and
+        # indexing numpy arrays element by element that often is very slow.
+        states = np.vstack([np.asarray(digital_samples[ch_name], dtype=bool).ravel()
+                            for ch_name in ch_list])
+        num_entries = states.shape[1]
+        if num_entries == 0:
+            return [None]
 
-        for index in range(num_entries):
+        changes = np.flatnonzero(np.any(states[:, 1:] != states[:, :-1], axis=0)) + 1
+        run_starts = np.concatenate(([0], changes))
+        run_ends = np.concatenate((changes, [num_entries]))
 
-            # Build the set of active channels for this single sample point.
+        pb_sequence_list = []
+        for start, end in zip(run_starts.tolist(), run_ends.tolist()):
             # Each sample represents one clock cycle (GRAN_MIN).
-            temp_sequence_dict = {
-                'active_channels': [],
-                'length': self.GRAN_MIN
-            }
+            pb_sequence_list.append({
+                'active_channels': [ch_numbers[i] for i in np.flatnonzero(states[:, start])],
+                'length': (end - start) * self.GRAN_MIN
+            })
 
-            for ch_name in ch_list:
-                if digital_samples[ch_name][index]:
-                    # Convert 'd_ch0' → 0, 'd_ch1' → 1, …
-                    temp_sequence_dict['active_channels'].append(
-                        int(ch_name.replace('d_ch', ''))
-                    )
-
-            if last_sequence_dict is None:
-                # First sample: initialise the run
-                last_sequence_dict = temp_sequence_dict
-
-            else:
-                if (temp_sequence_dict['active_channels'] ==
-                        last_sequence_dict['active_channels']):
-                    # Same channel state: extend the current run by one cycle
-                    last_sequence_dict['length'] += temp_sequence_dict['length']
-
-                else:
-                    # Channel state changed: finalise the previous run
-                    # Warn if the run is shorter than the minimum instruction length.
-                    # 1.01× comparison provides a small tolerance for float comparison.
-                    if last_sequence_dict['length'] * 1.01 < self.LEN_MIN:
-                        self.log.warning(
-                            'Pulse of {0:.2f} ns is below the minimum '
-                            'instruction length of {1:.2f} ns. The output '
-                            'may not look as expected.'.format(
-                                last_sequence_dict['length'] * 1e9,
-                                self.LEN_MIN * 1e9
-                            )
-                        )
-                    pb_sequence_list.append(last_sequence_dict)
-                    last_sequence_dict = temp_sequence_dict
-
-        # Append the final run (always at least one entry)
-        pb_sequence_list.append(last_sequence_dict)
+        # Warn about runs shorter than the minimum instruction length (all but the final run).
+        # 1.01× comparison provides a small tolerance for float comparison.
+        for run in pb_sequence_list[:-1]:
+            if run['length'] * 1.01 < self.LEN_MIN:
+                self.log.warning(
+                    'Pulse of {0:.2f} ns is below the minimum '
+                    'instruction length of {1:.2f} ns. The output '
+                    'may not look as expected.'.format(run['length'] * 1e9, self.LEN_MIN * 1e9)
+                )
         return pb_sequence_list
 
     def write_sequence(self, name, sequence_parameters):
