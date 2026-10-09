@@ -366,8 +366,20 @@ class PIE710CounterInterfuse(ScanningProbeInterface):
 
         for axis_idx, (axis_name, (req_lo, req_hi)) in enumerate(
                 zip(settings.axes, settings.range)):
+            if axis_idx > 0:
+                # Only the fast (first) axis is scanned as a padded ramp; the slow axis of a
+                # 2D scan is positioned line by line via move_absolute and needs no padding.
+                new_range.append((req_lo, req_hi))
+                continue
             n_points = settings.resolution[axis_idx]
-            safe_lo, safe_hi = (float(v) for v in getter(axis_name, t_pixel, n_points))
+            span = abs(float(req_hi) - float(req_lo))
+            try:
+                # padding for exactly this line's span (PIE727Scanner)
+                safe = getter(axis_name, t_pixel, n_points, span)
+            except TypeError:
+                # scanners whose get_scan_safe_range() has no span argument
+                safe = getter(axis_name, t_pixel, n_points)
+            safe_lo, safe_hi = (float(v) for v in safe)
             lo, hi, changed = self._clamp_axis_range(
                 float(req_lo), float(req_hi), safe_lo, safe_hi)
             if changed:
