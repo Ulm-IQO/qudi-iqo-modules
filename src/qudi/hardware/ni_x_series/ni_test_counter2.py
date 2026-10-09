@@ -57,6 +57,8 @@ hardware:
         adc_voltage_range: [-10, 10]
         read_write_timeout: 10
         sync_max_lag_cycles: 2000
+        photon_buffer_seconds: 10.0   # fast counter DAQmx buffers, lower them if
+        gate_buffer_seconds: 2.0      # "requested memory could not be allocated"
 
         scan_counter_channel: 'ctr0'
         scan_clock_counter: 'ctr1'
@@ -191,6 +193,12 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         'max_channel_samples_buffer', 1024**2, missing='info',
         constructor=lambda x: max(int(round(x)), 1024**2))
     _cfg_rw_timeout       = ConfigOption('read_write_timeout',   10,               missing='nothing')
+    # Fast counter DAQmx buffer lengths, in seconds at the maximum count rate (10 MHz,
+    # 4 bytes/sample: 10 s = 400 MB). NI-DAQmx limits the total buffer memory of all devices,
+    # so with several stacked counters on one PC the defaults may not fit; the buffers are
+    # read every 20 ms, so ~1 s / 0.5 s is still plenty.
+    _photon_buffer_s      = ConfigOption('photon_buffer_seconds', 10.0,            missing='nothing')
+    _gate_buffer_s        = ConfigOption('gate_buffer_seconds',   2.0,             missing='nothing')
 
     # ── Scanning ConfigOptions ─────────────────────────────────────────────────
     _scan_counter_ch   = ConfigOption(
@@ -657,8 +665,10 @@ class NIXSeriesCounter(FastCounterInterface, DataInStreamInterface):
         self._gate_ticks          = gate_ticks
         self._n_bins              = gate_ticks
 
-        self._photon_buffer = max(1_000_000, int(self._max_photon_rate * 10))
-        self._gate_buffer   = max(200_000,   int(self._max_gate_rate   * 2))
+        self._photon_buffer = max(1_000_000,
+                                  int(self._max_photon_rate * float(self._photon_buffer_s)))
+        self._gate_buffer   = max(200_000,
+                                  int(self._max_gate_rate * float(self._gate_buffer_s)))
         read_time_s         = 0.02
         self._photon_chunk  = int(self._max_photon_rate * read_time_s)
         self._gate_chunk    = int(self._max_gate_rate   * read_time_s)
