@@ -475,6 +475,46 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             self._set_always_on_channels(elem, always_on_channel)
         return elements
 
+    def _check_mw_switch_channel(self, mw_switch_channel):
+        """ Validates the RF switch channel (empty = no switch). Raises ValueError if it is not an
+        active digital channel of the pulse generator. """
+        if not mw_switch_channel:
+            return
+        if not mw_switch_channel.startswith('d') or mw_switch_channel not in self.digital_channels:
+            raise ValueError(
+                'mw_switch_channel "{0}" is not an active digital channel of the pulse generator '
+                '(active: {1}).'.format(mw_switch_channel, sorted(self.digital_channels)))
+
+    def _gate_mw_elements(self, elements, mw_switch_channel, mw_switch_margin, always_on_channel,
+                          pulser_on=False, pulser_channel=None):
+        """
+        Opens the RF switch around a group of MW elements: returns
+        [lead idle (mw_switch_margin)] + elements + [lag idle (mw_switch_margin)], with
+        mw_switch_channel HIGH on all of them. The pulses themselves stay shaped by the AWG I/Q
+        signal; the switch only has to be open while they play, so its own (slower) switching
+        edges fall into the lead/lag margins. Outside these windows the switch blocks the MW
+        path, i.e. AWG noise and carrier leakage, e.g. during T1 waits.
+
+        @param bool pulser_on: pulser state of the lead/lag idles (must match the block).
+        @return list of PulseBlockElement (elements unchanged if mw_switch_channel is empty).
+        """
+        elements = list(elements)
+        if not mw_switch_channel:
+            return elements
+        margins = list()
+        for _ in range(2):
+            if pulser_on:
+                margins.append(self._get_pulser_on_idle_element(
+                    length=mw_switch_margin, increment=0,
+                    always_on_channel=always_on_channel, pulser_channel=pulser_channel))
+            else:
+                margins.append(self._get_pulser_off_idle_element(
+                    length=mw_switch_margin, increment=0, always_on_channel=always_on_channel))
+        gated = [margins[0]] + elements + [margins[1]]
+        for element in gated:
+            self._set_channel_high(element, mw_switch_channel)
+        return gated
+
     def _get_pulser_on_dx_mw_laser_gate_element(self, length, increment, amp=None, freq=None, phase=None,
                                                  always_on_channel=None, pulser_channel=None):
         """
@@ -1104,7 +1144,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                   num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                   duty_cycle_correction=True, duty_cycle=0.2, duty_cycle_channel='',
                                   distributed_correction=True, repolarize=True,
-                                  rising_time=50e-6, falling_time=50e-6, alternating=False, alternating_mode=1):
+                                  rising_time=50e-6, falling_time=50e-6, alternating=False, alternating_mode=1,
+                                  mw_switch_channel='', mw_switch_margin=50e-9):
         """
         Sequence-mode Rabi with an always-on channel and a duty-cycle-controlled pulser channel.
         The pulser is OFF during the MW pulse and ON during readout. See
@@ -1138,6 +1179,16 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                  duration (MW never driven).
             2 -> the alternating point keeps the swept MW pulse and appends one additional
                  fixed pi-pulse (length self.rabi_period / 2, at self.microwave_frequency).
+        mw_switch_channel : str
+            Digital channel driving an RF switch in the MW path (e.g. an AWG marker 'd_ch1').
+            Empty (default): no switch. Otherwise the channel is HIGH from mw_switch_margin
+            before until mw_switch_margin after every MW pulse (group), and LOW otherwise, so
+            AWG noise and carrier leakage are blocked between the pulses. Same option in all
+            dx methods.
+        mw_switch_margin : float
+            Lead and lag time of the switch window around the MW pulses, in s. Must cover the
+            switch's switching time (e.g. ZASWA-2-50DR+: 20 ns max). Adds 2 * margin to every
+            MW block.
 
         Returns
         -------
@@ -1145,6 +1196,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles : list
         created_sequences : list
         """
+        self._check_mw_switch_channel(mw_switch_channel)
         mw_frequency = self.microwave_frequency
         self.log.warning(f'Rabi drive frequency: {mw_frequency/1e9:.6f} GHz, '
                         f'amp={self.microwave_amplitude} V')
@@ -1173,6 +1225,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_elements = self._get_pulser_off_dx_mw_element_padded(
                 length=tau, increment=0, amp=self.microwave_amplitude, freq=None, phase=0,
                 always_on_channel=always_on_channel)
+            mw_elements = self._gate_mw_elements(mw_elements, mw_switch_channel, mw_switch_margin, always_on_channel)
             points.append(_register('{0}_mw_{1}'.format(name, kk), mw_elements))
 
             if not alternating:
@@ -1188,6 +1241,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 alt_elements += self._get_pulser_off_dx_mw_element_padded(
                     length=self.rabi_period / 2, increment=0, amp=self.microwave_amplitude,
                     freq=None, phase=0, always_on_channel=always_on_channel)
+            if alternating_mode != 1:
+                alt_elements = self._gate_mw_elements(alt_elements, mw_switch_channel, mw_switch_margin, always_on_channel)
             points.append(_register('{0}_alt_mw_{1}'.format(name, kk), alt_elements))
 
         rabi_sequence = self._build_dx_pulsed_sequence(
@@ -1213,7 +1268,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                         num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                         duty_cycle_correction=True, duty_cycle=0.2, duty_cycle_channel='',
                                         distributed_correction=True, repolarize=True,
-                                        rising_time=50e-6, falling_time=50e-6, alternating=False, alternating_mode=1):
+                                        rising_time=50e-6, falling_time=50e-6, alternating=False, alternating_mode=1,
+                                        mw_switch_channel='', mw_switch_margin=50e-9):
         """
         Sequence-mode pulsed ODMR - identical structure to generate_dx_rabi_ao_trig, swept over
         frequency with a fixed pi-pulse length (self.rabi_period / 2) instead of swept tau.
@@ -1233,6 +1289,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles : list
         created_sequences : list
         """
+        self._check_mw_switch_channel(mw_switch_channel)
         created_blocks = list()
         created_ensembles = list()
         created_sequences = list()
@@ -1264,6 +1321,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             mw_elements = self._get_pulser_off_dx_mw_element_padded(
                 length=pi_length, increment=0, amp=self.microwave_amplitude, freq=freq, phase=0,
                 always_on_channel=always_on_channel)
+            mw_elements = self._gate_mw_elements(mw_elements, mw_switch_channel, mw_switch_margin, always_on_channel)
             points.append(_register('{0}_mw_{1}'.format(name, kk), mw_elements))
 
             if not alternating:
@@ -1277,6 +1335,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 alt_elements += self._get_pulser_off_dx_mw_element_padded(
                     length=pi_length, increment=0, amp=self.microwave_amplitude, freq=None,
                     phase=0, always_on_channel=always_on_channel)
+                alt_elements = self._gate_mw_elements(alt_elements, mw_switch_channel, mw_switch_margin, always_on_channel)
                 points.append(_register('{0}_alt_mw_{1}'.format(name, kk), alt_elements))
 
         pulsedodmr_sequence = self._build_dx_pulsed_sequence(
@@ -1302,7 +1361,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                 num_of_points=50, always_on_channel='d_ch15', pulser_channel='d_ch3',
                                 duty_cycle_correction=True, duty_cycle=0.2, duty_cycle_channel='',
                                 distributed_correction=True, repolarize=True,
-                                rising_time=50e-6, falling_time=50e-6, alternating=False):
+                                rising_time=50e-6, falling_time=50e-6, alternating=False,
+                                mw_switch_channel='', mw_switch_margin=50e-9):
         """
         Sequence-mode T1 with linearly spaced tau, analogous to the basic generate_t1, with the
         pulser/duty-cycle features of generate_dx_rabi_ao_trig (see there and
@@ -1325,7 +1385,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return self._generate_dx_t1(
             name, tau_array, always_on_channel, pulser_channel, duty_cycle_correction, duty_cycle,
             duty_cycle_channel, distributed_correction, repolarize, rising_time, falling_time,
-            alternating)
+            alternating, mw_switch_channel, mw_switch_margin)
 
     def generate_dx_t1_exponential_ao_trig(self, name='t1_exp_ao_trig', tau_start=1.0e-6,
                                             tau_end=1.0e-3, num_of_points=50,
@@ -1333,7 +1393,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                             duty_cycle_correction=True, duty_cycle=0.2,
                                             duty_cycle_channel='', distributed_correction=True,
                                             repolarize=True, rising_time=50e-6, falling_time=50e-6,
-                                            alternating=False):
+                                            alternating=False, mw_switch_channel='',
+                                            mw_switch_margin=50e-9):
         """
         Sequence-mode T1 with exponentially (log) spaced tau from tau_start to tau_end,
         analogous to the basic generate_t1_exponential. Otherwise identical to
@@ -1346,13 +1407,16 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return self._generate_dx_t1(
             name, tau_array, always_on_channel, pulser_channel, duty_cycle_correction, duty_cycle,
             duty_cycle_channel, distributed_correction, repolarize, rising_time, falling_time,
-            alternating)
+            alternating, mw_switch_channel, mw_switch_margin)
 
     def _generate_dx_t1(self, name, tau_array, always_on_channel, pulser_channel,
                         duty_cycle_correction, duty_cycle, duty_cycle_channel,
                         distributed_correction, repolarize, rising_time, falling_time,
-                        alternating):
-        """ Shared implementation of generate_dx_t1_ao_trig / generate_dx_t1_exponential_ao_trig. """
+                        alternating, mw_switch_channel='', mw_switch_margin=50e-9):
+        """ Shared implementation of generate_dx_t1_ao_trig / generate_dx_t1_exponential_ao_trig.
+        With mw_switch_channel, the switch is open only around the pi-pulse of the alternating
+        points (lead + pulse + lag); the tau wait starts after the lag margin. """
+        self._check_mw_switch_channel(mw_switch_channel)
         created_blocks = list()
         created_ensembles = list()
         created_sequences = list()
@@ -1386,6 +1450,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             pi_elements = self._get_pulser_off_dx_mw_element_padded(
                 length=self.rabi_period / 2, increment=0, amp=self.microwave_amplitude, freq=None,
                 phase=0, always_on_channel=always_on_channel)
+            pi_elements = self._gate_mw_elements(pi_elements, mw_switch_channel, mw_switch_margin, always_on_channel)
             pi_length_s = sum(elem.init_length_s for elem in pi_elements)
 
         def _wait_point(label, kk, tau, prefix_elements=(), prefix_length_s=0.0):
@@ -1448,7 +1513,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                      always_on_channel='d_ch15', pulser_channel='d_ch3', pulser_mode=1,
                                      duty_cycle_correction=True, duty_cycle=0.2,
                                      rising_time=50e-6, falling_time=50e-6,
-                                     alternating=False, alternating_mode=1):
+                                     alternating=False, alternating_mode=1,
+                                     mw_switch_channel='', mw_switch_margin=50e-9):
         """
         CW ODMR sequence, extended with an always-on channel and a duty-cycle-controlled pulser
         channel.
@@ -1510,6 +1576,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             self.log.error('pulser_mode must be 0 or 1 (got {0}); treating as 1.'.format(pulser_mode))
             pulser_mode = 1
 
+        self._check_mw_switch_channel(mw_switch_channel)
+
         # Without a pulser there is nothing to ramp or correct (see pulser_channel above)
         use_pulser = bool(pulser_channel)
         if not use_pulser:
@@ -1556,6 +1624,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 delay_elem = delay_element_off
 
             mw_block = PulseBlock(name='{0}_mw_{1}'.format(name, kk))
+            if mw_switch_channel:
+                # switch open: lead margin, the whole MW+laser element, and the following delay
+                # element (laser_delay, normally >> the switch's switching time) as lag
+                lead = self._gate_mw_elements([], mw_switch_channel, mw_switch_margin,
+                                              always_on_channel, pulser_on=(pulser_mode == 1),
+                                              pulser_channel=pulser_channel)[0]
+                if pulser_mode == 1:
+                    delay_elem = self._get_pulser_on_delay_gate_element(
+                        always_on_channel=always_on_channel, pulser_channel=pulser_channel)
+                else:
+                    delay_elem = self._get_pulser_off_delay_gate_element(
+                        always_on_channel=always_on_channel)
+                self._set_channel_high(mw_laser_gate_element, mw_switch_channel)
+                self._set_channel_high(delay_elem, mw_switch_channel)
+                mw_block.append(lead)
             mw_block.append(mw_laser_gate_element)
             mw_block.append(delay_elem)
             self._pad_ensemble_to_granularity(
