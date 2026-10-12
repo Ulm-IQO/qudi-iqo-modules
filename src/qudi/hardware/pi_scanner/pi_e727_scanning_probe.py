@@ -20,34 +20,47 @@ pulse per physical step of motion, counted on the DAQ side by
 NIXSeriesCounter.arm_position_trigger()/read_position_trigger(). Ported
 from a proven MATLAB implementation (ClassPiezoE727.m).
 
-Automatic padding: every line gets an automatic speed-up/slow-down ramp
-before/after the real triggered region, sized from two physical limits:
-  max_acceleration_um_s2 -- stage's real accel limit (more padding if a
-      scan would otherwise need to ramp up faster than this)
-  min_speedup_time_s -- floor on ramp duration, since a scan with NO
-      ramp was observed to sometimes produce zero real trigger edges
-get_scan_safe_range(axis, t_pixel, n_points) reports the sub-range of an
-axis' real travel that stays within travel limits after this padding is
-applied, for that specific scan's speed/resolution. Uses the axis' FULL
-travel span as the worst case, so it can be conservative for scans
-targeting a small (e.g. zoomed-in) region -- not currently span-aware.
+Run-up (padding): the stage cannot start a line at full speed, so every line starts a run-up
+distance BELOW its first trigger position and ends the same distance above its last one. No
+pixels are recorded during the run-up. Per side it is the LARGEST of three limits (each one
+disabled if set to 0), with v = line speed = scan range / (pixels * pixel time):
+
+    max_acceleration_um_s2   run-up = v**2 / a   the stage may not accelerate harder than a
+    min_speedup_time_s       run-up = v * t      ramp at least this long (a line with no ramp
+                                                 sometimes gave zero trigger edges)
+    min_padding_um           run-up = fixed      at least this distance. Short, slow lines (e.g.
+                                                 the optimizer's) otherwise start only nm below
+                                                 the first trigger position; the stage then
+                                                 settles past it and the controller outputs no
+                                                 trigger pulses for the whole line.
+
+The run-up has to fit inside the travel on both ends, so the usable range of the fast axis is
+travel - 2 * run-up (get_scan_safe_range(); the interfuse shrinks larger requests to it). Fast
+lines over long ranges are limited by max_acceleration_um_s2, slow or short lines by
+min_padding_um. To scan larger ranges: scan slower (lower frequency = longer pixel time, or more
+pixels) or raise max_acceleration_um_s2 as far as the stage really follows (check the image
+edges for distortion).
 
 YAML configuration:
     hardware:
         my_pi_e727_scanner:
             module.Class: 'pi_scanner.pi_e727_scanning_probe.PIE727Scanner'
             options:
-                dll_path: 'C:/PI/PI_GCS2_DLL_x64.dll'
-                usb_serial: ''
-                axis_ids: ['1', '2', '3']
-                x_range: [0.0, 200.0]     # um, native hardware units
-                y_range: [0.0, 200.0]
-                z_range: [0.0, 200.0]
-                trigger_output_id: 1
-                wave_generator_rate_hz: 20000.0
-                max_acceleration_um_s2: 3000.0
+                dll_path: 'C:/PI/PI_GCS2_DLL_x64.dll'  # PI GCS2 DLL
+                usb_serial: ''                # controller serial number; '' only works if the PI
+                                              # DLL lists exactly one USB device
+                axis_ids: ['1', '2', '3']     # controller axes used as x, y, z
+                invert_axes: []               # e.g. ['y'] to mirror axes, see below
+                trigger_output_id: 1          # controller digital output wired to the DAQ trigger
+                                              # input (scan_trigger_terminal of the counter)
+                wave_generator_rate_hz: 20000.0  # the controller's wave generator output rate. Not
+                                              # set on the controller -- must match it, otherwise
+                                              # pixel times and run-ups are off by that ratio
+                max_acceleration_um_s2: 3000.0   # run-up limits, see "Run-up" above
                 min_speedup_time_s: 0.005
-                invert_axes: []           # e.g. ['x', 'y', 'z'] to mirror the movement
+                min_padding_um: 0.5
+
+The travel range of each axis is read from the controller on activation.
 
 invert_axes mirrors the listed axes within their travel range: a qudi position p
 corresponds to the controller position (min + max - p). All motion, position read-back and
@@ -105,13 +118,11 @@ class PIE727Controller:
         # logger of its own). If None, padding-debug logs are skipped.
         self._logger = logger
 
-        self.wave_generator_rate_hz: Optional[float] = None
-        self.servo_point_time_s: Optional[float] = None
-
-        # Physical padding limits -- see module docstring. Combined per
-        # scan in _effective_ratio(); never a user-facing "ratio" knob.
+        # Run-up (padding) limits -- see module docstring. Combined per scan
+        # in padding_um(); None or 0 disables a limit.
         self.max_acceleration_um_s2: Optional[float] = None
         self.min_speedup_time_s: Optional[float] = None
+        self.min_padding_um: Optional[float] = None
 
         # Cached kwargs from the last scan_axis() call, for retrigger_line().
         self._last_scan_kwargs: Optional[dict] = None
@@ -525,47 +536,35 @@ class PIE727Controller:
         self.set_trigger_param(trigger_output_id, 8, trig_start)
         self.set_trigger_param(trigger_output_id, 9, trig_stop)
 
-    # ── Automatic padding computation ──────────────────────────────────────────
+    # ── Automatic padding (run-up) computation ─────────────────────────────────
 
-    def _effective_ratio(self, t_pixel: float, n_points: int, amp_true: float) -> float:
-        """Fraction of line time spent in the real (triggered) linear
-        region, derived from max_acceleration_um_s2 and min_speedup_time_s
-        -- see module docstring. Internal to the WAV_LIN point-count math.
+    def padding_um(self, t_pixel: float, n_points: int, span_um: float,
+                   with_binding: bool = False):
+        """Run-up distance per side (um) for a line of span_um scanned in
+        t_pixel * n_points: the LARGEST of the three limits (see module
+        docstring), each disabled if not set or <= 0:
+            max_acceleration_um_s2  ->  v**2 / a
+            min_speedup_time_s      ->  v * t
+            min_padding_um          ->  fixed distance
+        with v = span_um / (t_pixel * n_points) the line speed.
+
+        @return float, or (float, str name of the deciding limit) if with_binding
         """
-        T = t_pixel * n_points
-        if T <= 0 or amp_true == 0:
-            return 1.0
-
-        candidates = []
-        reasons = []
-
-        a_max = self.max_acceleration_um_s2
-        if a_max is not None and a_max > 0:
-            r = (T * T * a_max) / (T * T * a_max + 2.0 * abs(amp_true))
-            candidates.append(min(r, 1.0))
-            reasons.append(('max_acceleration_um_s2', a_max, r))
-
-        min_su = self.min_speedup_time_s
-        if min_su is not None and min_su > 0:
-            r = T / (T + 2.0 * min_su)
-            candidates.append(min(r, 1.0))
-            reasons.append(('min_speedup_time_s', min_su, r))
-
-        if not candidates:
-            return 1.0
-
-        ratio = min(candidates)
-
-        if ratio < 1.0 and self._logger is not None:
-            binding = min(reasons, key=lambda x: x[2])
-            self._logger.debug(
-                f"scan_axis: applying automatic padding (ratio={ratio:.4f}) "
-                f"for span={amp_true:.3f} um, n_points={n_points}, "
-                f"t_pixel={t_pixel*1e3:.4f} ms -- binding constraint: "
-                f"{binding[0]}={binding[1]}"
-            )
-
-        return ratio
+        line_time = t_pixel * n_points
+        span_um = abs(span_um)
+        limits = {}
+        if line_time > 0 and span_um > 0:
+            speed = span_um / line_time
+            if self.max_acceleration_um_s2:
+                limits['max_acceleration_um_s2'] = speed ** 2 / self.max_acceleration_um_s2
+            if self.min_speedup_time_s:
+                limits['min_speedup_time_s'] = speed * self.min_speedup_time_s
+        if self.min_padding_um:
+            limits['min_padding_um'] = float(self.min_padding_um)
+        if not limits:
+            return (0.0, 'none') if with_binding else 0.0
+        binding = max(limits, key=limits.get)
+        return (limits[binding], binding) if with_binding else limits[binding]
 
     # ── High-level single-axis line scan (ported from proven MATLAB ScanLine) ─
 
@@ -581,7 +580,14 @@ class PIE727Controller:
         start, stop = positions[0], positions[-1]
         amp_true = stop - start
 
-        ratio = self._effective_ratio(t_pixel, n_points, amp_true)
+        # Fraction of the padded ramp that is the real (triggered) line
+        pad_um, binding = self.padding_um(t_pixel, n_points, amp_true, with_binding=True)
+        ratio = amp_true / (amp_true + 2.0 * pad_um) if amp_true > 0 else 1.0
+        if self._logger is not None:
+            self._logger.debug(
+                f"scan_axis: run-up {pad_um:.3f} um per side for span={amp_true:.3f} um, "
+                f"n_points={n_points}, t_pixel={t_pixel*1e3:.4f} ms -- deciding limit: {binding}"
+            )
         servo_pt = 1.0 / wave_generator_rate_hz
         line_time = t_pixel * n_points / min(ratio, 1.0)
 
@@ -690,20 +696,23 @@ class PIE727Scanner(PIE710ScannerInterface):
     below converts to/from meters at the boundary (see module docstring).
     """
 
-    _dll_path              = ConfigOption('dll_path', default="C:/PI/PI_GCS2_DLL_x64.dll")
-    _usb_serial            = ConfigOption('usb_serial', default="")
-    _axis_ids              = ConfigOption('axis_ids', default=['1', '2', '3'])
-    _x_range               = ConfigOption('x_range', default=[0.0, 200.0])   # um
-    _y_range               = ConfigOption('y_range', default=[0.0, 200.0])   # um
-    _z_range               = ConfigOption('z_range', default=[0.0, 200.0])   # um
-    _trigger_output_id     = ConfigOption('trigger_output_id', default=1)
+    # See the module docstring for what each option does and how they interact.
+    _dll_path               = ConfigOption('dll_path', default="C:/PI/PI_GCS2_DLL_x64.dll")
+    _usb_serial             = ConfigOption('usb_serial', default="")
+    _axis_ids               = ConfigOption('axis_ids', default=['1', '2', '3'])
+    _invert_axes            = ConfigOption('invert_axes', default=[])
+    _trigger_output_id      = ConfigOption('trigger_output_id', default=1)
     _wave_generator_rate_hz = ConfigOption('wave_generator_rate_hz', default=20000.0)
     _max_acceleration_um_s2 = ConfigOption('max_acceleration_um_s2', default=3000.0)
     _min_speedup_time_s     = ConfigOption('min_speedup_time_s', default=0.005)
-    _invert_axes            = ConfigOption('invert_axes', default=[])
+    _min_padding_um         = ConfigOption('min_padding_um', default=0.5)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # Travel ranges in um, read from the controller in on_activate()
+        self._x_range: List[float] = [0.0, 0.0]
+        self._y_range: List[float] = [0.0, 0.0]
+        self._z_range: List[float] = [0.0, 0.0]
         self._ctrl: Optional[PIE727Controller] = None
         # Internal target position cache -- always micrometers, in qudi (i.e. possibly
         # mirrored, see invert_axes) coordinates.
@@ -757,8 +766,7 @@ class PIE727Scanner(PIE710ScannerInterface):
             self._ctrl.set_servo(ids, [True, True, True])
             time.sleep(0.1)
 
-            # Real travel limits from hardware, in um -- overrides config
-            # defaults, stored internally in um.
+            # Travel limits from the controller, in um
             mn = self._ctrl.get_min_travel(ids)
             mx = self._ctrl.get_max_travel(ids)
             self.log.info(
@@ -777,21 +785,17 @@ class PIE727Scanner(PIE710ScannerInterface):
                 f"Position  x={pos[0]:.3f}  y={pos[1]:.3f}  z={pos[2]:.3f} um"
             )
 
-            self._ctrl.wave_generator_rate_hz = float(self._wave_generator_rate_hz)
-            self._ctrl.servo_point_time_s = 1.0 / float(self._wave_generator_rate_hz)
-            self._ctrl.max_acceleration_um_s2 = (
-                float(self._max_acceleration_um_s2)
-                if self._max_acceleration_um_s2 is not None else None
-            )
-            self._ctrl.min_speedup_time_s = (
-                float(self._min_speedup_time_s)
-                if self._min_speedup_time_s is not None else None
-            )
+            def _limit(value):
+                return float(value) if value else None
 
+            self._ctrl.max_acceleration_um_s2 = _limit(self._max_acceleration_um_s2)
+            self._ctrl.min_speedup_time_s = _limit(self._min_speedup_time_s)
+            self._ctrl.min_padding_um = _limit(self._min_padding_um)
             self.log.info(
-                f"Automatic scan padding active: "
-                f"max_acceleration_um_s2={self._ctrl.max_acceleration_um_s2}  "
-                f"min_speedup_time_s={self._ctrl.min_speedup_time_s}"
+                f"Scan line run-up: largest of max_acceleration_um_s2="
+                f"{self._ctrl.max_acceleration_um_s2}, min_speedup_time_s="
+                f"{self._ctrl.min_speedup_time_s}, min_padding_um={self._ctrl.min_padding_um} "
+                f"(None = disabled)"
             )
         except Exception as exc:
             if self._ctrl is not None:
@@ -832,29 +836,21 @@ class PIE727Scanner(PIE710ScannerInterface):
         t_pixel: Optional[float] = None, n_points: Optional[int] = None,
         span: Optional[float] = None,
     ) -> List[float]:
-        """Sub-range of this axis' real travel that stays within travel
-        limits after automatic padding, for a scan with this specific
-        t_pixel/n_points spanning up to the full returned range.
+        """Sub-range of this axis' travel in which a line of this t_pixel/n_points (and span, in
+        meters) can be scanned, i.e. the travel minus the line's run-up on both ends (see
+        PIE727Controller.padding_um(), the same calculation scan_axis() uses).
 
-        Pass the actual t_pixel/n_points of the planned scan -- padding
-        depends on them, so there's no single fixed safe range otherwise.
-        Without them, returns the full range unclamped (logs a warning).
+        The run-up grows with the line's speed, so it is computed for exactly `span` (the
+        planned line's |stop - start|). Without `span`, the full travel is assumed. If the line
+        does not fit with its run-up at all, the range is computed for the largest span that
+        does, so the interfuse shrinks the line to it.
 
-        Uses the axis' FULL travel span as the worst-case amplitude, so
-        it can over-restrict small (e.g. zoomed) scan requests.
-
-        Only affects scan-range clamping in the interfuse -- ordinary
-        motion (move_absolute etc.) always uses the full x/y/z_range.
-
-        If `span` (meters, the planned line's |stop - start|) is given, the
-        padding is computed for exactly that span, with the same formula
-        scan_axis() uses (padding per side = span * (1 - ratio) / (2 * ratio)).
-        The padding grows with the line's speed, so small lines (e.g. the
-        optimizer's) need far less room than the full-travel worst case and
-        can then also be scanned close to the travel limits.
+        Without t_pixel/n_points, returns the full, unclamped travel (logs a warning).
+        Only affects scan-range clamping in the interfuse; ordinary motion (move_absolute)
+        always uses the full travel.
         """
-        full_um = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
-        lo_um, hi_um = full_um
+        lo_um, hi_um = {'x': self._x_range, 'y': self._y_range, 'z': self._z_range}[axis]
+        travel_um = hi_um - lo_um
 
         if t_pixel is None or n_points is None or self._ctrl is None:
             self.log.warning(
@@ -863,38 +859,27 @@ class PIE727Scanner(PIE710ScannerInterface):
             )
             return [lo_um * _M_PER_UM, hi_um * _M_PER_UM]
 
-        if span is not None:
-            span_um = abs(float(span)) * _UM_PER_M
-            if span_um <= 0:
-                return [lo_um * _M_PER_UM, hi_um * _M_PER_UM]
-            travel_um = hi_um - lo_um
+        span_um = travel_um if span is None else abs(float(span)) * _UM_PER_M
+        if span_um <= 0:
+            return [lo_um * _M_PER_UM, hi_um * _M_PER_UM]
 
-            def _pad(s_um):
-                ratio = self._ctrl._effective_ratio(t_pixel, n_points, s_um)
-                return 0.0 if ratio >= 1.0 else s_um * (1.0 - ratio) / (2.0 * ratio)
+        def _pad(s_um):
+            return self._ctrl.padding_um(t_pixel, n_points, s_um)
 
-            pad_um = _pad(span_um)
-            if span_um + 2.0 * pad_um > travel_um:
-                # The requested line does not fit with its padding at all: use the largest span
-                # that does (padding grows with the span), so the clamp shrinks the line to it.
-                fit_lo, fit_hi = 0.0, min(span_um, travel_um)
-                for _ in range(60):
-                    mid = 0.5 * (fit_lo + fit_hi)
-                    if mid + 2.0 * _pad(mid) <= travel_um:
-                        fit_lo = mid
-                    else:
-                        fit_hi = mid
-                pad_um = _pad(fit_lo) if fit_lo > 0 else travel_um / 2.0
-            pad_um = min(pad_um, travel_um / 2.0)
-            return [round((lo_um + pad_um) * _M_PER_UM, 12),
-                    round((hi_um - pad_um) * _M_PER_UM, 12)]
-
-        amp_true = hi_um - lo_um
-        ratio = self._ctrl._effective_ratio(t_pixel, n_points, amp_true)
-        margin_um = 0.0 if ratio >= 1.0 else amp_true * (1.0 - ratio) / 2.0
-
-        return [round((lo_um + margin_um) * _M_PER_UM, 12),
-                round((hi_um - margin_um) * _M_PER_UM, 12)]
+        pad_um = _pad(span_um)
+        if span_um + 2.0 * pad_um > travel_um:
+            # Largest span that fits together with its own run-up (run-up grows with the span)
+            fit_lo, fit_hi = 0.0, min(span_um, travel_um)
+            for _ in range(60):
+                mid = 0.5 * (fit_lo + fit_hi)
+                if mid + 2.0 * _pad(mid) <= travel_um:
+                    fit_lo = mid
+                else:
+                    fit_hi = mid
+            pad_um = _pad(fit_lo) if fit_lo > 0 else travel_um / 2.0
+        pad_um = min(pad_um, travel_um / 2.0)
+        return [round((lo_um + pad_um) * _M_PER_UM, 12),
+                round((hi_um - pad_um) * _M_PER_UM, 12)]
 
     # ── Motion (public interface: meters; internal state/hardware: um) ────────
 
