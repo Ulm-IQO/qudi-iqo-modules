@@ -99,7 +99,7 @@ class AxisStageWidget(QtWidgets.QGroupBox):
 
         normal = self.font()
         self.title_label = _title_label(axis)
-        self.not_homed_label = QtWidgets.QLabel('NOT HOMED - position relative to power-up')
+        self.not_homed_label = QtWidgets.QLabel('NOT HOMED')
         not_homed_font = QtGui.QFont()
         not_homed_font.setPointSize(11)
         not_homed_font.setBold(True)
@@ -216,6 +216,7 @@ class AxisStageWidget(QtWidgets.QGroupBox):
         row = 0
         title_row = QtWidgets.QHBoxLayout()
         title_row.addWidget(self.title_label)
+        title_row.addStretch(1)
         title_row.addWidget(self.not_homed_label)
         title_row.addStretch(1)
         layout.addLayout(title_row, row, 0, 1, 4)

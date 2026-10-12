@@ -93,6 +93,7 @@ Example config for copy-paste:
 
 import ctypes
 import json
+import math
 import os
 import time
 from typing import Dict, Optional, Tuple
@@ -524,6 +525,11 @@ class ThorlabsKinesisStage(MotorStageInterface):
     def set_limits(self, axis, lower, upper):
         with self._lock:
             lower, upper = float(lower), float(upper)
+            if not (math.isfinite(lower) and math.isfinite(upper)):
+                raise ValueError('Limits must be finite numbers, got [{0}, {1}]'.format(lower, upper))
+            if axis in self._backends and self._moving_bits(axis):
+                # a running move must not end up outside limits changed underneath it
+                raise ValueError('Axis "{0}" is moving: change the limits when it has stopped'.format(axis))
             if lower > upper:
                 raise ValueError('Lower limit {0} is above the upper limit {1}'.format(lower, upper))
             unit = self._axis_cfg[axis]['unit']
@@ -610,6 +616,10 @@ class ThorlabsKinesisStage(MotorStageInterface):
             backend = self._backends.get(axis)
             if backend is None or axis in self._blocked:
                 raise ValueError('Axis "{0}" not available'.format(axis))
+            if self._moving_bits(axis):
+                # e.g. a larger backlash would make a running move overshoot past the limits
+                raise ValueError('Axis "{0}" is moving: change motion parameters when it has '
+                                 'stopped'.format(axis))
             unknown = set(params) - {'velocity', 'acceleration', 'backlash', 'homing_velocity'}
             if unknown:
                 raise ValueError('Unknown motion parameter(s) {0}'.format(sorted(unknown)))
@@ -661,6 +671,8 @@ class ThorlabsKinesisStage(MotorStageInterface):
         """
         with self._lock:
             position = float(position)
+            if not math.isfinite(position):
+                raise ValueError('Invalid position {0}'.format(position))
             if axis not in self._backends:
                 raise ValueError('Axis "{0}" not connected'.format(axis))
             if axis in self._blocked:
@@ -788,6 +800,8 @@ class ThorlabsKinesisStage(MotorStageInterface):
 
     def _start_move(self, axis, target):
         self._check_can_move(axis)
+        if not math.isfinite(target):
+            raise ValueError('Axis "{0}": invalid target {1}'.format(axis, target))
         if self._limits.get(axis) is None:
             raise ValueError('Axis "{0}": no limits set'.format(axis))
         lower, upper = self._limits[axis]
@@ -797,16 +811,28 @@ class ThorlabsKinesisStage(MotorStageInterface):
                              'Kinesis would refuse it{5}'.format(
                                  axis, target, travel[0], travel[1], self._axis_cfg[axis]['unit'],
                                  self._not_homed_hint(axis)))
+        cpu = self._axis_cfg[axis]['counts_per_unit']
         try:
-            backlash = abs(self._backends[axis].backlash()) / self._axis_cfg[axis]['counts_per_unit']
-        except Exception:
-            backlash = 0.0
+            backlash = abs(self._backends[axis].backlash()) / cpu
+        except Exception as exc:
+            # unknown overshoot: the limit check below would not be reliable
+            raise ValueError('Axis "{0}": cannot read the backlash from the controller, move '
+                             'refused: {1}'.format(axis, exc))
         if target - backlash < lower - 1e-9 or target + backlash > upper + 1e-9:
             raise ValueError(
                 'Axis "{0}": target {1} (with backlash {2}) outside the limits [{3}, {4}] {5}'.format(
                     axis, target, backlash, lower, upper, self._axis_cfg[axis]['unit']))
+        # counts rounded towards the inside of the limits, so the target never lies outside them
+        counts = round(target * cpu)
+        if (counts / cpu) - backlash < lower:
+            counts += 1
+        elif (counts / cpu) + backlash > upper:
+            counts -= 1
+        if (counts / cpu) - backlash < lower or (counts / cpu) + backlash > upper:
+            raise ValueError('Axis "{0}": no controller position for target {1} within the limits '
+                             '[{2}, {3}]'.format(axis, target, lower, upper))
         self._ensure_enabled(axis)
-        self._backends[axis].move_to(round(target * self._axis_cfg[axis]['counts_per_unit']))
+        self._backends[axis].move_to(counts)
         self.log.info('Axis "{0}": moving to {1}'.format(axis, self._format(axis, target)))
 
     def _ensure_enabled(self, axis):
