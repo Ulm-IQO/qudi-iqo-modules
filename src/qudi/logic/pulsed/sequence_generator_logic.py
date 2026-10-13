@@ -489,15 +489,21 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.error('Can´t clear the pulser as it is running. Switch off the pulser and try again.')
             return -1
         self.pulsegenerator().clear_all()
-        # Delete all sampling information from all PulseBlockEnsembles and PulseSequences
-        for seq_name in self.saved_pulse_sequences:
-            seq = self.saved_pulse_sequences[seq_name]
-            seq.sampling_information = dict()
-            self.save_sequence(seq)
-        for ens_name in self.saved_pulse_block_ensembles:
-            ens = self.saved_pulse_block_ensembles[ens_name]
-            ens.sampling_information = dict()
-            self.save_ensemble(ens)
+        # Delete all sampling information from all PulseBlockEnsembles and PulseSequences.
+        # Only assets that actually carry sampling information are rewritten to file, and the
+        # GUI is notified once at the end: going through save_sequence()/save_ensemble() for
+        # every saved asset emitted one dict update (= full GUI list rebuild) per asset, which
+        # froze the GUI for thousands of saved ensembles.
+        for seq in self.saved_pulse_sequences.values():
+            if seq.sampling_information:
+                seq.sampling_information = dict()
+                self._save_sequence_to_file(seq)
+        for ens in self.saved_pulse_block_ensembles.values():
+            if ens.sampling_information:
+                ens.sampling_information = dict()
+                self._save_ensemble_to_file(ens)
+        self.sigSequenceDictUpdated.emit(self.saved_pulse_sequences)
+        self.sigEnsembleDictUpdated.emit(self.saved_pulse_block_ensembles)
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         self.sigLoadedAssetUpdated.emit('', '')

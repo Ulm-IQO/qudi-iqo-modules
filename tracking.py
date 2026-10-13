@@ -875,8 +875,12 @@ class DriftCorrector:
 
             try:
                 if ref_mask.all() and new_mask.all():
+                    # normalization=None: with the default 'phase' normalization (scikit-image
+                    # >= 0.19) the returned error is ~1 even for a perfect match, so every
+                    # xy update was rejected by max_xy_correlation_error
                     shift_px, error, _ = phase_cross_correlation(
-                        ref_img, new_img, upsample_factor=self.xy_upsample_factor
+                        ref_img, new_img, upsample_factor=self.xy_upsample_factor,
+                        normalization=None
                     )
                 else:
                     shift_px, error, _ = phase_cross_correlation(

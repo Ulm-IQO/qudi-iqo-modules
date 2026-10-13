@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
+import copy
 import io
 import os
 import time
@@ -152,6 +153,10 @@ class AWG7k(PulserInterface):
         self._sequence_defaults_verified = False
         # Timing statistics of the current upload batch, logged by _log_upload_stats().
         self._upload_stats = None
+        # Hardware constraints. Building them costs several SCPI queries, and they are requested
+        # many times per waveform during generation and upload. Reset on activation,
+        # set_interleave() and reset().
+        self._constraints_cache = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module. """
@@ -1559,6 +1564,7 @@ class AWG7k(PulserInterface):
         self.write('*WAI')
         self._waveform_names_cache = None
         self._sample_rate_cache = None
+        self._constraints_cache = None
         return 0
 
     def set_lowpass_filter(self, a_ch, cutoff_freq):

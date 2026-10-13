@@ -220,28 +220,105 @@ def _set_coil_currents(ix, iy, iz):
     coil_control_logic.set_current('Z', float(iz))
 
 
+def _total_photons():
+    """Photons collected so far by the running pulsed measurement: the sum of
+    the fast counter's cumulative raw histogram (all gates, all bins)."""
+    raw = pulsed_master_logic.raw_data
+    return float(np.sum(_to_plain_array(raw))) if raw is not None else 0.0
+
+
+class GatedRateReader:
+    """
+    Live gated count rate of the pulsed measurement's fast counter, i.e. the
+    combined counter's `sum_rate_gated_hz`: photons per second of OPEN GATE,
+    summed over all NI cards. Each call returns the rate since the previous
+    call, or None if a card has not completed a new sweep since then (try
+    again later; the interval then simply extends).
+
+    Keeps its own snapshot of the cards' running totals, so it does not
+    disturb the counter's own get_count_rates() readers. Relies on internals
+    of ni_x_series.ni_test_counter2 (_gated_photon_count_ref,
+    _diag_hist_cycles_ref, _num_gates_per_cycle, _gate_width_s).
+    """
+
+    def __init__(self):
+        fc = pulsed_master_logic.pulsedmeasurementlogic()._fastcounter()
+        self._cards = list(getattr(fc, '_counters', None) or [fc])
+        self._last = self._snapshot()
+
+    def _snapshot(self):
+        return [(int(c._gated_photon_count_ref[0]), int(c._diag_hist_cycles_ref[0]))
+                for c in self._cards]
+
+    def __call__(self):
+        now = self._snapshot()
+        rate = 0.0
+        for card, (g0, n0), (g1, n1) in zip(self._cards, self._last, now):
+            if g1 < g0 or n1 < n0:      # totals were reset: a new measurement started
+                g0 = n0 = 0
+            gate_time = (n1 - n0) * (card._num_gates_per_cycle or 0) * (card._gate_width_s or 0)
+            if gate_time <= 0:
+                return None
+            rate += (g1 - g0) / gate_time
+        self._last = now
+        return rate
+
+
+# Statistics of the most recent _run_odmr_sequence_and_collect() call:
+# {'elapsed_sweeps', 'equivalent_sweeps', 'total_photons', 'duration_s', 'stop_criterion',
+#  'mean_gated_rate_hz', 'rate_trace' ((n, 3) array: time s, elapsed sweeps, gated rate Hz)}.
+last_run_info = {}
+
+
 def _run_odmr_sequence_and_collect(seq_name, num_sweeps, poll_interval=0.5,
                                    timeout=None, stall_timeout=120.0,
-                                   min_sweeps_settle_time=6.0, skip_first_points=0):
+                                   min_sweeps_settle_time=6.0, skip_first_points=0,
+                                   reference_gated_rate=None, rate_interval=5.0,
+                                   max_sweeps_factor=10.0, min_sweeps=0):
     """
     Reload the (already generated+sampled+loaded) ODMR PulseSequence
     (fast -- PB-only re-write, AWG untouched), run it until num_sweeps
     completed sweeps are reported, then stop and return (freq, signal).
+    Run statistics are left in the module-level `last_run_info`.
+
+    Rate-scaled mode (`reference_gated_rate` given): `num_sweeps` means
+    sweeps AT that gated count rate. Every `rate_interval` s the live gated
+    rate r (`GatedRateReader`, = sum_rate_gated_hz) is read, and the sweeps
+    completed in that chunk count as (sweeps x r / reference_gated_rate)
+    equivalent sweeps; the run stops when the equivalent sweeps reach
+    num_sweeps. E.g. 30000 sweeps at 3.5e6 Hz -> 60000 actual sweeps if the
+    rate is 1.75e6 Hz throughout. (Since rate x sweeps is proportional to
+    the gated photons, this is a fixed gated-photon budget.)
 
     Parameters
     ----------
     seq_name : str
         Name of the already-generated/sampled/loaded PulseSequence.
     num_sweeps : int
-        Number of sweeps to average before stopping.
+        Number of sweeps to average before stopping (equivalent sweeps at
+        `reference_gated_rate` in rate-scaled mode).
     poll_interval : float
         Polling interval (s) while waiting for sweeps to accumulate.
     timeout : float, optional
         Overall timeout (s) for the measurement. Defaults to
-        max(300, num_sweeps * 5).
+        max(300, num_sweeps * 5), or no limit in rate-scaled mode (the
+        stall check and max_sweeps_factor still apply).
     stall_timeout : float
-        If elapsed_sweeps does not increase for this many seconds, raise
-        an error rather than waiting indefinitely.
+        If elapsed_sweeps does not increase for this many seconds, raise an
+        error rather than waiting indefinitely.
+    reference_gated_rate : float, optional
+        Gated count rate (Hz, sum over cards) at which `num_sweeps` applies.
+        None: plain sweep count.
+    rate_interval : float, default 5.0
+        Seconds between gated-rate readings (chunk length) in rate-scaled
+        mode.
+    max_sweeps_factor : float, default 10
+        Rate-scaled mode: stop anyway (with a warning) after
+        max(max_sweeps_factor x num_sweeps, min_sweeps) actual sweeps, e.g.
+        if the focus is lost completely.
+    min_sweeps : int, default 0
+        Rate-scaled mode: never stop before this many ACTUAL sweeps, even if
+        the equivalent sweeps are already reached (high gated rate).
     min_sweeps_settle_time : float
         Time (s) to wait after starting the measurement before beginning
         to poll elapsed_sweeps (must be at least as long as
@@ -264,12 +341,18 @@ def _run_odmr_sequence_and_collect(seq_name, num_sweeps, poll_interval=0.5,
 
     pulsed_master_logic.load_sequence(seq_name)
     _wait_while(lambda: pulsed_master_logic.status_dict['loading_busy'],
-                f'"{seq_name}" to load', 60.0)
+                f'"{seq_name}" to load', 300.0)   # a re-upload of the sequence table from cache takes ~1 min
 
     if pulsed_master_logic.loaded_asset[0] != seq_name:
         raise RuntimeError(
             f'Failed to load "{seq_name}"; currently loaded: {pulsed_master_logic.loaded_asset}'
         )
+
+    scaled = reference_gated_rate is not None
+    # Created before the start so the first rate chunk covers the whole run (the
+    # reader detects the counters' reset at the measurement start).
+    rate_reader = GatedRateReader() if scaled else None
+    t_measurement_start = time.time()
 
     pulsed_master_logic.toggle_pulsed_measurement(True)
     _wait_while(lambda: not pulsed_master_logic.status_dict['measurement_running'],
@@ -280,27 +363,62 @@ def _run_odmr_sequence_and_collect(seq_name, num_sweeps, poll_interval=0.5,
         time.sleep(poll_interval)
 
     if timeout is None:
-        timeout = max(300.0, num_sweeps * 5.0)
+        timeout = float('inf') if scaled else max(300.0, num_sweeps * 5.0)
 
     t_start = time.time()
     last_sweeps = -1
     last_change_time = t_start
+    stop_criterion = 'sweeps'
 
-    while pulsed_master_logic.elapsed_sweeps < num_sweeps:
+    # Rate-scaled mode: equivalent sweeps accumulated chunk by chunk, from sweep 0.
+    equivalent = 0.0
+    chunk_sweeps0 = 0
+    t_chunk = t_measurement_start
+    rate_trace = []
+    held_by_min_sweeps = False
+
+    while True:
         now = time.time()
+        sweeps = pulsed_master_logic.elapsed_sweeps
+        if scaled:
+            if now - t_chunk >= rate_interval:
+                rate = rate_reader()
+                if rate is not None:       # else: no new sweep on a card yet, chunk extends
+                    equivalent += (sweeps - chunk_sweeps0) * rate / float(reference_gated_rate)
+                    rate_trace.append((now - t_measurement_start, sweeps, rate))
+                    chunk_sweeps0, t_chunk = sweeps, now
+            # Current chunk counted at the last measured rate, for the stop decision. No
+            # stop before the first rate reading (the rate is unknown until then).
+            if rate_trace:
+                progress = equivalent + ((sweeps - chunk_sweeps0) * rate_trace[-1][2]
+                                         / float(reference_gated_rate))
+            else:
+                progress = 0.0
+            if progress >= num_sweeps:
+                if sweeps >= min_sweeps:
+                    stop_criterion = 'min_sweeps' if held_by_min_sweeps else 'rate-scaled sweeps'
+                    break
+                held_by_min_sweeps = True   # target reached early (high rate): keep going
+            if sweeps >= max(max_sweeps_factor * num_sweeps, min_sweeps):
+                stop_criterion = 'max_sweeps_factor'
+                print(f'WARNING: stopped "{seq_name}" at {sweeps} actual sweeps '
+                      f'({max_sweeps_factor:g} x {num_sweeps}) with only {progress:.0f} equivalent '
+                      f'sweeps -- gated rate far below the reference (focus lost?).')
+                break
+        elif sweeps >= num_sweeps:
+            break
         if now - t_start > timeout:
             raise TimeoutError(
                 f'ODMR measurement for "{seq_name}" timed out after {timeout:.0f} s '
-                f'(reached {pulsed_master_logic.elapsed_sweeps}/{num_sweeps} sweeps).'
+                f'(reached {sweeps}/{num_sweeps} sweeps).'
             )
-        current_sweeps = pulsed_master_logic.elapsed_sweeps
-        if current_sweeps != last_sweeps:
-            last_sweeps = current_sweeps
+        if sweeps != last_sweeps:
+            last_sweeps = sweeps
             last_change_time = now
         elif now - last_change_time > stall_timeout:
             raise RuntimeError(
                 f'elapsed_sweeps has not increased for {stall_timeout:.0f} s '
-                f'(stuck at {current_sweeps}). This likely means the fast counter '
+                f'(stuck at {sweeps}). This likely means the fast counter '
                 f'hardware does not report elapsed_sweeps -- check '
                 f'pulsed_master_logic.elapsed_sweeps manually while a measurement runs.'
             )
@@ -309,6 +427,24 @@ def _run_odmr_sequence_and_collect(seq_name, num_sweeps, poll_interval=0.5,
     pulsed_master_logic.toggle_pulsed_measurement(False)
     _wait_while(lambda: pulsed_master_logic.status_dict['measurement_running'],
                 'measurement to stop', 30.0)
+    final_sweeps = int(pulsed_master_logic.elapsed_sweeps)
+    trace = np.array(rate_trace, dtype=float).reshape(-1, 3)
+    if scaled:
+        # Sweeps after the last full chunk: at their own rate if measurable, else the last one.
+        final_rate = rate_reader() if final_sweeps > chunk_sweeps0 else None
+        if final_rate is not None:
+            rate_trace.append((time.time() - t_measurement_start, final_sweeps, final_rate))
+            trace = np.array(rate_trace, dtype=float).reshape(-1, 3)
+        last_rate = trace[-1, 2] if trace.size else float(reference_gated_rate)
+        equivalent += (final_sweeps - chunk_sweeps0) * last_rate / float(reference_gated_rate)
+        mean_rate = equivalent * float(reference_gated_rate) / max(final_sweeps, 1)
+    else:
+        equivalent, mean_rate = float(final_sweeps), float('nan')
+    last_run_info.clear()
+    last_run_info.update(elapsed_sweeps=final_sweeps, equivalent_sweeps=float(equivalent),
+                         total_photons=_total_photons(), duration_s=time.time() - t_measurement_start,
+                         stop_criterion=stop_criterion, mean_gated_rate_hz=float(mean_rate),
+                         rate_trace=trace)
 
     data = pulsed_master_logic.signal_data
     freq, signal = nvfit.skip_first_odmr_points(
@@ -975,7 +1111,8 @@ def plan_linearity_scans(freq_start, freq_stop, n_freq_points, quantization_axes
 def run_linearity_scans(seq_name, freq_start, freq_stop, n_freq_points, quantization_axes,
                         coil_strengths, skip_first_points=0, num_sweeps=10000, settle_time=5.0,
                         folder='CoilLinearity', plan=None, dry_run=False, before_each=None,
-                        **plan_kwargs):
+                        wait_between=0.0, reference_gated_rate=None, rate_interval=5.0,
+                        min_sweeps=10000, **plan_kwargs):
     """
     Plan (`plan_linearity_scans`) and measure the coil-linearity scans,
     saving every point as `<folder>/odmr_point_<n>.npz` immediately (an
@@ -1001,8 +1138,31 @@ def run_linearity_scans(seq_name, freq_start, freq_stop, n_freq_points, quantiza
     skip_first_points :
         As in `plan_linearity_scans`.
     num_sweeps : int, default 10000
+        Sweeps per ODMR run -- at `reference_gated_rate`, if given.
+    reference_gated_rate : float, optional
+        Gated count rate (Hz, sum_rate_gated_hz) at which `num_sweeps`
+        applies: the live gated rate is read every `rate_interval` s and each
+        chunk of sweeps counts as sweeps x rate / reference_gated_rate, so a
+        run at half the rate (e.g. defocused) takes twice the sweeps (see
+        `_run_odmr_sequence_and_collect`). None: plain sweep count.
+    rate_interval : float, default 5.0
+        Seconds between gated-rate readings.
+    min_sweeps : int, default 10000
+        With `reference_gated_rate`: minimum number of ACTUAL sweeps per run,
+        even if the gated rate is high enough to reach `num_sweeps`
+        equivalent sweeps sooner. Ignored without `reference_gated_rate`.
+    Each file also stores 'elapsed_sweeps', 'equivalent_sweeps',
+    'mean_gated_rate_hz', 'rate_trace' (time s, sweeps, rate Hz per chunk),
+    'total_photons', 'run_duration_s', 'stop_criterion' and
+    'reference_gated_rate' (NaN if unused).
     settle_time : float, default 5.0
         Wait after each current change, s.
+    wait_between : float, default 0
+        Minimum time (s) from the end of one ODMR run to the start of the
+        next point's `before_each` hook / ODMR run. The next currents are
+        set at the start of the wait, so settle_time counts towards it
+        (the pause is max(settle_time, wait_between), not their sum).
+        Saved with each point as 'wait_between'.
     folder : str, default 'CoilLinearity'
     plan : list of dict, optional
         A plan from `plan_linearity_scans` (skips planning).
@@ -1033,19 +1193,32 @@ def run_linearity_scans(seq_name, freq_start, freq_stop, n_freq_points, quantiza
     expected = np.linspace(float(freq_start), float(freq_stop), int(n_freq_points))
     paths = []
     t_start = time.time()
+    t_last_run_end = None
     try:
         for n, step in enumerate(plan):
             I_set = np.array(step['set_current_vec'], dtype=float)
             _set_coil_currents(*I_set)
-            if settle_time > 0:
-                time.sleep(settle_time)
+            t_set = time.time()
+            t_ready = t_set + max(0.0, settle_time)
+            if t_last_run_end is not None:
+                t_ready = max(t_ready, t_last_run_end + max(0.0, wait_between))
+            pause = t_ready - time.time()
+            if pause > 0:
+                if pause > 10:
+                    print(f'  waiting {pause:.0f} s before the next run ...')
+                time.sleep(pause)
             tracking = before_each() if before_each is not None else None
             tracking = {f'tracking_{k}': np.array(v) for k, v in (tracking or {}).items()}
             cur_before = _read_coil_values(coil_control_logic.get_all_currents)
             volt_before = _read_coil_values(coil_control_logic.get_all_voltages)
 
             freq, signal = _run_odmr_sequence_and_collect(seq_name, num_sweeps,
-                                                          skip_first_points=0)
+                                                          skip_first_points=0,
+                                                          reference_gated_rate=reference_gated_rate,
+                                                          rate_interval=rate_interval,
+                                                          min_sweeps=min_sweeps)
+            t_last_run_end = time.time()
+            run_info = dict(last_run_info)
 
             cur_after = _read_coil_values(coil_control_logic.get_all_currents)
             volt_after = _read_coil_values(coil_control_logic.get_all_voltages)
@@ -1067,6 +1240,19 @@ def run_linearity_scans(seq_name, freq_start, freq_stop, n_freq_points, quantiza
                      freq_start=np.array(float(freq_start)), freq_stop=np.array(float(freq_stop)),
                      n_freq_points=np.array(int(n_freq_points)),
                      skip_first_points=np.array(int(skip_first_points)),
+                     num_sweeps=np.array(int(num_sweeps)),
+                     reference_gated_rate=np.array(np.nan if reference_gated_rate is None
+                                                   else float(reference_gated_rate)),
+                     min_sweeps=np.array(int(min_sweeps) if reference_gated_rate is not None
+                                         else 0),
+                     elapsed_sweeps=np.array(int(run_info.get('elapsed_sweeps', -1))),
+                     equivalent_sweeps=np.array(float(run_info.get('equivalent_sweeps', np.nan))),
+                     mean_gated_rate_hz=np.array(float(run_info.get('mean_gated_rate_hz', np.nan))),
+                     rate_trace=np.asarray(run_info.get('rate_trace', np.zeros((0, 3))), dtype=float),
+                     stop_criterion=np.array(str(run_info.get('stop_criterion', ''))),
+                     total_photons=np.array(float(run_info.get('total_photons', np.nan))),
+                     run_duration_s=np.array(float(run_info.get('duration_s', np.nan))),
+                     wait_between=np.array(float(wait_between)),
                      notes=np.array(f"linearity scan {step['scan']} #{step['index']} "
                                     f"({step['direction']})"),
                      saved_at=np.array(time.strftime('%Y-%m-%d %H:%M:%S')), **tracking)
@@ -1075,7 +1261,10 @@ def run_linearity_scans(seq_name, freq_start, freq_stop, n_freq_points, quantiza
             remaining = elapsed / (n + 1) * (len(plan) - n - 1)
             print(f"[{n + 1}/{len(plan)}] {step['scan']:5s} {step['direction']:4s} "
                   f"set {np.round(I_set, 3)} A, read {np.round(cur_before, 3)} A, "
-                  f"V {np.round(volt_before, 2)} -> {os.path.basename(path)} "
+                  f"V {np.round(volt_before, 2)}, {run_info.get('elapsed_sweeps', '?')} sweeps "
+                  f"(= {run_info.get('equivalent_sweeps', float('nan')):.0f} equivalent, mean gated "
+                  f"rate {run_info.get('mean_gated_rate_hz', float('nan')) / 1e6:.2f} MHz) in "
+                  f"{run_info.get('duration_s', float('nan')):.0f} s -> {os.path.basename(path)} "
                   f"(~{remaining / 60:.0f} min left)")
     finally:
         _set_coil_currents(0.0, 0.0, 0.0)

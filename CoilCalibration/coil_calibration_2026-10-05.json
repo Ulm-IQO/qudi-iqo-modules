@@ -1,0 +1,178 @@
+{
+  "description": "NV-ODMR coil calibration B = M @ I + B0 (black_diamond setup). B: field at the NV ensemble in the NV quantization frame (frame of quantization_axes; x, y, z closest to the X, Y, Z coil axes), as gamma*B in MHz. I: PHYSICAL coil currents in A (see relay_note).",
+  "created": "2026-10-05 10:30",
+  "source_data": [
+    "CoilLinearity (2026-10-04/05, 53 spectra)",
+    "CoilSuperposition (2026-10-05, 43 spectra)"
+  ],
+  "fit": "joint fit of one linear model to 48 raw 1001-point spectra (all CoilSuperposition points + the mixed CoilLinearity points; 8 Lorentzian dips each, free amplitude/width per dip, D global), soft-L1 loss. Uncertainties: delete-one-current jackknife of a line-frequency fit, plus the difference between the two fit methods, in quadrature.",
+  "quantization_axes": [
+    [
+      0.816496580927726,
+      0,
+      0.5773502691896257
+    ],
+    [
+      -0.816496580927726,
+      0,
+      0.5773502691896257
+    ],
+    [
+      0,
+      0.816496580927726,
+      -0.5773502691896257
+    ],
+    [
+      0,
+      -0.816496580927726,
+      -0.5773502691896257
+    ]
+  ],
+  "D_MHz": 2871.201,
+  "gamma_MHz_per_G": 2.8025,
+  "M_MHz_per_A": [
+    [
+      56.1409,
+      11.4586,
+      -3.0841
+    ],
+    [
+      6.0999,
+      112.6481,
+      8.6604
+    ],
+    [
+      2.7753,
+      4.9336,
+      110.8683
+    ]
+  ],
+  "M_se_MHz_per_A": [
+    [
+      0.0946,
+      0.1349,
+      0.1597
+    ],
+    [
+      0.0528,
+      0.1201,
+      0.0909
+    ],
+    [
+      0.1221,
+      0.1068,
+      0.144
+    ]
+  ],
+  "M_G_per_A": [
+    [
+      20.03243,
+      4.0887,
+      -1.10046
+    ],
+    [
+      2.17658,
+      40.19556,
+      3.09024
+    ],
+    [
+      0.9903,
+      1.76043,
+      39.5605
+    ]
+  ],
+  "M_Hz_per_A": [
+    [
+      56140876.1,
+      11458593.2,
+      -3084052.6
+    ],
+    [
+      6099871.8,
+      112648060.1,
+      8660388.4
+    ],
+    [
+      2775310.7,
+      4933598.3,
+      110868314.9
+    ]
+  ],
+  "B0_MHz": [
+    -0.4706,
+    1.0365,
+    -1.5935
+  ],
+  "B0_se_MHz": [
+    0.2778,
+    0.2157,
+    0.4076
+  ],
+  "B0_G": [
+    -0.16791,
+    0.36984,
+    -0.56861
+  ],
+  "B0_Hz": [
+    -470569.7,
+    1036465.2,
+    -1593519.6
+  ],
+  "coil_strength_MHz_per_A": {
+    "X": 56.539,
+    "Y": 113.337,
+    "Z": 111.249
+  },
+  "coil_strength_G_per_A": {
+    "X": 20.1746,
+    "Y": 40.4413,
+    "Z": 39.6963
+  },
+  "coil_direction_unit": {
+    "X": [
+      0.99295,
+      0.10789,
+      0.04909
+    ],
+    "Y": [
+      0.1011,
+      0.99392,
+      0.04353
+    ],
+    "Z": [
+      -0.02772,
+      0.07785,
+      0.99658
+    ]
+  },
+  "coil_tilt_from_nominal_deg": {
+    "X": 6.81,
+    "Y": 6.32,
+    "Z": 4.74
+  },
+  "angle_between_coils_deg": {
+    "XY": 77.89,
+    "XZ": 88.29,
+    "YZ": 83.23
+  },
+  "valid_current_range_A": {
+    "X": 4.0,
+    "Y": 3.0,
+    "Z": 3.0
+  },
+  "validation": {
+    "model": "linear; quadratic, cubic and bilinear cross terms all predict held-out spectra worse (8-fold CV)",
+    "line_rms_fit_set_MHz": 1.24,
+    "line_rms_8fold_cv_MHz": 1.33,
+    "line_median_abs_err_8fold_cv_MHz": 0.68,
+    "line_rms_single_coil_scans_MHz": 3.46,
+    "single_coil_note": "single-coil fields leave two NV axes nearly perpendicular to B; their strain-affected central lines are not described by the E = 0 Hamiltonian, hence not used in the fit",
+    "oct2_FittedCoilODMRs_line_rms_MHz": 3.69,
+    "oct2_note": "9 points of 2026-10-02 (200-pt, MW 0.2, incl. 3 at Z = +-3.27 A); the same dips measured on both days differ by 3.3 MHz rms, i.e. the limit is the old data",
+    "repeatability": "8 runs at (-3.26, -3, -1.86) A over 8.8 h: line std 0.35 MHz",
+    "hysteresis_remanence": "none above 0.6 MHz (return points, zero-current spectra before/after each scan)",
+    "all_spectra_cross_check": "joint fit to all 82 spectra with |B| > 32 G (single-coil scans included, central lines of near-perpendicular axes masked): every M entry within 0.06 MHz/A, B0 within 0.14 MHz, D 2871.18 MHz"
+  },
+  "relay_note": "During the calibration runs (2026-10-04/05) the polarity relay commanded as X reversed the Y coil and vice versa (coil_control config: psu_x/psu_y cross-connected, switch_names x: X, y: Y); the fit uses the physical currents (|I_X| * relay_Y, |I_Y| * relay_X, I_Z). switch_names was changed to x: Y, y: X on 2026-10-05: from then on commanded currents = physical currents, and this calibration applies to the setpoints directly.",
+  "symmetry_note": "ODMR spectra are invariant under the 48 NV-axis symmetries; M and B0 are the representative whose coil directions are closest to nominal x, y, z."
+}

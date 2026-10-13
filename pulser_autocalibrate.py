@@ -1032,3 +1032,60 @@ def compute_target_locations(xy_scan, x_position, relative_offsets, wire_estimat
                                 anchor=anchor, locations=locations)
 
     return locations, anchor, fit_info
+
+
+def compute_target_locations_auto(xy_scan, relative_offsets, x_position=None, expected_gap=None,
+                                  channel='Sum', x_axis='x', y_axis='y', plot=False, **fit_kwargs):
+    """
+    Automatic version of compute_target_locations(): no rough wire-edge
+    estimates needed. The gap centerline is found by
+    wire_centerline.find_wire_gap (per-column gap fits + robust line), and
+    the target locations are at `relative_offsets` PERPENDICULAR to it,
+    starting from the centerline point at x_position (default: the
+    best-determined point of the centerline, i.e. where the NV spot is).
+
+    expected_gap: width of the bright gap as seen in the scan (between the
+    inner shadow edges, ~2.8 here for the nominal 6 um wire gap), not the
+    nominal spacing -- see wire_centerline.find_wire_gap.
+    fit_kwargs: passed to wire_centerline.find_wire_gap.
+
+    Returns (locations, anchor, fit_info) like compute_target_locations();
+    fit_info['wire_gap'] is the WireGap object (center_y(x), point(),
+    center_se_at(), info).
+
+        import wire_centerline as wc
+        scan = wc.latest_xy_scan()
+        locations, anchor, info = autocal.compute_target_locations_auto(
+            scan, [-1.0, -0.5, 0.0, 0.5, 1.0], expected_gap=2.8, plot=True)
+    """
+    import wire_centerline as wc
+    gap = wc.find_wire_gap(xy_scan, channel=channel, x_axis=x_axis, y_axis=y_axis,
+                           expected_gap=expected_gap, **fit_kwargs)
+    if x_position is None:
+        x_position = gap.p0[0]
+    anchor = gap.point(x=x_position)
+    locations = gap.locations(relative_offsets, x=x_position)
+    i = gap.info
+    fit_info = {
+        'wire_gap': gap,
+        'gap_center_line': (float(np.tan(np.radians(i['angle_deg']))),
+                            float(gap.center_y(0.0))),
+        'perp_direction': tuple(i['normal']),
+        'gap_width': i['gap_width'],
+        'center_se_at_anchor': float(gap.center_se_at(x_position)),
+    }
+    try:
+        scanning_probe_logic.log.info(
+            f'Automatic wire-gap centerline: {gap!r}; anchor={anchor}; target locations: {locations}')
+    except NameError:
+        pass
+    if plot:
+        img, xs, ys = wc.scan_to_image(xy_scan, channel, x_axis, y_axis) if not isinstance(xy_scan, tuple) \
+            else xy_scan
+        ax = wc.plot_wire_gap(img, xs, ys, gap)
+        ax.plot([p[x_axis] for p in locations], [p[y_axis] for p in locations], 'P', color='lime', ms=9,
+                label='target locations')
+        ax.plot(anchor[x_axis], anchor[y_axis], '*', color='red', ms=14, label='anchor')
+        ax.legend(loc='upper right', fontsize=8)
+        plt.show()
+    return locations, anchor, fit_info

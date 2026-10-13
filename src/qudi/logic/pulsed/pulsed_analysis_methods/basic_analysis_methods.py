@@ -177,12 +177,13 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
 
         @return numpy.ndarray, numpy.ndarray: analyzed data per laser pulse, error per laser pulse
         """
-        length = len(laser_data)
         if len(np.shape(laser_data)) > 1:
             data = np.mean(laser_data, axis=1)
         else:
             data = np.ravel(laser_data)
-        return data, np.zeros_like(length)
+        # one (zero) error per data point; np.zeros_like(len(...)) gave a 0-d array, which
+        # breaks the even/odd split of alternating measurements
+        return data, np.zeros(len(data), dtype=float)
 
     def analyse_mean_reference(self, laser_data, signal_start=0.0, signal_end=200e-9, norm_start=300e-9,
                           norm_end=500e-9):
