@@ -133,12 +133,14 @@ jobs:
 
 
     - name: Pip freeze
+      if: ${{ !cancelled() }}
       working-directory: .github/workflow_utils
       run: |
         pip freeze | Out-File -Encoding UTF8 reqs_${{ matrix.python-version }}.txt
 
     - name: Get latest artifact run id (Windows / PowerShell)
       id: find-id-test
+      if: ${{ !cancelled() }}
       shell: pwsh
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -170,7 +172,7 @@ jobs:
         }
 
     - name: Download reqs artifact
-      if: env.artifact_run_id != ''
+      if:  ${{ !cancelled() && env.artifact_run_id != '' }}
       uses: actions/download-artifact@v8
       with:
         name: reqs_${{ matrix.python-version }}

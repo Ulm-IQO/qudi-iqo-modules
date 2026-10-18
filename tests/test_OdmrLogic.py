@@ -83,7 +83,7 @@ def get_odmr_range(length, scanner):
     dict
         Dict of simulated data for all the channels
     """
-    scanner.__simulate_odmr(length)
+    scanner._FiniteSamplingInputDummy__simulate_odmr(length)
     data = scanner._FiniteSamplingInputDummy__simulated_samples
     signal_data_range = {channel: ( get_tolerance(min(data[channel]), bound = 'lower'), get_tolerance( max(data[channel]), bound='upper')  ) for channel in data}
     return signal_data_range
