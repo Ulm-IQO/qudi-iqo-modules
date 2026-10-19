@@ -1141,6 +1141,7 @@ class PulsedMeasurementLogic(LogicBase):
         try:
             config, result = container.fit_data(fit_config, data[0], data[1])
             if result:
+                self._add_time_domain_values_to_sine_fit_result(fit_config, result)
                 result.result_str = container.formatted_result(result)
             if use_alternative_data:
                 self._fit_result_alt = result
@@ -1153,6 +1154,21 @@ class PulsedMeasurementLogic(LogicBase):
 
         self.sigFitUpdated.emit(config, result, use_alternative_data)
         return result
+
+    @staticmethod
+    def _add_time_domain_values_to_sine_fit_result(fit_config, result):
+        """Add period and pi-pulse durations to displayed sine-fit results."""
+        if not fit_config or 'sine' not in fit_config.lower() or 'frequency' not in result.params:
+            return
+
+        frequency = result.params['frequency'].value
+        if not frequency:
+            return
+
+        period = 1 / abs(frequency)
+        for name, value in (('period', period),
+                            ('pi_pulse', period / 2)):
+            result.params.add(name, value=value, vary=False)
 
     def _apply_invoked_settings(self):
         """
