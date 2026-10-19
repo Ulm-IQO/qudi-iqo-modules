@@ -57,7 +57,7 @@ classifiers = [
 requires-python = ">=3.10"
 # Dependencies with omitted version numbers get a fixed version from qudi-core
 dependencies = [
-    'qudi-core>=1.7.0',
+    'qudi-core>=1.8.0',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit',
