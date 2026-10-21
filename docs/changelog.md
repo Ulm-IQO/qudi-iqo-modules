@@ -28,6 +28,8 @@
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
 - Added Magnet Toolchain
+- Added hardware file `hardware.picoquant.snapi_fast_counter` to use PicoQuant TCSPC / event-timer devices (e.g. MultiHarp 150) via `snAPI` as gated or ungated fastcounters for pulsed measurements
+- Added `CorrelationLogic` and `CorrelationGui` for g(2) correlation measurements with the PicoQuant `snAPI` hardware
 
 ### Other
 - Disabled workflow triggers on a draft PR
