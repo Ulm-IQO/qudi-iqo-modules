@@ -271,8 +271,9 @@ class SnapiFastCounter(FastCounterInterface):
     _trigger_channel = ConfigOption('trigger_channel', 0, missing='warn')
     _trigger_marker = ConfigOption('trigger_marker', None, missing='nothing')
 
-    # Lower cut-off for the advertised bin width list. The base resolution of a MultiHarp 150P is
-    # 5 ps; advertising it would make the pulsed logic default to 5 ps bins and allocate enormous
+    # Lower cut-off for the advertised bin width list. The base resolution depends on the device
+    # variant (e.g. 5 ps for a MultiHarp 150 P, 80 ps for the reduced-resolution version);
+    # advertising the finest bins would make the pulsed logic default to them and allocate enormous
     # gate histograms. Lower this for high-resolution lifetime measurements.
     _min_binwidth_s = ConfigOption('min_binwidth_s', 1.0e-9, missing='nothing')
     # Guard against accidentally allocating an unreasonably large histogram.
