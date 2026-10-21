@@ -59,9 +59,9 @@ class CorrelationGui(GuiBase):
         self._mw = CorrelationMainWindow()
         logic = self._logic()
 
-        # Plot curve with peak-preserving downsampling -- learned the hard way elsewhere in this
-        # session that an un-downsampled pyqtgraph curve redrawn every poll tick can freeze the UI
-        # once the array gets large (here: driven by window_size_s / bin_width_s).
+        # Plot curve with peak-preserving downsampling: an un-downsampled pyqtgraph curve redrawn
+        # every poll tick can freeze the UI once the array gets large (here: driven by
+        # window_size_s / bin_width_s).
         self._g2_curve = pg.PlotDataItem(pen=palette.c1)
         self._g2_curve.setDownsampling(auto=True, method='peak')
         self._g2_curve.setClipToView(True)
@@ -80,8 +80,7 @@ class CorrelationGui(GuiBase):
         sw.acquisition_time_spinbox.setValue(settings['acquisition_time_s'])
 
         # Populate the per-channel trigger table with the real values currently on the device,
-        # not placeholder defaults -- same reasoning as reading back fast_counter_settings earlier
-        # this session rather than assuming the GUI state matches the hardware.
+        # not placeholder defaults, rather than assuming the GUI state matches the hardware.
         tw = self._mw.trigger_dockwidget
         for channel, level_spinbox in tw.level_spinboxes.items():
             try:
