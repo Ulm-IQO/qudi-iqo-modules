@@ -101,3 +101,60 @@ class QuintupleSinSumEnvelopeSinn(EnvelopeSinnMixin, QuintupleSinSum):
 class SextupleSinSumEnvelopeSinn(EnvelopeSinnMixin, SextupleSinSum):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
+
+class EnvelopeGaussianMixin(SamplingBase):
+    """
+    Mixin to sine like sampling functions that adds a Gaussian envelope.
+    The envelope is centred in the element and truncated at +-n_sigma, so sigma = length / (2 * n_sigma).
+    With `lifted` the value at the truncation point is subtracted and the result renormalised, so the
+    envelope starts and ends at exactly zero instead of stepping by exp(-n_sigma**2 / 2) at each edge.
+    To use, create a subclass inheriting the bare sine sampling function and this mixin.
+    """
+
+    params = OrderedDict()
+
+    params['n_sigma'] = {'unit': '', 'init': 2.0, 'min': 0.5, 'max': 10.0, 'type': float}
+    params['lifted'] = {'unit': '', 'init': True, 'min': 0, 'max': 1, 'type': bool}
+
+    def __init__(self, n_sigma=None, lifted=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(EnvelopeGaussianMixin.params)
+        self.n_sigma = self.params['n_sigma']['init'] if n_sigma is None else float(n_sigma)
+        self.lifted = self.params['lifted']['init'] if lifted is None else bool(lifted)
+
+    @staticmethod
+    def envelope(t_rel, n_sigma, lifted):
+        """
+        Gaussian envelope on the relative time t_rel in [0, 1] with its peak at 0.5.
+
+        @param array_like t_rel: relative time within the element
+        @param float n_sigma: truncation point in units of sigma
+        @param bool lifted: subtract the edge value so that the envelope starts and ends at zero
+        @return numpy.ndarray: envelope values in [0, 1]
+        """
+        envelope = np.exp(-0.5 * ((np.asarray(t_rel, dtype=float) - 0.5) * 2.0 * n_sigma) ** 2)
+        if lifted:
+            edge = np.exp(-0.5 * n_sigma**2)
+            envelope = np.clip((envelope - edge) / (1.0 - edge), 0.0, None)
+        return envelope
+
+    def get_samples(self, time_array):
+        bare_samples = super().get_samples(time_array)
+        t_rel = np.arange(time_array.size) / time_array.size  # time in units from 0..1
+        return bare_samples * self.envelope(t_rel, self.n_sigma, self.lifted)
+
+
+class SinEnvelopeGaussian(EnvelopeGaussianMixin, Sin):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class DoubleSinSumEnvelopeGaussian(EnvelopeGaussianMixin, DoubleSinSum):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
+class TripleSinSumEnvelopeGaussian(EnvelopeGaussianMixin, TripleSinSum):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
