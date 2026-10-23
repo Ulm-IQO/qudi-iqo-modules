@@ -144,6 +144,7 @@ class SequenceGeneratorLogic(LogicBase):
     sigBenchmarkComplete = QtCore.Signal()
 
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
+    sigPredefinedMethodsUpdated = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -656,6 +657,20 @@ class SequenceGeneratorLogic(LogicBase):
     @property
     def generate_method_params(self):
         return self._pog.predefined_method_parameters
+
+    @QtCore.Slot()
+    def refresh_predefined_methods(self):
+        """ Re-import all predefined generator modules and rebuild the available generate methods.
+        Keeps the previous methods if the import fails.
+        """
+        try:
+            pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+            pog.activate_plugins()
+        except:
+            self.log.exception('Refreshing predefined methods failed. Keeping previous methods:')
+        else:
+            self._pog = pog
+        self.sigPredefinedMethodsUpdated.emit()
 
     @property
     def generation_parameters(self):

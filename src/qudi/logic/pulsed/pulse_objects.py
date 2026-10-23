@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import copy
 import inspect
 import importlib
+import sys
 import numpy as np
 import warnings
 from functools import partial
@@ -30,7 +31,7 @@ from functools import partial
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_modules_from_ns, get_modules_from_path, is_subclass
+from qudi.util.module_finder import get_module_names_from_ns, get_modules_from_ns, get_modules_from_path, is_subclass
 
 
 class PulseBlockElement(object):
@@ -1778,10 +1779,14 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # Import predefined generator modules
         # Import default namespace "qudi.logic.pulsed.predefined_generate_methods"
-        try:
-            _default_generator_ns = importlib.reload(_default_generator_ns)
-        except NameError:
-            import qudi.logic.pulsed.predefined_generate_methods as _default_generator_ns
+        import qudi.logic.pulsed.predefined_generate_methods as _default_generator_ns
+
+        for module_name in get_module_names_from_ns(_default_generator_ns):
+            if module_name in sys.modules:
+                try:
+                    importlib.reload(sys.modules[module_name])
+                except:
+                    self.log.exception(f'Exception while reloading module "{module_name}":')
 
         # Import predefined generator modules and get a list of generator classes
         generator_classes = list(get_modules_from_ns(
