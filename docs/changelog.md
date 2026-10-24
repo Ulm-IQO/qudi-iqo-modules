@@ -17,6 +17,8 @@
 - bug fixes for millennia eV laser
 - Fixed data trace generation for `FastCounterDummy` in gated and ungated modes, so that measurements yield a clean oscillation for an arbitrary number of points
 - Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
+- Fixed `SequenceGeneratorLogic` with generation parameters saved by an older version: missing parameters (e.g. `pulse_envelope`) get their default values on activation, so predefined methods no longer fail with `KeyError`
+- Fixed activation of `SequenceGeneratorLogic` when a saved pulse asset can not be unpickled: the asset is skipped with a warning instead of aborting the activation
 
 ### New Features
 - Refactored pulsed logic modules to use module finder that was added to core
