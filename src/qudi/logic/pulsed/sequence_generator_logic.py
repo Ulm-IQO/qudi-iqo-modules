@@ -52,6 +52,26 @@ from qudi.util.yaml_helpers import dataclass_representer, pulse_envelope_constru
 SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
 SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
 
+# Global parameters describing the channel usage and common parameters used during pulsed object
+# generation for predefined methods. Parameters missing from status variables saved by an older
+# version are filled in from here on activation.
+DEFAULT_GENERATION_PARAMETERS = {
+    'laser_channel': 'd_ch1',
+    'sync_channel': '',
+    'gate_channel': '',
+    'microwave_channel': 'a_ch1',
+    'microwave_frequency': 2.87e9,
+    'microwave_amplitude': 0.0,
+    'rabi_period': 100e-9,
+    'laser_length': 3e-6,
+    'laser_delay': 500e-9,
+    'wait_time': 1e-6,
+    'analog_trigger_voltage': 0.0,
+    'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
+    'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
+    'pulse_envelope_order': 1,
+}
+
 
 class SequenceGeneratorLogic(LogicBase):
     """
@@ -99,25 +119,8 @@ class SequenceGeneratorLogic(LogicBase):
 
     # status vars
     # Global parameters describing the channel usage and common parameters used during pulsed object
-    # generation for predefined methods.
-    _generation_parameters = StatusVar(
-        default={
-            'laser_channel': 'd_ch1',
-            'sync_channel': '',
-            'gate_channel': '',
-            'microwave_channel': 'a_ch1',
-            'microwave_frequency': 2.87e9,
-            'microwave_amplitude': 0.0,
-            'rabi_period': 100e-9,
-            'laser_length': 3e-6,
-            'laser_delay': 500e-9,
-            'wait_time': 1e-6,
-            'analog_trigger_voltage': 0.0,
-            'optimal_control_assets_path': 'C:\\Software\\qudi_data\\optimal_control_assets',
-            'pulse_envelope': PulseEnvelope(PulseEnvelopeType.rectangle),
-            'pulse_envelope_order': 1,
-        }
-    )
+    # generation for predefined methods. See DEFAULT_GENERATION_PARAMETERS.
+    _generation_parameters = StatusVar(default=copy.deepcopy(DEFAULT_GENERATION_PARAMETERS))
 
     # The created pulse objects (PulseBlock, PulseBlockEnsemble, PulseSequence) are saved in
     # these dictionaries. The keys are the names.
@@ -178,6 +181,12 @@ class SequenceGeneratorLogic(LogicBase):
         """Initialisation performed during activation of the module."""
         if not os.path.exists(self._assets_storage_dir):
             os.makedirs(self._assets_storage_dir)
+
+        # Generation parameters introduced after the status variables were saved get their defaults
+        for name, value in DEFAULT_GENERATION_PARAMETERS.items():
+            if name not in self._generation_parameters:
+                self.log.info(f'Adding missing generation parameter "{name}" with its default value.')
+                self._generation_parameters[name] = copy.deepcopy(value)
 
         # additional import paths for generator modules
         self._predefined_path_list = normalize_import_paths(
@@ -804,13 +813,23 @@ class SequenceGeneratorLogic(LogicBase):
             except pickle.UnpicklingError:
                 self.log.error('Failed to de-serialize PulseBlock "{0}" from file.'.format(block_name))
                 os.remove(filepath)
-            except ModuleNotFoundError:
-                self.log.error(
-                    'Failed to de-serialize PulseBlock "{0}" from file because of missing dependencies.\n'
-                    'For better debugging I dumped the traceback to debug.'.format(block_name)
-                )
-                self.log.debug('{0!s}'.format(traceback.format_exc()))
+            except Exception as err:
+                # e.g. a sampling function whose module or class no longer exists
+                self._warn_unloadable_asset('PulseBlock', block_name, filepath, err)
+                block = None
         return block
+
+    def _warn_unloadable_asset(self, asset_type, name, filepath, err):
+        """
+        Report a saved asset that can not be de-serialized, e.g. because it was created with code
+        that no longer exists, and skip it instead of aborting the activation of this module.
+        """
+        self.log.warning(
+            '{0} "{1}" saved in "{2}" was skipped because it can not be loaded ({3}: {4}). It was probably '
+            'created with an older or newer version of the pulsed modules. Delete the file to silence this '
+            'message.'.format(asset_type, name, filepath, type(err).__name__, err)
+        )
+        self.log.debug('{0!s}'.format(traceback.format_exc()))
 
     def _update_blocks_from_file(self):
         """
@@ -918,6 +937,9 @@ class SequenceGeneratorLogic(LogicBase):
                     )
                 )
                 os.remove(filepath)
+            except Exception as err:
+                self._warn_unloadable_asset('PulseBlockEnsemble', ensemble_name, filepath, err)
+                ensemble = None
         return ensemble
 
     def _update_ensembles_from_file(self):
@@ -1036,6 +1058,9 @@ class SequenceGeneratorLogic(LogicBase):
             except pickle.UnpicklingError:
                 self.log.error('Failed to de-serialize PulseSequence "{0}" from file.'.format(sequence_name))
                 os.remove(filepath)
+                return None
+            except Exception as err:
+                self._warn_unloadable_asset('PulseSequence', sequence_name, filepath, err)
                 return None
 
         # Conversion for backwards compatibility
