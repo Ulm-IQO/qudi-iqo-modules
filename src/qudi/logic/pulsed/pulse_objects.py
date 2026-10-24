@@ -1354,6 +1354,14 @@ class PredefinedGeneratorBase:
                 mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
                     amplitude=amp, frequency=freq, phase=phase, order=envelope.parameters['order']
                 )
+            elif envelope.type == PulseEnvelopeType.gaussian:
+                mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeGaussian(
+                    amplitude=amp,
+                    frequency=freq,
+                    phase=phase,
+                    n_sigma=envelope.parameters['n_sigma'],
+                    lifted=envelope.parameters['lifted'],
+                )
             else:
                 raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
         return mw_element
@@ -1406,6 +1414,14 @@ class PredefinedGeneratorBase:
                     mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeSinn(
                         amplitude=amps[0], frequency=freqs[0], phase=phases[0], order=envelope.parameters['order']
                     )
+                elif envelope.type == PulseEnvelopeType.gaussian:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.SinEnvelopeGaussian(
+                        amplitude=amps[0],
+                        frequency=freqs[0],
+                        phase=phases[0],
+                        n_sigma=envelope.parameters['n_sigma'],
+                        lifted=envelope.parameters['lifted'],
+                    )
                 else:
                     raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
 
@@ -1438,6 +1454,17 @@ class PredefinedGeneratorBase:
                         phase_1=phases[0],
                         phase_2=phases[1],
                         order=envelope.parameters['order'],
+                    )
+                elif envelope.type == PulseEnvelopeType.gaussian:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.DoubleSinSumEnvelopeGaussian(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        n_sigma=envelope.parameters['n_sigma'],
+                        lifted=envelope.parameters['lifted'],
                     )
                 else:
                     raise ValueError(f"Unsupported envelope type: {envelope.type.name}")
@@ -1479,6 +1506,20 @@ class PredefinedGeneratorBase:
                         phase_2=phases[1],
                         phase_3=phases[2],
                         order=envelope.parameters['order'],
+                    )
+                elif envelope.type == PulseEnvelopeType.gaussian:
+                    mw_element.pulse_function[self.microwave_channel] = SamplingFunctions.TripleSinSumEnvelopeGaussian(
+                        amplitude_1=amps[0],
+                        amplitude_2=amps[1],
+                        amplitude_3=amps[2],
+                        frequency_1=freqs[0],
+                        frequency_2=freqs[1],
+                        frequency_3=freqs[2],
+                        phase_1=phases[0],
+                        phase_2=phases[1],
+                        phase_3=phases[2],
+                        n_sigma=envelope.parameters['n_sigma'],
+                        lifted=envelope.parameters['lifted'],
                     )
                 else:
                     raise ValueError(f"Unsupported envelope type: {envelope.type.name}")

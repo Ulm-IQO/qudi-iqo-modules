@@ -231,6 +231,7 @@ class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
     rectangle = 'rectangle'
     sin_n = 'sin_n'
     parabola = 'parabola'
+    gaussian = 'gaussian'
     optimal = 'optimal'
     from_gen_settings = '_from_gen_settings'
 
@@ -250,6 +251,7 @@ class PulseEnvelope:
     def default_parameters(self) -> dict:
         defaults = {'rectangle': {},
                     'parabola': {'order': 1},
+                    'gaussian': {'n_sigma': 2.0, 'lifted': True},
                     'optimal': {},
                     'sin_n': {'order': 2},
                     '_from_gen_settings': {}}

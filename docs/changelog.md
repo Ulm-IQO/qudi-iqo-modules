@@ -28,6 +28,9 @@
 - Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Supported pyvisa for coherent obis laser
 - Added Magnet Toolchain
+- Added `QiskitPulsedLogic` and `QiskitPulsedGui` to compile single-qubit Qiskit circuits into pulse sequences and play them on the pulse generator
+- Added `QiskitPredefinedGenerator` predefined methods for Qiskit circuits in `pulsed_gui`
+- Added the `gaussian` pulse envelope
 
 ### Other
 - Disabled workflow triggers on a draft PR
