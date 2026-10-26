@@ -305,13 +305,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating= False
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # Append ensemble to created_ensembles list
@@ -377,13 +377,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = freq_array
-        block_ensemble.measurement_information['units'] = ('Hz', '')
-        block_ensemble.measurement_information['labels'] = ('Frequency', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = False
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = freq_array
+        block_ensemble.measurement_information.units = ('Hz', '')
+        block_ensemble.measurement_information.labels = ('Frequency', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -476,13 +476,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # add metadata to invoke settings later on
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
-        block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = alternating
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = number_of_lasers
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -687,13 +687,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # add metadata to invoke settings later on
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
-        block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = alternating
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = number_of_lasers
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -802,13 +802,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # add metadata to invoke settings later on
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
-        block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = alternating
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = number_of_lasers
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
@@ -883,13 +883,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # add metadata to invoke settings later on
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
-        block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = alternating
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = number_of_lasers
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
@@ -969,13 +969,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # add metadata to invoke settings later on
         number_of_lasers = 2 * num_of_points if alternating else num_of_points
-        block_ensemble.measurement_information['alternating'] = alternating
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = number_of_lasers
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = alternating
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = number_of_lasers
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
@@ -1047,13 +1047,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = True
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = amp_array
-        block_ensemble.measurement_information['units'] = ('V', '')
-        block_ensemble.measurement_information['labels'] = ('MW amplitude', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = 2 * num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = True
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = amp_array
+        block_ensemble.measurement_information.units = ('V', '')
+        block_ensemble.measurement_information.labels = ('MW amplitude', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = 2 * num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -1125,13 +1125,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = True
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Spinlock time', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = 2 * num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = True
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = tau_array
+        block_ensemble.measurement_information.units = ('s', '')
+        block_ensemble.measurement_information.labels = ('Spinlock time', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = 2 * num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -1207,13 +1207,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = steps_array
-        block_ensemble.measurement_information['units'] = ('#', '')
-        block_ensemble.measurement_information['labels'] = ('Polarization Steps', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = 2 * polarization_steps
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = False
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = steps_array
+        block_ensemble.measurement_information.units = ('#', '')
+        block_ensemble.measurement_information.labels = ('Polarization Steps', 'Signal')
+        block_ensemble.measurement_information.number_of_lasers = 2 * polarization_steps
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -1330,13 +1330,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 approx_transfer_eff_perfect_adiab))
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = freq_array
-        block_ensemble.measurement_information['labels'] = ('Frequency', '')
-        block_ensemble.measurement_information['units'] = ('Hz', '')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = False
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = freq_array
+        block_ensemble.measurement_information.labels = ('Frequency', '')
+        block_ensemble.measurement_information.units = ('Hz', '')
+        block_ensemble.measurement_information.number_of_lasers = num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -1471,13 +1471,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                 approx_transfer_eff_perfect_adiab_ae))
 
         # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = freq_array
-        block_ensemble.measurement_information['labels'] = ('Frequency', '')
-        block_ensemble.measurement_information['units'] = ('Hz', '')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
+        block_ensemble.measurement_information.alternating = False
+        block_ensemble.measurement_information.laser_ignore_list = list()
+        block_ensemble.measurement_information.controlled_variable = freq_array
+        block_ensemble.measurement_information.labels = ('Frequency', '')
+        block_ensemble.measurement_information.units = ('Hz', '')
+        block_ensemble.measurement_information.number_of_lasers = num_of_points
+        block_ensemble.measurement_information.counting_length = self._get_ensemble_count_length(
             ensemble=block_ensemble, created_blocks=created_blocks)
 
         # append ensemble to created ensembles
@@ -1586,13 +1586,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         t1_sequence.refresh_parameters()
 
         # add metadata to invoke settings later on
-        t1_sequence.measurement_information['alternating'] = False
-        t1_sequence.measurement_information['laser_ignore_list'] = list()
-        t1_sequence.measurement_information['controlled_variable'] = tau_array
-        t1_sequence.measurement_information['units'] = ('s', '')
-        t1_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        t1_sequence.measurement_information['number_of_lasers'] = len(tau_array)
-        t1_sequence.measurement_information['counting_length'] = self._get_sequence_count_length(t1_sequence, created_ensembles, created_blocks)
+        t1_sequence.measurement_information.alternating = False
+        t1_sequence.measurement_information.laser_ignore_list = list()
+        t1_sequence.measurement_information.controlled_variable = tau_array
+        t1_sequence.measurement_information.units = ('s', '')
+        t1_sequence.measurement_information.labels = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        t1_sequence.measurement_information.number_of_lasers = len(tau_array)
+        t1_sequence.measurement_information.counting_length = self._get_sequence_count_length(t1_sequence, created_ensembles, created_blocks)
 
         # Append PulseSequence to created_sequences list
         created_sequences.append(t1_sequence)
