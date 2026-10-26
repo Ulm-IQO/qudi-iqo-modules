@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the shared normalization helper used by the settings setters of
-PulsedMeasurementLogic, PulsedMasterLogic and SequenceGeneratorLogic.
+Helpers that normalize the arguments of the settings setters in PulsedMeasurementLogic,
+PulsedMasterLogic and SequenceGeneratorLogic.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -25,45 +25,37 @@ __all__ = ['SettingsTypeError', 'coerce_settings', 'as_settings_dict']
 
 
 class SettingsTypeError(TypeError):
-    """Raised when a caller hands a settings setter something it cannot interpret.
-
-    """
+    """Raised when a settings setter receives a value it cannot interpret."""
 
 
 def coerce_settings(value, kwargs, current, cls):
     """Normalize a settings argument into an instance of `cls`.
 
-    `cls` is the one concrete settings dataclass the call site accepts (e.g. FastCounterSettings),
-    not a generic "is this a class" check - anything that is not an instance of that type (or a
-    subclass of it), a dict, or None is rejected.
-
-    A dict means a *partial patch* relative to `current`; a `cls` instance means a *full
-    replacement*. Neither `value` nor `kwargs` is mutated.
+    A `cls` instance replaces the settings completely; a dict is applied as a partial update on
+    top of `current`. Neither `value` nor `kwargs` is mutated.
 
     Parameters
     ----------
     value : cls or dict or None
         The settings argument as passed by the caller.
     kwargs : dict
-        The setter's keyword arguments. Take precedence over conflicting names in `value`.
+        The setter's keyword arguments. Override matching keys in `value`.
     current : cls
-        The settings currently in effect, used as the base a partial patch is applied to.
+        The settings currently in effect.
     cls : type
         The settings dataclass to normalize to.
 
     Returns
     -------
     cls
-        The new settings instance to apply. Never the same object as `current` unless `value`
-        happens to be `current` itself.
+        The new settings instance.
 
     Raises
     ------
     SettingsTypeError
-        `value` is neither a `cls`, a dict, nor None.
+        If `value` is not a `cls`, a dict or None.
     TypeError
-        `cls`/`current` are inconsistent, or `kwargs` names a field `cls` does not have - both
-        are bugs in the calling module rather than bad user input.
+        If `cls` and `current` don't match, or `kwargs` contains an unknown field.
     """
     if not (isinstance(cls, type) and is_dataclass(cls)):
         raise TypeError(f'coerce_settings: cls must be a dataclass type, got {cls!r}')
@@ -71,8 +63,7 @@ def coerce_settings(value, kwargs, current, cls):
         raise TypeError(f'coerce_settings: current must be a {cls.__name__}, got '
                         f'{type(current).__name__}')
 
-    # Check for the dataclass before the dict: AnalysisParameters/ExtractionParameters/
-    # GenerationMethodParameters are dict subclasses, so isinstance(x, dict) is True for them.
+    # Check the dataclass first: some settings classes are dict subclasses.
     if isinstance(value, cls):
         if not kwargs:
             return value
@@ -90,30 +81,26 @@ def coerce_settings(value, kwargs, current, cls):
 def as_settings_dict(value, kwargs, cls=None):
     """Normalize a settings argument into a plain dict.
 
-    The counterpart of coerce_settings() for the relay layer, where the value has to end up as a
-    dict regardless: a QtCore.Signal(dict) cannot carry a dataclass across a thread boundary, so
-    PulsedMasterLogic must flatten before emitting. Unlike coerce_settings() this does not need
-    the current settings, since it produces a (possibly partial) dict rather than a complete
-    settings object.
+    Used by PulsedMasterLogic, which relays settings through a QtCore.Signal(dict).
 
     Parameters
     ----------
     value : cls or dict or None
         The settings argument as passed by the caller.
     kwargs : dict
-        The setter's keyword arguments. Take precedence over conflicting names in `value`.
+        The setter's keyword arguments. Override matching keys in `value`.
     cls : type, optional
-        Settings dataclass to accept in addition to dict/None. If None, only dict/None are valid.
+        Settings dataclass to accept in addition to dict and None.
 
     Returns
     -------
     dict
-        A new dict; neither `value` nor `kwargs` is mutated.
+        A new dict.
 
     Raises
     ------
     SettingsTypeError
-        `value` is neither a `cls`, a dict, nor None.
+        If `value` is not a `cls`, a dict or None.
     """
     if cls is not None and isinstance(value, cls):
         return {**value.to_dict(), **kwargs}

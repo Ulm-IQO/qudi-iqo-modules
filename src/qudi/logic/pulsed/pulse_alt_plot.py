@@ -134,10 +134,6 @@ class AltPlotAnalyzer(AltPlotMethodBase):
     def __init__(self, pulsedmeasurementlogic):
         super().__init__(pulsedmeasurementlogic)
         self._methods: dict[str, AltPlotMethodBase] = dict()      # {name: instance}
-        # The real, shared AlternativeSignalSettings instance held by PulsedMeasurementLogic's
-        # settings - not a copy. Mutated in place (attribute/dict assignment) as this class's
-        # real, live, authoritative state, the same pattern PulseExtractor/PulseAnalyzer already
-        # use for their own ExtractionParameters/AnalysisParameters.
         self.__settings = pulsedmeasurementlogic.alternate_signal_settings
 
         # Import from the default namespace package
@@ -167,14 +163,10 @@ class AltPlotAnalyzer(AltPlotMethodBase):
                 self.log.warning(f'Duplicate alternative plot method name "{method_name}". '
                                  f'Overwriting the previously registered one.')
             self._methods[method_name] = instance
-            # Values already persisted in self.__settings.parameters (e.g. from a previous
-            # session) win over compute()'s own signature defaults - see _get_method_kwargs().
             self.__settings.parameters.update(self._get_method_kwargs(instance.compute))
 
         # Drop any persisted parameter that no longer corresponds to a real method (e.g. removed
-        # or renamed since last session) - mirrors PulseExtractor/PulseAnalyzer's same cleanup, so
-        # a stale value can't accumulate forever or get silently adopted by an unrelated future
-        # method that happens to reuse the same parameter name.
+        # or renamed since last session) 
         valid_parameter_names = set()
         for instance in self._methods.values():
             valid_parameter_names.update(inspect.signature(instance.compute).parameters.keys())
@@ -182,8 +174,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
         for param in [p for p in list(self.__settings.parameters) if p not in valid_parameter_names]:
             del self.__settings.parameters[param]
 
-        # A persisted selection that no longer matches any loaded method (e.g. its plugin file
-        # was removed, or this is the very first activation) must not be kept as "selected".
+        # A persisted selection that no longer matches any loaded method must not be kept as "selected".
         if self.__settings.method not in self._methods:
             if self.__settings.method is not None:
                 self.log.warning(f'Previously selected alternative plot method '

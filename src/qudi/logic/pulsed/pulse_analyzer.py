@@ -86,9 +86,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
 
         # Dictionary holding references to all analysis methods
         self._analysis_methods = dict()
-        # The real, shared AnalysisParameters instance held by PulsedMeasurementLogic's
-        # settings - not a copy. Mutated in place (dict item assignment) as this class's real,
-        # live, authoritative state; nothing else needs to be kept in sync with it.
+        # The real, shared AnalysisParameters instance held by PulsedMeasurementLogic's settings
         self._parameters = pulsedmeasurementlogic.analysis_parameters
 
         # import analysis modules from default namespace package
@@ -133,8 +131,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         # add references to all analysis methods in each instance to a dict
         self.__populate_method_dict(instance_list=analyzer_instances)
 
-        # Drop any persisted parameter that no longer corresponds to a real method (e.g.
-        # removed or renamed since last session)
+        # Drop any persisted parameter that no longer corresponds to a real method 
         valid_parameter_names = set()
         for method in self._analysis_methods.values():
             valid_parameter_names.update(inspect.signature(method).parameters.keys())
@@ -143,8 +140,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
             del self._parameters[param]
 
         # Fill in defaults (from method signatures) for any valid parameter name not already
-        # present in the shared, persisted self._parameters dict (e.g. a newly discovered
-        # method). Never overwrites an already-persisted value.
+        # present in the shared, persisted self._parameters dict 
         self.__populate_parameter_dict()
 
         # Ensure a valid current method is selected
@@ -164,10 +160,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         This property holds all parameters needed for the currently selected analysis_method as
         well as the currently selected method name.
 
-        Returns
-        -------
-        dict
-            Dictionary with keys being the parameter name and values being the parameter.
+        @return dict: dictionary with keys being the parameter name and values being the parameter
         """
         current_method = self._parameters.get('method')
         # Get reference to the extraction method
@@ -187,10 +180,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Also sets the current analysis method by passing its name using key "method".
         Parameters not included in self._parameters (except "method") will be ignored.
 
-        Parameters
-        ----------
-        settings_dict : dict
-            Dictionary containing the parameters to set (name, value).
+        @param dict settings_dict: dictionary containing the parameters to set (name, value)
         """
         if not isinstance(settings_dict, dict):
             return
@@ -217,10 +207,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         Return available analysis methods.
 
-        Returns
-        -------
-        dict
-            Dictionary with keys being the method names and values being the methods.
+        @return dict: Dictionary with keys being the method names and values being the methods.
         """
         return self._analysis_methods
 
@@ -229,17 +216,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Wrapper method to call the currently selected analysis method with laser_data and the
         appropriate keyword arguments.
 
-        Parameters
-        ----------
-        laser_data : numpy.ndarray
-            2D numpy array (dtype='int64') containing the timetraces for all extracted laser
-            pulses.
-
-        Returns
-        -------
-        (numpy.ndarray, numpy.ndarray)
-            Tuple of two numpy arrays containing the evaluated signal data (one data point for
-            each laser pulse) and the measurement error corresponding to each data point.
+        @param numpy.ndarray laser_data: 2D numpy array (dtype='int64') containing the timetraces
+                                         for all extracted laser pulses.
+        @return (numpy.ndarray, numpy.ndarray): tuple of two numpy arrays containing the evaluated
+                                                signal data (one data point for each laser pulse)
+                                                and the measurement error corresponding to each
+                                                data point.
         """
         current_method = self._parameters.get('method')
         analysis_method = self._analysis_methods[current_method]
@@ -253,16 +235,9 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Try to take the values from self._parameters. If the keyword is missing in the dictionary,
         take the default values from the method signature.
 
-        Parameters
-        ----------
-        method
-            Reference to a callable analysis method.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the argument keywords for <method> and corresponding values
-            from self._parameters.
+        @param method: reference to a callable analysis method
+        @return dict: A dictionary containing the argument keywords for <method> and corresponding
+                      values from self._parameters.
         """
         kwargs_dict = dict()
         method_signature = inspect.signature(method)
@@ -284,15 +259,8 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Find all classes in those modules that inherit exclusively from PulseAnalyzerBase class
         and return a list of them.
 
-        Parameters
-        ----------
-        path : str
-            Paths to import modules from.
-
-        Returns
-        -------
-        list
-            A list of imported valid analyzer classes.
+        @param str path: Paths to import modules from
+        @return list: A list of imported valid analyzer classes
         """
         class_list = list()
         # Get all python modules to import from.
@@ -349,15 +317,8 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         Helper method to check if an object is a valid analyzer class.
 
-        Parameters
-        ----------
-        obj : object
-            Object to check.
-
-        Returns
-        -------
-        bool
-            True if obj is a valid analyzer class, False otherwise.
+        @param object obj: object to check
+        @return bool: True if obj is a valid analyzer class, False otherwise
         """
         if inspect.isclass(obj):
             return PulseAnalyzerBase in obj.__bases__ and len(obj.__bases__) == 1

@@ -34,13 +34,13 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
     def analyse_mean_norm(self, laser_data, signal_start=0.0, signal_end=200e-9, norm_start=300e-9,
                           norm_end=500e-9):
         """
-        Parameters
-        ----------
-        laser_data
-        signal_start
-        signal_end
-        norm_start
-        norm_end
+
+        @param laser_data:
+        @param signal_start:
+        @param signal_end:
+        @param norm_start:
+        @param norm_end:
+        @return:
         """
         # Get number of lasers
         num_of_lasers = laser_data.shape[0]
@@ -91,11 +91,10 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
 
     def analyse_sum(self, laser_data, signal_start=0.0, signal_end=200e-9):
         """
-        Parameters
-        ----------
-        laser_data
-        signal_start
-        signal_end
+        @param laser_data:
+        @param signal_start:
+        @param signal_end:
+        @return:
         """
         # Get number of lasers
         num_of_lasers = laser_data.shape[0]
@@ -133,11 +132,11 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
 
     def analyse_mean(self, laser_data, signal_start=0.0, signal_end=200e-9):
         """
-        Parameters
-        ----------
-        laser_data
-        signal_start
-        signal_end
+
+        @param laser_data:
+        @param signal_start:
+        @param signal_end:
+        @return:
         """
         # Get number of lasers
         num_of_lasers = laser_data.shape[0]
@@ -179,18 +178,10 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         This method does not actually analyze anything.
         For 1 D data the output is raveled: for 2 D data, the output is the mean along the second axis.
 
-        Parameters
-        ----------
-        laser_data : 2D numpy.ndarray
-            The raw timetrace data from a gated fast counter
-            dim 0: gate number; dim 1: time bin.
+        @param 2D numpy.ndarray laser_data: the raw timetrace data from a gated fast counter
+                                            dim 0: gate number; dim 1: time bin
 
-        Returns
-        -------
-        numpy.ndarray
-            Analyzed data per laser pulse.
-        numpy.ndarray
-            Error per laser pulse.
+        @return numpy.ndarray, numpy.ndarray: analyzed data per laser pulse, error per laser pulse
         """
         length = len(laser_data)
         if len(np.shape(laser_data)) > 1:
@@ -206,26 +197,14 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         It then does not divide by the background window to normalize
         but rather substracts the background window to generate the output.
 
-        Parameters
-        ----------
-        laser_data : 2D numpy.ndarray
-            The raw timetrace data from a gated fast counter
-            dim 0: gate number; dim 1: time bin.
-        signal_start : float
-            Beginning of the signal window in s.
-        signal_end : float
-            End of the signal window in s.
-        norm_start : float
-            Beginning of the background window in s.
-        norm_end : float
-            End of the background window in s.
+        @param 2D numpy.ndarray laser_data: the raw timetrace data from a gated fast counter
+                                            dim 0: gate number; dim 1: time bin
+        @param float signal_start: Beginning of the signal window in s
+        @param float signal_end: End of the signal window in s
+        @param float norm_start: Beginning of the background window in s
+        @param float norm_end: End of the background window in s
 
-        Returns
-        -------
-        numpy.ndarray
-            Analyzed data per laser pulse.
-        numpy.ndarray
-            Error per laser pulse.
+        @return numpy.ndarray, numpy.ndarray: analyzed data per laser pulse, error per laser pulse
         """
         # Get number of lasers
         num_of_lasers = laser_data.shape[0]

@@ -156,11 +156,6 @@ class FastCounterDummy(FastCounterInterface):
             return -1
 
         if self._gated:
-            # np.loadtxt returns a 1D array for this single-column demo trace, and .transpose()
-            # is a no-op on a 1D array - it will NOT turn this into the 2D (gates, bins) shape
-            # the rest of the pulsed logic expects when gated. Synthesize a proper 2D array
-            # instead, by tiling/truncating the loaded trace to the configured gate length and
-            # stacking it across the configured number of gates.
             flat = self._count_data.ravel()
             gate_len = self._gate_length_bins
             reps = int(np.ceil(gate_len / flat.size)) if flat.size else 1
