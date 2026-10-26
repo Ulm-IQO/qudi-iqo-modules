@@ -76,6 +76,10 @@ class HighFinessePID(PIDControllerInterface):
         else:
             raise ValueError(f'Unknown unit {self._input_unit} configured. Use m or Hz.')
 
+        # activate channel and start measurement in case it was not done through HighFinesse GUI
+        proxy.activate_channel(self._input_channel)
+        proxy.start_measurement()
+
     def on_deactivate(self) -> None:
         pass
 
