@@ -91,7 +91,6 @@ class PulseExtractor(PulseExtractorBase):
         # The real, shared ExtractionParameters instance held by PulsedMeasurementLogic's
         # settings 
         self._parameters = pulsedmeasurementlogic.extraction_parameters
-
         # Currently selected extraction method
         self._current_extraction_method = None
         # Extraction sub class predicate
