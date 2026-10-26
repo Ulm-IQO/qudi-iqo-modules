@@ -167,14 +167,6 @@ def _default_measurement_settings():
     """Factory for the default PulsedMeasurementSettings, used both as the StatusVar default
     and as the fallback when restoring a malformed/legacy status value.
 
-    microwave_settings/fast_counter_settings/readout_settings reuse the single shared default
-    instances defined in pulsed_measurement_logic_data.py (that file can't import back from this
-    one, so it owns these literals rather than duplicating them here) - PulsedMeasurementSettings.
-    from_dict() falls back to the exact same instances when a saved settings file is missing one
-    of these keys. alternate_signal_settings/extraction_parameters/analysis_parameters are mutable
-    (AltPlotAnalyzer/PulseExtractor/PulseAnalyzer hold and mutate them in place as live state), so
-    - unlike the frozen settings above - each one is built fresh here rather than sharing a single
-    module-level instance, to avoid one measurement's live state leaking into another's defaults.
     """
     return PulsedMeasurementSettings(
         microwave_settings=_DEFAULT_MICROWAVE_SETTINGS,
@@ -240,24 +232,14 @@ class PulsedMeasurementLogic(LogicBase):
         representer=lambda obj: obj.settings.measurement_settings.to_dict(),
     )
 
-    # timer_interval_s/fit_configs are deliberately independent StatusVars, NOT part of
-    # PulsedMeasurementSettings/_pulsed_measurement above - they're operational/GUI bookkeeping
-    # (analysis-loop cadence, available fit-curve definitions), not measurement-defining settings,
-    # so they shouldn't show up in a saved measurement's settings dict. This mirrors exactly how
-    # both were persisted before this module's settings were consolidated into one dataclass.
+    # timer_interval_s/fit_configs are deliberately independent StatusVars, 
     _timer_interval_s = StatusVar(name='timer_interval_s', default=5.0)
-    # fit_configs' representer/constructor read/write self.fit_config_model directly (see below) -
-    # the model (a QAbstractListModel from qudi-core) is the live, authoritative state; this
-    # StatusVar is just a thin persistence bridge over it, so no separate sync-on-change plumbing
-    # is needed the way a plain stored value would require.
+    # fit_configs' representer/constructor read/write self.fit_config_model directly
     _fit_configs = StatusVar(name='fit_configs', default=None)
 
     # notification signals for master module (i.e. GUI)
     sigMeasurementDataUpdated = QtCore.Signal()
-    # Emitted whenever a pulsed-analysis tick fails (length mismatch, extraction/analysis
-    # exception, ...) with a human-readable message, and again with '' once a subsequent tick
-    # succeeds - see _report_analysis_problem()/_clear_analysis_problem(). GUI code MAY subscribe
-    # to show/clear a warning; nothing relies on it being connected.
+    
     sigAnalysisProblem = QtCore.Signal(str)
     sigTimerUpdated = QtCore.Signal(float, int, float)
     sigFitUpdated = QtCore.Signal(str, object, bool)
@@ -294,29 +276,17 @@ class PulsedMeasurementLogic(LogicBase):
         self.alt_fc = None
 
         # Holding area for a newly loaded asset/closure that hasn't been committed as the
-        # actively-measured one yet - see loaded_asset setter/_commit_pending_asset().
+        # actively-measured one yet 
         self._pending_loaded_asset = None
         self._pending_ensembles = {}
         self._pending_blocks = {}
 
-        # measurement data/loaded asset/fit results are NOT initialized here - they live on
-        # self._pulsed_measurement.data/.objects (see the _settings/measurement_data/
-        # _loaded_asset/_fit_result/_fit_result_alt properties below), which is only meaningfully
-        # populated once qudi-core's StatusVar restoration has run (before on_activate()) and
-        # once _initialize_data_arrays() has built real data arrays (start of on_activate()) -
-        # exactly mirroring how _settings itself already worked before this class held a single
-        # consolidated PulsedMeasurement instance: nothing here reads/writes settings-derived
-        # state before activation either.
+       
 
     @property
     def _settings(self):
         """The real, shared PulsedMeasurementSettings this module actually works with - lives on
-        self._pulsed_measurement.settings.measurement_settings. Kept as a property backed by one
-        consolidated PulsedMeasurement instance (rather than renaming every one of this class's
-        many internal `self._settings.xxx` call sites) so this really is a change in storage -
-        _settings/measurement_data/_loaded_asset/_fit_result/_fit_result_alt no longer
-        independently exist as attributes - without needing to touch every existing read/write
-        site below, which continue to work completely unchanged.
+        self._pulsed_measurement.settings.measurement_settings. 
         """
         return self._pulsed_measurement.settings.measurement_settings
 
@@ -328,21 +298,14 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def measurement_data(self):
-        """The real, shared PulsedMeasurementData held on self._pulsed_measurement.data - mutated
-        in place by the measurement loop exactly as before (PulsedMeasurementData is a plain,
-        non-frozen dataclass); see _initialize_data_arrays() for how the object itself gets
-        (re)built."""
+        """The real, shared PulsedMeasurementData held on self._pulsed_measurement.data"""
         return self._pulsed_measurement.data.measurement_data
 
     @property
     def _loaded_asset(self):
         """Whichever PulseBlockEnsemble/PulseSequence is currently loaded, held on
         self._pulsed_measurement.objects.loaded_asset. Not independently persisted - only ever set
-        externally by PulsedMasterLogic, since this module has no Connector to
-        SequenceGeneratorLogic to re-derive it on its own. sampling_information/
-        measurement_information/generation_method_parameters are exposed as properties over this
-        one reference rather than copied, avoiding the save/load race that existed when they were
-        copied on every load."""
+        externally by PulsedMasterLogic"""
         return self._pulsed_measurement.objects.loaded_asset
 
     @_loaded_asset.setter
@@ -384,9 +347,7 @@ class PulsedMeasurementLogic(LogicBase):
     @loaded_asset.setter
     def loaded_asset(self, asset):
         """Does NOT apply the new asset's settings immediately - only stores it as pending.
-        Settings/data/the active loaded-asset reference all stay whatever they were before,
-        fully self-consistent for saving, until _commit_pending_asset() runs at Play - see
-        start_pulsed_measurement()."""
+       """
         if asset is not self._loaded_asset:
             self.log.warning(
                 'A new sequence/ensemble has been loaded, but its settings have not been applied '
@@ -398,10 +359,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def refresh_generator_settings(self, generator_settings):
         """Keep self._pulsed_measurement.settings.generator_settings fresh without a Connector to
-        SequenceGeneratorLogic. PulsedMasterLogic (which has that connector) calls this whenever
-        SequenceGeneratorLogic emits sigGeneratorSettingsUpdated/sigSamplingSettingsUpdated, so
-        this module's held live state - not just its on-demand get_pulsed_measurement() snapshots
-        - reflects the current generator settings."""
+        SequenceGeneratorLogic."""
         self._pulsed_measurement.settings = replace(
             self._pulsed_measurement.settings, generator_settings=generator_settings
         )
@@ -415,8 +373,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _commit_pending_asset(self):
         """Promote whatever's pending (from the last loaded_asset/refresh_loaded_asset_closure()
-        call) to the actively-measured asset - called at the start of start_pulsed_measurement(),
-        right before settings get invoked from it and data arrays get rebuilt to match."""
+        call) to the actively-measured asset """
         self._loaded_asset = self._pending_loaded_asset
         self._pulsed_measurement.objects.ensembles = self._pending_ensembles
         self._pulsed_measurement.objects.blocks = self._pending_blocks
@@ -424,9 +381,7 @@ class PulsedMeasurementLogic(LogicBase):
     def get_pulsed_measurement(self, generator_settings=None, ensembles=None, blocks=None):
         """Build a PulsedMeasurement snapshot bundling this module's settings/data/loaded asset
         with the caller-supplied SequenceGeneratorSettings and resolved ensemble/block closure
-        (this module has no Connector to SequenceGeneratorLogic, so it can't fetch those itself -
-        see PulsedMasterLogic.get_pulsed_measurement()). Leave all three at their defaults for a
-        measurement-only snapshot.
+        
 
         Returns independent copies (not live references), so the snapshot is frozen in time.
 
@@ -470,15 +425,8 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _migrate_legacy_settings_if_needed(self):
         """One-time upgrade path for a status file saved by either the pre-refactor version of
-        this module (~20 individually-keyed StatusVars instead of one '_settings' key), or a
-        later format with timer_interval_s/fit_configs nested inside '_settings' instead of their
+        this module , or a later format with timer_interval_s/fit_configs nested inside '_settings' instead of their
         own independent StatusVars.
-
-        qudi-core's StatusVar loading only looks up each StatusVar's own top-level key by name -
-        it can't see old sibling keys or nested values elsewhere in the file, so without this,
-        those values would silently reset to defaults and then be permanently lost on the next
-        save (which overwrites, not merges). This detects both cases, backs up the raw file
-        (pre-refactor case only), and rebuilds the affected attributes from the old values.
         """
         file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
         try:
@@ -508,19 +456,13 @@ class PulsedMeasurementLogic(LogicBase):
             except Exception:
                 self.log.exception('Failed to migrate legacy measurement settings - keeping defaults:')
 
-            # fit_configs' pre-refactor top-level key ('fit_configs') is identical to its current
-            # independent StatusVar's key - qudi-core's normal restore already found it with no
-            # help needed here. timer_interval_s's pre-refactor key was mangled/private, so it
-            # still needs migrating explicitly.
+           
             self._timer_interval_s = float(
                 raw_status.get('_PulsedMeasurementLogic__timer_interval', self._timer_interval_s)
             )
             return
 
-        # A status file saved by this session's brief in-between "everything in one dataclass"
-        # format has timer_interval_s/fit_configs nested one level deeper (inside '_settings')
-        # than either the pre-refactor or the current independent-StatusVar format expects - back
-        # -fill them so upgrading from that format doesn't silently reset to defaults either.
+        
         nested = raw_status.get('_settings')
         if isinstance(nested, dict):
             if 'timer_interval_s' in nested:
@@ -532,9 +474,7 @@ class PulsedMeasurementLogic(LogicBase):
         """ Initialisation performed during activation of the module.
         """
         # Must run first: self._settings has already been restored (or defaulted) by qudi-core's
-        # StatusVar machinery by this point - see this method's docstring for why that default
-        # can be wrong for a pre-refactor status file, and why this has to be corrected here
-        # rather than in the StatusVar's own constructor function.
+        # StatusVar machinery by this point
         self._migrate_legacy_settings_if_needed()
 
         # Create an instance of PulseExtractor
@@ -554,12 +494,6 @@ class PulsedMeasurementLogic(LogicBase):
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
         self.fit_config_model.load_configs(self._fit_configs)
-        # FitConfigurationsModel keeps its own internal storage behind Qt's row-based model API
-        # (it's a QAbstractListModel from the separately-installed qudi-core package). No
-        # sync-on-change listener is needed here - _fit_configs' representer (see its declaration)
-        # reads self.fit_config_model.dump_configs() directly at save time, so the model is always
-        # the live, authoritative source rather than something that needs mirroring into a
-        # separately-stored value.
         self.fc = FitContainer(parent=self, config_model=self.fit_config_model)
         self.alt_fc = FitContainer(parent=self, config_model=self.fit_config_model)
 
@@ -677,9 +611,6 @@ class PulsedMeasurementLogic(LogicBase):
                 settings, kwargs, self._settings.fast_counter_settings, FastCounterSettings
             )
         except SettingsTypeError as err:
-            # A caller mistake - log it and leave the settings untouched. Deliberately not raised:
-            # this is a queued cross-thread slot, where an escaping exception cannot reach the
-            # emitter and may take the whole application down mid-measurement.
             self.log.error(f'Unable to apply new fast counter settings. {err}')
             self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
             return self.fast_counter_settings
@@ -717,22 +648,16 @@ class PulsedMeasurementLogic(LogicBase):
         return self.fast_counter_settings
 
     def fast_counter_on(self):
-        """Switching on the fast counter.
+        """Switching on the fast counter
 
-        Returns
-        -------
-        int
-            Error code (0:OK, -1:error).
+        @return int: error code (0:OK, -1:error)
         """
         return self._fastcounter().start_measure()
 
     def fast_counter_off(self):
-        """Switching off the fast counter.
+        """Switching off the fast counter
 
-        Returns
-        -------
-        int
-            Error code (0:OK, -1:error).
+        @return int: error code (0:OK, -1:error)
         """
         return self._fastcounter().stop_measure()
 
@@ -750,22 +675,16 @@ class PulsedMeasurementLogic(LogicBase):
         return err
 
     def fast_counter_pause(self):
-        """Switching off the fast counter.
+        """Switching off the fast counter
 
-        Returns
-        -------
-        int
-            Error code (0:OK, -1:error).
+        @return int: error code (0:OK, -1:error)
         """
         return self._fastcounter().pause_measure()
 
     def fast_counter_continue(self):
-        """Switching off the fast counter.
+        """Switching off the fast counter
 
-        Returns
-        -------
-        int
-            Error code (0:OK, -1:error).
+        @return int: error code (0:OK, -1:error)
         """
         return self._fastcounter().continue_measure()
 
@@ -903,7 +822,6 @@ class PulsedMeasurementLogic(LogicBase):
                 settings, kwargs, self._settings.microwave_settings, MicrowaveSettings
             )
         except SettingsTypeError as err:
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to apply new microwave settings. {err}')
             self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
             return self.ext_microwave_settings
@@ -1000,9 +918,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def measurement_information(self):
-        """Metadata about whichever PulseBlockEnsemble/PulseSequence is currently loaded - read
-        live off the loaded_asset reference (see loaded_asset property), not an independently
-        stored copy."""
+        """Metadata about whichever PulseBlockEnsemble/PulseSequence is currently loaded """
         if self._loaded_asset is None:
             return MeasurementInformation().to_dict()
         return self._loaded_asset.measurement_information.to_dict()
@@ -1041,9 +957,7 @@ class PulsedMeasurementLogic(LogicBase):
     @property
     def sampling_information(self):
         """Sampling metadata for whichever PulseBlockEnsemble/PulseSequence is currently loaded
-        - read live off the loaded_asset reference, not an independently stored copy. Returns a
-        plain dict, consistent with the sibling measurement_information/generation_method_parameters
-        properties (previously returned the raw SamplingInformation dataclass instance)."""
+        """
         if self._loaded_asset is None:
             return SamplingInformation().to_dict()
         return self._loaded_asset.sampling_information.to_dict()
@@ -1065,7 +979,7 @@ class PulsedMeasurementLogic(LogicBase):
     @property
     def generation_method_parameters(self):
         """Generation kwargs for whichever PulseBlockEnsemble/PulseSequence is currently loaded
-        - read live off the loaded_asset reference, not an independently stored copy."""
+        """
         if self._loaded_asset is None:
             return GenerationMethodParameters().to_dict()
         return self._loaded_asset.generation_method_parameters.to_dict()
@@ -1133,8 +1047,6 @@ class PulsedMeasurementLogic(LogicBase):
 
     @analysis_settings.setter
     def analysis_settings(self, settings_dict):
-        # No dataclass counterpart: AnalysisParameters is a dict subclass because the parameter
-        # names are discovered at runtime from whichever analysis method is selected.
         if not isinstance(settings_dict, dict):
             raise SettingsTypeError(f'analysis_settings expects a dict, '
                                     f'got {type(settings_dict).__name__}')
@@ -1163,17 +1075,14 @@ class PulsedMeasurementLogic(LogicBase):
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
 
-        Parameters
-        ----------
-        settings_dict
-        kwargs
+        @param settings_dict:
+        @param kwargs:
+        @return:
         """
-        # Determine complete settings dictionary. Built as a new dict rather than updated in
-        # place, so the caller's dict is never mutated by the bin snapping below.
+        # Determine complete settings dictionary
         try:
             settings_dict = as_settings_dict(settings_dict, kwargs)
         except SettingsTypeError as err:
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to apply new analysis settings. {err}')
             self.sigAnalysisSettingsUpdated.emit(self.analysis_settings)
             return
@@ -1199,16 +1108,14 @@ class PulsedMeasurementLogic(LogicBase):
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
 
-        Parameters
-        ----------
-        settings_dict
-        kwargs
+        @param settings_dict:
+        @param kwargs:
+        @return:
         """
         # Determine complete settings dictionary
         try:
             settings_dict = as_settings_dict(settings_dict, kwargs)
         except SettingsTypeError as err:
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to apply new extraction settings. {err}')
             self.sigExtractionSettingsUpdated.emit(self.extraction_settings)
             return
@@ -1243,7 +1150,6 @@ class PulsedMeasurementLogic(LogicBase):
                 settings, kwargs, self._settings.readout_settings, ReadoutSettings
             )
         except SettingsTypeError as err:
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to apply new measurement settings. {err}')
             self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
             return self.measurement_settings
@@ -1292,12 +1198,9 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(bool, str)
     def toggle_pulsed_measurement(self, start, stash_raw_data_tag=''):
         """
-        Convenience method to start/stop measurement.
+        Convenience method to start/stop measurement
 
-        Parameters
-        ----------
-        start : bool
-            Start the measurement (True) or stop the measurement (False).
+        @param bool start: Start the measurement (True) or stop the measurement (False)
         """
         if start:
             self.start_pulsed_measurement(stash_raw_data_tag)
@@ -1342,9 +1245,7 @@ class PulsedMeasurementLogic(LogicBase):
                 if self._data_stash.recall(stashed_raw_data_tag) is not None:
                      self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
                                      ''.format(stashed_raw_data_tag))
-                #On a miss, the recall method will return None,
-                #the log message will not be printed, and the active_tag is cleared internally
-
+                
                 # start microwave source
                 if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_on()
@@ -1371,9 +1272,7 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Stop the measurement
         """
-        # Get raw data and analyze it a last time just before stopping the measurement. Best
-        # effort - must never block stopping the measurement - but still logged, unlike a bare
-        # `except: pass` which would also swallow KeyboardInterrupt/SystemExit.
+        # Get raw data and analyze it a last time just before stopping the measurement.
         try:
             self._pulsed_analysis_loop()
         except Exception:
@@ -1407,12 +1306,9 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_measurement_pause(self, pause):
         """
-        Convenience method to pause/continue measurement.
+        Convenience method to pause/continue measurement
 
-        Parameters
-        ----------
-        pause : bool
-            Pause the measurement (True) or continue the measurement (False).
+        @param bool pause: Pause the measurement (True) or continue the measurement (False)
         """
         if pause:
             self.pause_pulsed_measurement()
@@ -1475,15 +1371,11 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(int)
     def set_timer_interval(self, interval):
         """
-        Change the interval of the measurement analysis timer.
+        Change the interval of the measurement analysis timer
 
-        Parameters
-        ----------
-        interval : int or float
-            Interval of the timer in s.
+        @param int|float interval: Interval of the timer in s
         """
         if not isinstance(interval, (int, float)) or isinstance(interval, bool):
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to set timer interval. Expected int or float, got '
                            f'{type(interval).__name__}.')
             return
@@ -1504,7 +1396,6 @@ class PulsedMeasurementLogic(LogicBase):
     def set_alternative_data_type(self, alt_data_type):
         """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
         if not (isinstance(alt_data_type, str) or alt_data_type is None):
-            # See set_fast_counter_settings() on why a caller mistake is logged, not raised, here.
             self.log.error(f'Unable to set alternative data type. Expected str or None, got '
                            f'{type(alt_data_type).__name__}.')
             return
@@ -1543,18 +1434,12 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Performs the chosen fit on the measured data.
 
-        Parameters
-        ----------
-        fit_config : str
-            Name of the fit configuration to use.
-        use_alternative_data : bool
-            Flag indicating if the signal data (False) or the alternative signal data (True)
-            should be fitted. Ignored if data is given as parameter.
+        @param str fit_config: name of the fit configuration to use
+        @param bool use_alternative_data: Flag indicating if the signal data (False) or the
+                                          alternative signal data (True) should be fitted.
+                                          Ignored if data is given as parameter
 
-        Returns
-        -------
-        result_object
-            The lmfit result object.
+        @return result_object: the lmfit result object
         """
         container = self.alt_fc if use_alternative_data else self.fc
         data = self.measurement_data.signal_alt_data if use_alternative_data else self.measurement_data.signal_data
@@ -1640,12 +1525,7 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     def _report_analysis_problem(self, message, level='error'):
-        """Report a problem hit during a pulsed-analysis tick: logged (at `level`, default
-        'error' - pass 'warning' for a more routine/transient condition) and emitted via
-        sigAnalysisProblem, but only when `message` differs from the last-reported one - a
-        persistent problem (e.g. a settings mismatch that isn't self-correcting) logs/emits once
-        instead of spamming identically on every single tick. Always pair a call to this with an
-        early `return` from the tick that hit the problem - see _pulsed_analysis_loop()."""
+        """Report a problem hit during a pulsed-analysis tick."""
         if message != self.__last_analysis_problem:
             getattr(self.log, level)(message)
             self.sigAnalysisProblem.emit(message)
@@ -1675,12 +1555,10 @@ class PulsedMeasurementLogic(LogicBase):
                 return
 
             # laser_data legitimately being all-zero is effectively never valid experimental data
-            # (shot noise alone makes an exactly-zero trace vanishingly unlikely) - it means
-            # extraction either got a flat/undetectable trace or explicitly gave up (several
+            #  it means extraction either got a flat/undetectable trace or explicitly gave up (several
             # built-in extraction methods, and potentially custom ones, silently return all-zeros
             # on failure rather than raising). raw_data is already available from
-            # _extract_laser_pulses() above, so distinguish the two likely causes for free rather
-            # than reporting one generic message.
+            # _extract_laser_pulses() above, so distinguish the two likely causes
             if not self.measurement_data.laser_data.any():
                 if not self.measurement_data.raw_data.any():
                     self._report_analysis_problem(
@@ -1747,9 +1625,7 @@ class PulsedMeasurementLogic(LogicBase):
             self.measurement_data.elapsed_sweeps = info_dict['elapsed_sweeps']
             self.measurement_data.elapsed_time = info_dict['elapsed_time']
 
-        # extract laser pulses from raw data - runs every tick, using whichever raw_data is
-        # currently available (freshly fetched above if locked, otherwise whatever was there
-        # before), so analysis/plotting keeps refreshing even with no measurement running
+        # extract laser pulses from raw data
         return_dict = self._pulseextractor.extract_laser_pulses(self.measurement_data.raw_data)
         self.measurement_data.laser_data = return_dict['laser_counts_arr']
         return
@@ -1769,12 +1645,8 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Get the raw count data from the fast counting hardware and perform sanity checks.
         Also add recalled raw data to the newly received data.
-
-        Returns
-        -------
-        tuple(numpy.ndarray, info_dict)
-            The count data (1D for ungated, 2D for gated counter) and info_dict with keys
-            'elapsed_sweeps' and 'elapsed_time'.
+        @return tuple(numpy.ndarray, info_dict): The count data (1D for ungated, 2D for gated counter) and
+                                                 info_dict with keys 'elapsed_sweeps' and 'elapsed_time'
         """
         # get raw data from fast counter
         fc_data = self._fastcounter().get_data_trace()
@@ -1795,9 +1667,6 @@ class PulsedMeasurementLogic(LogicBase):
             elapsed_time = self.__execution_state.get_live_elapsed_time()
 
         # add old raw data from previous measurements if necessary
-        # (the "starting measurement with stashed raw data" info log already happens once, in
-        # start_pulsed_measurement() - logging it again here on every analysis timer tick would
-        # spam the log for the whole duration of the measurement)
         stashed_data = self._data_stash.get_active()
         if stashed_data is not None:
             elapsed_sweeps += stashed_data['elapsed_sweeps']
@@ -1823,11 +1692,7 @@ class PulsedMeasurementLogic(LogicBase):
         Initializing the signal, error, laser and raw data arrays.
 
         Builds a fresh PulsedMeasurementData/PulsedData and assigns self._pulsed_measurement.data
-        wholesale (rather than mutating an existing object's fields in place), since - unlike
-        before this class held one consolidated PulsedMeasurement instance - self._pulsed_measurement.data
-        may not exist yet the very first time this runs (defaults to None; see PulsedMeasurement).
-        fit_result/fit_result_alt are carried over from whatever data object existed before (or
-        None on first call) - this method has never touched them, on either side of this change.
+        wholesale
         """
         settings = self._settings.readout_settings
         fc_settings = self._settings.fast_counter_settings
@@ -1869,14 +1734,6 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     ############################################################################
-    #: Nested settings containers each saved file leaves out of its 'pulsed measurement settings'
-    #: block, because that same file already writes the container out in full at its top level.
-    #: The rule is one copy of a container per file: two copies could drift apart, and a reader
-    #: would have no way to tell which one to believe. Scalar-level overlap is deliberately left
-    #: alone (e.g. 'bin width (s)' beside fast_counter_settings['bin_width'] in the raw/laser
-    #: files, or 'loaded asset name' beside the asset's own 'name') - those flat keys are the
-    #: long-standing readable convention, their nested homes cannot be dropped without breaking
-    #: reconstruction, and both copies are read off one object in one call so they cannot diverge.
     _RAW_METADATA_OMIT = ()
     _LASER_METADATA_OMIT = ('measurement_settings.extraction_parameters',)
     _SIGNAL_METADATA_OMIT = (
@@ -1888,19 +1745,12 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _get_master_settings_metadata(self, generator_settings=None, omit=()):
         """Builds the 'pulsed measurement settings' dict shared by all three saved-file metadata
-        functions below (_get_raw_metadata/_get_laser_metadata/_get_signal_metadata), so raw/laser/
-        signal files all describe the exact same configuration without duplicating this
-        construction logic three times. Built directly (not via get_pulsed_measurement()) to avoid
-        that method's measurement_data/loaded_asset .copy() calls - wasted work here since only
-        .settings is used.
+        functions below (_get_raw_metadata/_get_laser_metadata/_get_signal_metadata)
 
         Parameters
         ----------
         omit : tuple of str
-            Dotted paths to nested containers this file writes out flat at its own top level - see
-            the _*_METADATA_OMIT constants above and Settings.to_metadata_dict(). Each file gets a
-            different set, so the block's contents vary per file while each file stays complete on
-            its own.
+            Dotted paths to nested containers this file writes out flat at its own top level
         """
         return Settings(
             measurement_settings=self._settings, generator_settings=generator_settings
@@ -1911,25 +1761,17 @@ class PulsedMeasurementLogic(LogicBase):
         """Resolved closure of the currently loaded sequence/ensemble - name/type plus the
         loaded asset/ensembles/blocks/elements structure, embedded directly into every raw/laser/
         signal .dat file's metadata rather than requiring a separate '.pulsedmeasurement'
-        snapshot file. Uses PulseObjects.to_metadata_dict() (not to_dict()) - the trimmed,
-        display-only variant that drops duplicate/bulky SamplingInformation fields (see its
-        docstring); the full snapshot file still uses to_dict() for lossless round-tripping.
+        snapshot file. 
 
         'pulse objects' always carries the same three keys - 'sequence', 'ensembles', 'blocks' -
         whichever kind of asset is loaded, so evaluation code reads one fixed shape. The kind is
         reconstructed rather than stated: an empty 'sequence' means a bare PulseBlockEnsemble was
-        loaded, and it is then the single entry under 'ensembles'. See PulseObjects.to_dict().
-
-        There is deliberately no 'loaded asset type' beside it: the structure above already carries
-        that. 'loaded asset name' stays, because a sequence referencing several ensembles gives no
-        other way to say which asset was the loaded one.
-
+        loaded, and it is then the single entry under 'ensembles'. 
         Parameters
         ----------
         ensembles : dict
             Optional, {name: PulseBlockEnsemble} already resolved by the caller (see
-            SequenceGeneratorLogic.resolve_asset_closure()) - PulsedMeasurementLogic has no
-            Connector to SequenceGeneratorLogic and cannot resolve this itself.
+            SequenceGeneratorLogic.resolve_asset_closure()) 
         blocks : dict
             Optional, {name: PulseBlock}, same caveat as `ensembles`.
         omit_generation_method_parameters : bool
@@ -1977,12 +1819,6 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _get_signal_metadata(self, generator_settings=None, ensembles=None, blocks=None):
         ms = self._settings.readout_settings
-        # Generation parameters have exactly one home: SequenceGeneratorSettings, handed down from
-        # PulsedMasterLogic (see save_measurement_data). None when this module is driven directly
-        # without going through it, since PulsedMeasurementLogic has no Connector to
-        # SequenceGeneratorLogic. There used to be a fallback reading them back off the loaded
-        # asset's sampling_information, where they arrived as an undeclared _legacy_data key - that
-        # copy is no longer written (see SamplingInformation) precisely so the two cannot disagree.
         generation_parameters = (
             generator_settings.generation_parameters.to_dict() if generator_settings is not None else None
         )
@@ -2009,16 +1845,6 @@ class PulsedMeasurementLogic(LogicBase):
     @staticmethod
     def _finalize_metadata(metadata):
         """Shared tail of _get_raw_metadata()/_get_laser_metadata()/_get_signal_metadata().
-
-        Runs every value through to_plain_metadata(), which converts it into types whose repr() can
-        be read back by qudi.util.datastorage's eval()-based parser - see its docstring for the
-        three reprs that otherwise arrive as unparsed strings, and for the >1000-element array
-        truncation it avoids.
-
-        Nothing here reformats the values for display: each one is written as a single line. Line
-        breaks never affected whether a value parses back (a dict literal spanning lines is a
-        perfectly valid eval expression, and ConfigParser rejoins continuation lines before the
-        parse), so the multi-line pretty-printing this used to apply bought readability only.
         """
         return {key: to_plain_metadata(value) for key, value in metadata.items()}
 
@@ -2077,26 +1903,13 @@ class PulsedMeasurementLogic(LogicBase):
             Optional, string that is included in the metadata "as-is" without a field.
         generator_settings : SequenceGeneratorSettings
             Optional, the SequenceGeneratorLogic settings in effect for this measurement.
-            PulsedMeasurementLogic has no Connector to SequenceGeneratorLogic and cannot fetch
-            this itself - PulsedMasterLogic. save_measurement_data supplies it. Included in the
-            saved signal metadata as part of a combined PulsedMeasurement snapshot (see
-            get_pulsed_measurement()); left out (None) if this method is called directly without
-            going through PulsedMasterLogic.
         ensembles : dict
-            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller (see
-            SequenceGeneratorLogic.resolve_asset_closure()) - same caveat as generator_settings.
-            Embedded in every raw/laser/signal .dat file's metadata (see
-            _get_loaded_asset_metadata()) as well as the optional full snapshot below.
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller 
         blocks : dict
-            Optional, {name: PulseBlock}, same caveat as `ensembles`.
+            Optional, {name: PulseBlock}
         save_measurement_snapshot : bool
             Optional, additionally pickle the complete PulsedMeasurement snapshot (settings +
-            data + the loaded sequence/ensemble/ensembles/blocks, see get_pulsed_measurement())
-            to a single '.pulsedmeasurement' file alongside the raw/laser/signal files - see
-            load_measurement_snapshot() to restore it. Off by default since it's a new,
-            potentially large binary artifact; the sequence/ensembles/blocks/elements themselves
-            are always in the raw/laser/signal .dat metadata regardless of this flag - this only
-            adds settings/data/fit results on top, in one loadable object.
+            data + the loaded sequence/ensemble/ensembles/blocks
         """
         # Use default data storage type if none has been given explicitly
         if storage_cls is None:

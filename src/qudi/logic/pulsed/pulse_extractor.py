@@ -89,8 +89,7 @@ class PulseExtractor(PulseExtractorBase):
         self._gated_extraction_methods = dict()
         self._ungated_extraction_methods = dict()
         # The real, shared ExtractionParameters instance held by PulsedMeasurementLogic's
-        # settings - not a copy. Mutated in place (dict item assignment) as this class's real,
-        # live, authoritative state; nothing else needs to be kept in sync with it.
+        # settings 
         self._parameters = pulsedmeasurementlogic.extraction_parameters
         # Currently selected extraction method
         self._current_extraction_method = None
@@ -139,7 +138,7 @@ class PulseExtractor(PulseExtractorBase):
 
         # Fill in defaults (from method signatures) for any valid parameter name not already
         # present in the shared, persisted self._parameters dict (e.g. a newly discovered
-        # method). Never overwrites an already-persisted value.
+        # method).
         self.__populate_parameter_dict()
 
         # Ensure a valid current method is selected for the current gated/ungated mode
@@ -160,10 +159,7 @@ class PulseExtractor(PulseExtractorBase):
         This property holds all parameters needed for the currently selected extraction_method as
         well as the currently selected method name.
 
-        Returns
-        -------
-        dict
-            Dictionary with keys being the parameter name and values being the parameter.
+        @return dict: dictionary with keys being the parameter name and values being the parameter
         """
         current_method = self._parameters.get('method')
         # Get reference to the extraction method
@@ -186,10 +182,7 @@ class PulseExtractor(PulseExtractorBase):
         Also sets the current extraction method by passing its name using key "method".
         Parameters not included in self._parameters (except "method") will be ignored.
 
-        Parameters
-        ----------
-        settings_dict : dict
-            Dictionary containing the parameters to set (name, value).
+        @param dict settings_dict: dictionary containing the parameters to set (name, value)
         """
         if not isinstance(settings_dict, dict):
             return
@@ -217,10 +210,7 @@ class PulseExtractor(PulseExtractorBase):
         """
         Return available extraction methods depending on if the fast counter is gated or not.
 
-        Returns
-        -------
-        dict
-            Dictionary with keys being the method names and values being the methods.
+        @return dict: Dictionary with keys being the method names and values being the methods.
         """
         if self.is_gated:
             return self._gated_extraction_methods
@@ -232,16 +222,9 @@ class PulseExtractor(PulseExtractorBase):
         Wrapper method to call the currently selected extraction method with count_data and the
         appropriate keyword arguments.
 
-        Parameters
-        ----------
-        count_data : numpy.ndarray
-            1D (ungated) or 2D (gated) numpy array (dtype='int64') containing the timetrace to
-            extract laser pulses from.
-
-        Returns
-        -------
-        dict
-            Result dictionary of the extraction method.
+        @param numpy.ndarray count_data: 1D (ungated) or 2D (gated) numpy array (dtype='int64')
+                                         containing the timetrace to extract laser pulses from.
+        @return dict: result dictionary of the extraction method
         """
         if count_data.ndim > 1 and not self.is_gated:
             self.log.error('"is_gated" flag is set to False but the count data to extract laser '
@@ -264,16 +247,9 @@ class PulseExtractor(PulseExtractorBase):
         Try to take the values from self._parameters. If the keyword is missing in the dictionary,
         take the default values from the method signature.
 
-        Parameters
-        ----------
-        method
-            Reference to a callable extraction method.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the argument keywords for <method> and corresponding values
-            from self._parameters.
+        @param method: reference to a callable extraction method
+        @return dict: A dictionary containing the argument keywords for <method> and corresponding
+                      values from self._parameters.
         """
         kwargs_dict = dict()
         method_signature = inspect.signature(method)
@@ -295,10 +271,7 @@ class PulseExtractor(PulseExtractorBase):
         Helper method to populate the dictionaries containing all references to callable extraction
         methods contained in extractor instances passed to this method.
 
-        Parameters
-        ----------
-        instance_list : list
-            List containing instances of extractor classes.
+        @param list instance_list: List containing instances of extractor classes
         """
         self._ungated_extraction_methods = dict()
         self._gated_extraction_methods = dict()
