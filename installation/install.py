@@ -2,7 +2,6 @@ import argparse
 import os
 import subprocess
 import sys
-import sysconfig
 from typing import Optional
 import venv
 import shutil
@@ -103,8 +102,8 @@ class InstallationConfig:
         if os.name == "nt":
             return f"{self.python_bin},0"
         else:
-            # idlelib is part of the standard library of the base interpreter, not of the venv
-            return str(Path(sysconfig.get_paths()["stdlib"]) / "idlelib" / "Icons" / "idle_48.png")
+            # qtconsole is a dependency of qudi-core, so its terminal icon is always available in the venv
+            return str(self.site_packages_dir / "qtconsole" / "resources" / "icon" / "JupyterConsole.svg")
 
     @property
     def qudi_icon_url(self) -> str:
@@ -395,6 +394,7 @@ def install_modules():
         run(f'"{CONFIG.python_bin}" -m pip install qudi-iqo-modules')
 
     run(f'"{CONFIG.python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
+
 
 
 def create_launcher_scripts():
