@@ -11,6 +11,7 @@ from urllib.error import URLError
 import json
 import re
 from dataclasses import dataclass, asdict, fields
+from datetime import datetime
 from enum import Enum
 
 
@@ -44,6 +45,9 @@ class InstallationConfig:
     )
     default_config_url: str = (
         "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/installation/default.json"
+    )
+    installer_url: str = (
+        "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/installation/install.py"
     )
 
     @property
@@ -135,6 +139,18 @@ class InstallationConfig:
             return self.install_dir / "qudi_jupyter.ps1"
         else:
             return self.install_dir / "qudi_jupyter.sh"
+
+    @property
+    def update_script(self) -> Path:
+        if os.name == "nt":
+            return self.install_dir / "qudi_update.ps1"
+        else:
+            return self.install_dir / "qudi_update.sh"
+
+    @property
+    def installer_file(self) -> Path:
+        """Copy of this script in the installation directory, used by the update script"""
+        return self.install_dir / "install.py"
 
     @property
     def activation_desktop_file(self) -> Path:
@@ -348,6 +364,18 @@ def run(cmd, cwd=None):
     subprocess.check_call(cmd, shell=True, cwd=cwd)
 
 
+def git(repo: Path, *args: str) -> bool:
+    """Run a git command in `repo` and return whether it succeeded."""
+    print(f"> git {' '.join(args)}")
+    return subprocess.run(["git", *args], cwd=repo).returncode == 0
+
+
+def git_output(repo: Path, *args: str) -> Optional[str]:
+    """Run a git command in `repo` silently and return its output, or None if it failed."""
+    result = subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True)
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
 def check_python():
     supported_versions = filter_versions(read_requires_python(), fetch_manifest())
     version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -404,6 +432,148 @@ def install_modules():
 
     run(f'"{CONFIG.python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
+
+
+def git_identity(repo: Path) -> list[str]:
+    """Fallback identity for commits made by the update, if the user has not configured one."""
+    if git_output(repo, "config", "user.name") and git_output(repo, "config", "user.email"):
+        return []
+    return ["-c", "user.name=Qudi update", "-c", "user.email=qudi-update@localhost"]
+
+
+def stash_and_fast_forward(repo: Path, branch: str, upstream: str):
+    if not git(repo, "merge", "--ff-only", "--autostash", upstream):
+        raise SystemExit(f"Could not update {repo}, your local changes were restored.")
+    if git_output(repo, "diff", "--name-only", "--diff-filter=U"):
+        print(
+            f"Re-applying your local changes caused conflicts. Resolve them in {repo}, "
+            'your changes are also kept in "git stash list".'
+        )
+
+
+def save_to_branch_and_reset(repo: Path, branch: str, upstream: str):
+    backup = f"{branch}-local-changes-{datetime.now():%Y%m%d-%H%M%S}"
+    if not git(repo, "switch", "-c", backup):
+        raise SystemExit(f"Could not create branch {backup} in {repo}.")
+    if git_output(repo, "status", "--porcelain", "--untracked-files=no"):
+        git(repo, *git_identity(repo), "commit", "-a", "-m", "Local changes saved by qudi update")
+    # reset the original branch to the remote state, the local commits and changes live on in the backup branch
+    if not git(repo, "switch", "-C", branch, upstream):
+        raise SystemExit(f"Could not reset {branch} to {upstream} in {repo}, your changes are in branch {backup}.")
+    print(f'Your local changes are saved in branch "{backup}". Apply them later with "git merge {backup}".')
+
+
+def merge_manually(repo: Path, branch: str, upstream: str):
+    if not git(repo, *git_identity(repo), "merge", "--autostash", upstream):
+        raise SystemExit(
+            f"Resolve the merge conflicts in {repo} and conclude the merge with \"git commit\" "
+            '(or undo it with "git merge --abort"), then run the update again.'
+        )
+
+
+def abort_update(repo: Path, branch: str, upstream: str):
+    raise SystemExit(f"Update aborted, {repo} was not changed.")
+
+
+def update_repo(repo_url: str, repo: Path):
+    """Update a cloned repository as little invasive as possible, asking the user if local changes are in the way."""
+    if not repo.exists():
+        clone_repo(repo_url, repo)
+        return
+
+    print(f"Updating {repo}")
+    if not git(repo, "fetch"):
+        raise SystemExit(f"Could not fetch updates for {repo}.")
+
+    branch = git_output(repo, "symbolic-ref", "--short", "-q", "HEAD")
+    upstream = git_output(repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    if not branch or not upstream:
+        print(f"Warning: {repo} is not on a branch tracking a remote branch, skipping the git update.")
+        return
+
+    ahead, behind = map(int, git_output(repo, "rev-list", "--left-right", "--count", f"HEAD...{upstream}").split())
+    if behind == 0:
+        print(f"{branch} is up to date with {upstream}.")
+        return
+
+    # succeeds as long as there are no local commits and the uncommitted changes don't touch updated files
+    if git(repo, "merge", "--ff-only", upstream):
+        return
+
+    changed = bool(git_output(repo, "status", "--porcelain", "--untracked-files=no"))
+    print(f"\nCould not fast-forward {branch} to {upstream} ({behind} new commits).")
+    print(f"Local commits not in {upstream}: {ahead}, uncommitted changes: {'yes' if changed else 'no'}")
+
+    # stashing only works for uncommitted changes, local commits need a branch
+    options = []
+    if ahead == 0:
+        options.append(("Stash the local changes, update and re-apply them", stash_and_fast_forward))
+    options.append(("Save the local changes to a new branch and update to the remote state", save_to_branch_and_reset))
+    options.append(("Merge the update and resolve conflicts manually", merge_manually))
+    options.append(("Abort the update", abort_update))
+
+    print("How do you want to continue?")
+    for number, (label, _) in enumerate(options, start=1):
+        print(f"{number}) {label}{' (recommended)' if number == 1 else ''}")
+    choice = input(f"Enter 1-{len(options)} (default {len(options)}): ").strip()
+
+    index = int(choice) - 1 if choice.isdigit() and 1 <= int(choice) <= len(options) else len(options) - 1
+    options[index][1](repo, branch, upstream)
+
+
+def update_modules():
+    run(f'"{CONFIG.python_bin}" -m pip install --upgrade pip')
+
+    if CONFIG.core_dir:
+        update_repo(CONFIG.core_repo, CONFIG.core_dir)
+        run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.core_dir}"')
+    else:
+        run(f'"{CONFIG.python_bin}" -m pip install --upgrade qudi-core')
+
+    if CONFIG.iqo_modules_dir:
+        update_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir)
+        run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
+    else:
+        run(f'"{CONFIG.python_bin}" -m pip install --upgrade qudi-iqo-modules')
+
+
+def update_installer():
+    """Replace the copy of this script in the installation directory with the latest version."""
+    if CONFIG.iqo_modules_dir:
+        installer = CONFIG.iqo_modules_dir / "installation" / "install.py"
+        if not installer.is_file():
+            print(f"Warning: {installer} not found, keeping the current update script.")
+            return
+        shutil.copy2(installer, CONFIG.installer_file)
+        print(f"Updated {CONFIG.installer_file} from {installer}")
+    else:
+        try:
+            with urlopen(CONFIG.installer_url, timeout=30) as response:
+                content = response.read()
+        except URLError as e:
+            print(f"Warning: Could not download {CONFIG.installer_url} ({e}), keeping the current update script.")
+            return
+        CONFIG.installer_file.write_bytes(content)
+        print(f"Updated {CONFIG.installer_file} from {CONFIG.installer_url}")
+
+
+def create_update_script():
+    installer = Path(__file__).resolve()
+    if installer != CONFIG.installer_file:
+        shutil.copy2(installer, CONFIG.installer_file)
+
+    if os.name == "nt":
+        CONFIG.update_script.write_text(f"""& "{CONFIG.python_bin}" "{CONFIG.installer_file}" --update
+Read-Host "Press Enter to close"
+""")
+    else:
+        CONFIG.update_script.write_text(f"""#!/bin/bash
+"{CONFIG.python_bin}" "{CONFIG.installer_file}" --update
+read -n 1 -s -r -p "Press any key to close..."
+echo
+""")
+        CONFIG.update_script.chmod(0o755)
+    print(f"Created update script at {CONFIG.update_script}")
 
 
 def create_launcher_scripts():
@@ -601,12 +771,31 @@ def parse_args():
         type=Path,
         help="settings file (JSON, e.g. an installation.json of a previous installation) for an unattended installation",
     )
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="update an existing installation, using the settings file given by --config "
+        "or the installation.json next to this script",
+    )
     return parser.parse_args()
 
 
 def main():
     global CONFIG, UNATTENDED
     args = parse_args()
+
+    if args.update:
+        config_file = (args.config or Path(__file__).resolve().parent / "installation.json").expanduser().resolve()
+        if not config_file.is_file():
+            raise SystemExit(f"Settings file {config_file} not found")
+        CONFIG = InstallationConfig.load(config_file)
+        print(f"Updating the installation in {CONFIG.install_dir}")
+        if CONFIG.core_dir or CONFIG.iqo_modules_dir:
+            check_git()
+        update_modules()
+        update_installer()
+        print("\nUpdate complete!")
+        return
 
     if args.config:
         config_file = args.config.expanduser().resolve()
@@ -647,6 +836,7 @@ def main():
     create_dirs()
 
     create_launcher_scripts()
+    create_update_script()
     create_desktop_files()
 
     start_menu_shortcut()

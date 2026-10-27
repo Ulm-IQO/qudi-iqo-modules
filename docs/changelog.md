@@ -17,6 +17,7 @@
 - Added pulse shaping to the `pulsed` tool chain
 - Installation script now creates launcher, Jupyter and environment scripts and shortcuts, a `scripts` folder and stores the chosen settings in `installation.json` for reuse
 - Installation script supports unattended installation via `python install.py --config <settings file>`
+- Installation script places an update script `qudi_update` in the installation location, which upgrades PyPI packages and updates editable packages via `git`
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure

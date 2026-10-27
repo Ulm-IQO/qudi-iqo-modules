@@ -62,6 +62,22 @@ The `installation.json` stored by a previous installation can be used as a templ
 - `modify_existing_venv`: whether to continue if the virtual environment already exists. If `false`, the installation is aborted in that case.
 
 
+### Updating an installation
+
+The installation script places `qudi_update.sh` (Linux) / `qudi_update.ps1` (Windows) in the installation location. Running it updates the installation according to `installation.json`:
+- Packages installed from PyPI are upgraded to the latest release.
+- Editable packages are updated with `git`, as little invasive as possible: the current branch is fast-forwarded to its remote branch, which keeps uncommitted changes in files that were not updated.
+  If that is not possible, you are asked how to continue:
+    - **Stash** (recommended for uncommitted changes, only offered if there are no local commits): the changes are stashed, the branch is fast-forwarded and the changes are re-applied. If re-applying conflicts, the changes stay in `git stash list`.
+    - **New branch** (recommended for local commits): the local commits and uncommitted changes are saved to a new branch `<branch>-local-changes-<date>`, and the branch is reset to the remote state. Apply the changes later with `git merge <new branch>`.
+    - **Merge manually**: the remote branch is merged into the local one; conflicts have to be resolved and committed before running the update again.
+    - **Abort** (default): nothing is changed.
+
+Finally, the copy of `install.py` used by the update is replaced by the latest version, taken from the editable `qudi-iqo-modules` repository or otherwise downloaded from GitHub.
+
+Alternatively, run `python install.py --update` in the installation location, or pass a settings file with `--update --config <settings file>`.
+
+
 ## Manual Installation
 
 Below, the manual installation instructions can be found, which allow for more control over the installation process.
