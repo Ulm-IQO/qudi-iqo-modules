@@ -1,4 +1,5 @@
 import argparse
+import io
 import os
 import subprocess
 import sys
@@ -141,6 +142,10 @@ class InstallationConfig:
             return self.install_dir / "qudi_jupyter.sh"
 
     @property
+    def log_dir(self) -> Path:
+        return self.install_dir / "logs"
+
+    @property
     def update_script(self) -> Path:
         if os.name == "nt":
             return self.install_dir / "qudi_update.ps1"
@@ -230,9 +235,65 @@ class InstallationConfig:
         return config
 
 
+class Log:
+    """Copies everything written to stdout / stderr into a log file.
+
+    Output is kept in memory until the log file is opened, as the installation directory is only known after the
+    questions have been answered.
+    """
+
+    class _Tee:
+        def __init__(self, stream, log):
+            self._stream = stream
+            self._log = log
+
+        def write(self, text):
+            self._stream.write(text)
+            self._log.write(text)
+
+        def flush(self):
+            self._stream.flush()
+
+        def __getattr__(self, name):
+            return getattr(self._stream, name)
+
+    def __init__(self):
+        self._buffer = io.StringIO()
+        self._file = None
+        self.path: Optional[Path] = None
+        sys.stdout = self._Tee(sys.stdout, self)
+        sys.stderr = self._Tee(sys.stderr, self)
+
+    def write(self, text: str):
+        (self._file or self._buffer).write(text)
+
+    def open(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        # line buffered, so the log is complete even if the script crashes
+        self._file = path.open("w", encoding="utf-8", buffering=1)
+        self._file.write(self._buffer.getvalue())
+        self.path = path
+        print(f"Logging to {path}")
+
+
 CONFIG = InstallationConfig()
 # answer all questions with the values from CONFIG instead of asking the user
 UNATTENDED = False
+LOG: Optional[Log] = None
+
+
+def ask(prompt: str) -> str:
+    """input() that also writes the question and the answer into the log file."""
+    print(prompt, end="", flush=True)
+    answer = input()
+    if LOG:
+        LOG.write(answer + "\n")
+    return answer
+
+
+def open_log(kind: str):
+    if LOG:
+        LOG.open(CONFIG.log_dir / f"{kind}_{datetime.now():%Y%m%d-%H%M%S}.log")
 
 
 def read_requires_python() -> str:
@@ -303,7 +364,7 @@ def filter_versions(spec: str, available_versions: list[str]) -> list[str]:
 
 
 def yes_no_choice(message: str) -> bool:
-    choice = input(f"{message} [y / N] ").strip()
+    choice = ask(f"{message} [y / N] ").strip()
 
     if choice in ['y', 'Y']:
         return True
@@ -335,12 +396,12 @@ def choose_install_dir():
     print("2) Current directory")
     print("3) Custom directory")
 
-    choice = input("Enter 1, 2, or 3 (default 1): ").strip()
+    choice = ask("Enter 1, 2, or 3 (default 1): ").strip()
 
     if choice == "2":
         CONFIG.install_dir = Path.cwd()
     elif choice == "3":
-        custom_path = input("Enter full path for installation: ").strip().strip('"')
+        custom_path = ask("Enter full path for installation: ").strip().strip('"')
         if not custom_path:
             return
         CONFIG.install_dir = Path(custom_path).expanduser().resolve()
@@ -351,23 +412,35 @@ def choose_venv_name():
     print("1) qudi-env")
     print("2) Custom name")
 
-    choice = input("Enter 1, 2 (default 1): ").strip()
+    choice = ask("Enter 1, 2 (default 1): ").strip()
 
     if choice == "2":
-        choice = input("Enter name: ").strip()
+        choice = ask("Enter name: ").strip()
         if choice:
             CONFIG.venv_name = choice
 
 
+def stream(cmd, cwd=None, shell=False) -> int:
+    """Run a command, passing its output through sys.stdout so it ends up in the log file. Returns the exit code."""
+    process = subprocess.Popen(
+        cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace"
+    )
+    for line in process.stdout:
+        sys.stdout.write(line)
+    return process.wait()
+
+
 def run(cmd, cwd=None):
     print(f"> {cmd}")
-    subprocess.check_call(cmd, shell=True, cwd=cwd)
+    returncode = stream(cmd, cwd=cwd, shell=True)
+    if returncode:
+        raise subprocess.CalledProcessError(returncode, cmd)
 
 
 def git(repo: Path, *args: str) -> bool:
     """Run a git command in `repo` and return whether it succeeded."""
     print(f"> git {' '.join(args)}")
-    return subprocess.run(["git", *args], cwd=repo).returncode == 0
+    return stream(["git", *args], cwd=repo) == 0
 
 
 def git_output(repo: Path, *args: str) -> Optional[str]:
@@ -464,7 +537,7 @@ def save_to_branch_and_reset(repo: Path, branch: str, upstream: str):
 
 
 def merge_manually(repo: Path, branch: str, upstream: str):
-    if not git(repo, *git_identity(repo), "merge", "--autostash", upstream):
+    if not git(repo, *git_identity(repo), "merge", "--no-edit", "--autostash", upstream):
         raise SystemExit(
             f"Resolve the merge conflicts in {repo} and conclude the merge with \"git commit\" "
             '(or undo it with "git merge --abort"), then run the update again.'
@@ -515,7 +588,7 @@ def update_repo(repo_url: str, repo: Path):
     print("How do you want to continue?")
     for number, (label, _) in enumerate(options, start=1):
         print(f"{number}) {label}{' (recommended)' if number == 1 else ''}")
-    choice = input(f"Enter 1-{len(options)} (default {len(options)}): ").strip()
+    choice = ask(f"Enter 1-{len(options)} (default {len(options)}): ").strip()
 
     index = int(choice) - 1 if choice.isdigit() and 1 <= int(choice) <= len(options) else len(options) - 1
     options[index][1](repo, branch, upstream)
@@ -751,7 +824,7 @@ def installation_choice():
     print("2) Latest, editable versions of qudi-core and qudi-iqo-modules")
     print("3) Latest stable, uneditable release of qudi-core and qudi-iqo-modules")
 
-    choice = input("Enter 1, 2, 3 (default 1): ").strip()
+    choice = ask("Enter 1, 2, 3 (default 1): ").strip()
 
     if choice == "3":
         CONFIG.core_mode = InstallationMode.PYPI
@@ -781,7 +854,8 @@ def parse_args():
 
 
 def main():
-    global CONFIG, UNATTENDED
+    global CONFIG, UNATTENDED, LOG
+    LOG = Log()
     args = parse_args()
 
     if args.update:
@@ -789,12 +863,14 @@ def main():
         if not config_file.is_file():
             raise SystemExit(f"Settings file {config_file} not found")
         CONFIG = InstallationConfig.load(config_file)
+        open_log("update")
         print(f"Updating the installation in {CONFIG.install_dir}")
         if CONFIG.core_dir or CONFIG.iqo_modules_dir:
             check_git()
         update_modules()
         update_installer()
         print("\nUpdate complete!")
+        print(f"Log file: {LOG.path}")
         return
 
     if args.config:
@@ -825,6 +901,7 @@ def main():
 
     CONFIG.install_dir.mkdir(parents=True, exist_ok=True)
     os.chdir(CONFIG.install_dir)
+    open_log("install")
 
     if CONFIG.core_dir or CONFIG.iqo_modules_dir:
         check_git()
@@ -847,6 +924,7 @@ def main():
 
     print("\nInstallation complete!")
     print(f"Location: {CONFIG.install_dir}")
+    print(f"Log file: {LOG.path}")
 
 
 if __name__ == "__main__":
