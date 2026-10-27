@@ -3,6 +3,8 @@ import io
 import os
 import subprocess
 import sys
+import tempfile
+import traceback
 from typing import Optional
 import venv
 import shutil
@@ -239,7 +241,7 @@ class Log:
     """Copies everything written to stdout / stderr into a log file.
 
     Output is kept in memory until the log file is opened, as the installation directory is only known after the
-    questions have been answered.
+    questions have been answered. If the script ends before that, the log is written next to this script.
     """
 
     class _Tee:
@@ -257,12 +259,16 @@ class Log:
         def __getattr__(self, name):
             return getattr(self._stream, name)
 
-    def __init__(self):
+    def __init__(self, kind: str):
+        self.kind = kind
         self._buffer = io.StringIO()
         self._file = None
         self.path: Optional[Path] = None
         sys.stdout = self._Tee(sys.stdout, self)
         sys.stderr = self._Tee(sys.stderr, self)
+        print(f"Qudi {kind} started {datetime.now():%Y-%m-%d %H:%M:%S}")
+        print(f"Python {sys.version} ({sys.executable}) on {sys.platform}")
+        print(f"Command line: {' '.join(sys.argv)}")
 
     def write(self, text: str):
         (self._file or self._buffer).write(text)
@@ -274,6 +280,20 @@ class Log:
         self._file.write(self._buffer.getvalue())
         self.path = path
         print(f"Logging to {path}")
+
+    def open_in(self, directory: Path):
+        self.open(directory / f"{self.kind}_{datetime.now():%Y%m%d-%H%M%S}.log")
+
+    def close(self):
+        """Write the log next to this script (or into the temp directory) if it was not opened yet."""
+        if self._file:
+            return
+        for directory in (Path(__file__).resolve().parent, Path(tempfile.gettempdir())):
+            try:
+                self.open_in(directory)
+                return
+            except OSError:
+                pass
 
 
 CONFIG = InstallationConfig()
@@ -291,9 +311,9 @@ def ask(prompt: str) -> str:
     return answer
 
 
-def open_log(kind: str):
+def open_log():
     if LOG:
-        LOG.open(CONFIG.log_dir / f"{kind}_{datetime.now():%Y%m%d-%H%M%S}.log")
+        LOG.open_in(CONFIG.log_dir)
 
 
 def read_requires_python() -> str:
@@ -450,6 +470,7 @@ def git_output(repo: Path, *args: str) -> Optional[str]:
 
 
 def check_python():
+    print(f"Checking the Python version, reading the requirements from {CONFIG.pyproject_url}")
     supported_versions = filter_versions(read_requires_python(), fetch_manifest())
     version = f"{sys.version_info.major}.{sys.version_info.minor}"
     if version not in supported_versions:
@@ -853,24 +874,21 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
-    global CONFIG, UNATTENDED, LOG
-    LOG = Log()
-    args = parse_args()
+def main(args):
+    global CONFIG, UNATTENDED
 
     if args.update:
         config_file = (args.config or Path(__file__).resolve().parent / "installation.json").expanduser().resolve()
         if not config_file.is_file():
             raise SystemExit(f"Settings file {config_file} not found")
         CONFIG = InstallationConfig.load(config_file)
-        open_log("update")
+        open_log()
         print(f"Updating the installation in {CONFIG.install_dir}")
         if CONFIG.core_dir or CONFIG.iqo_modules_dir:
             check_git()
         update_modules()
         update_installer()
         print("\nUpdate complete!")
-        print(f"Log file: {LOG.path}")
         return
 
     if args.config:
@@ -901,7 +919,7 @@ def main():
 
     CONFIG.install_dir.mkdir(parents=True, exist_ok=True)
     os.chdir(CONFIG.install_dir)
-    open_log("install")
+    open_log()
 
     if CONFIG.core_dir or CONFIG.iqo_modules_dir:
         check_git()
@@ -924,8 +942,46 @@ def main():
 
     print("\nInstallation complete!")
     print(f"Location: {CONFIG.install_dir}")
-    print(f"Log file: {LOG.path}")
+
+
+def run_logged():
+    """Run main() with everything, including errors, written to the log file."""
+    global LOG
+    args = parse_args()
+    LOG = Log("update" if args.update else "install")
+    exit_code = 0
+    try:
+        main(args)
+    except SystemExit as e:
+        if isinstance(e.code, str):
+            print(e.code, file=sys.stderr)
+            exit_code = 1
+        else:
+            exit_code = e.code or 0
+    except KeyboardInterrupt:
+        print("\nInterrupted by the user.", file=sys.stderr)
+        exit_code = 1
+    except Exception:
+        traceback.print_exc()
+        exit_code = 1
+    finally:
+        LOG.close()
+
+    if LOG.path is None:
+        print("Warning: Could not write the log file.")
+    elif exit_code:
+        print(f"\n{'Update' if args.update else 'Installation'} failed, see the log file for details: {LOG.path}")
+    else:
+        print(f"Log file: {LOG.path}")
+
+    # keep a terminal opened by double-clicking install.py open; the update script pauses by itself
+    if not args.update and not args.config and sys.stdin.isatty():
+        try:
+            input("Press Enter to close...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
-    main()
+    run_logged()
