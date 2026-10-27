@@ -32,7 +32,8 @@ On Linux, additionally make sure that all system libraries required by `PySide6`
     - Open a terminal
     - Navigate to the downloaded `install.py` script, e.g. `cd Downloads` (if you downloaded it into your `Downloads` folder)
     - Execute the script using Python: `python install.py`
-    - Follow the instructions of the installation script and choose your installation method and location. If unsure, just use the defaults.
+    - Follow the instructions of the installation script and choose your installation method and location. If unsure, answer the first question with `y` to use the default installation ([`default.json`](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/installation/default.json): recommended option 1 in `~/qudi`, with Desktop and Start Menu shortcuts), which then runs without further questions.
+        - Otherwise, all questions are asked before the installation starts, after which it runs without further input.
         - A Qudi start script `qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
         - Additionally, the scripts and shortcuts `qudi_jupyter` (starts Jupyter Lab in the `scripts` folder) and `qudi_environment` (opens a terminal with the Qudi environment activated) are created.
         - The chosen settings are stored in `installation.json` in the installation location. It can be passed to `python install.py --config installation.json` to repeat the installation unattended (see below).

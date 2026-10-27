@@ -1,0 +1,9 @@
+{
+    "install_dir": "~/qudi",
+    "venv_name": "qudi-env",
+    "core_mode": "PyPi",
+    "iqo_mode": "Editable",
+    "modify_existing_venv": false,
+    "create_start_menu_shortcuts": true,
+    "create_desktop_shortcuts": true
+}

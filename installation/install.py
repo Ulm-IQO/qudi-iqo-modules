@@ -42,6 +42,9 @@ class InstallationConfig:
     pyproject_url: str = (
         "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/pyproject.toml"
     )
+    default_config_url: str = (
+        "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/installation/default.json"
+    )
 
     @property
     def venv_dir(self) -> Path:
@@ -179,12 +182,26 @@ class InstallationConfig:
     @classmethod
     def load(cls, filename: Path):
         """Load settings from a JSON file. Missing keys keep their default value."""
+        return cls.from_json(filename.read_text(), source=str(filename))
+
+    @classmethod
+    def download(cls, url: str):
+        """Load settings from a JSON file at `url`. Missing keys keep their default value."""
+        try:
+            with urlopen(url, timeout=30) as response:
+                text = response.read().decode("utf-8")
+        except URLError as e:
+            raise SystemExit(f"Failed to download settings file {url}: {e}")
+        return cls.from_json(text, source=url)
+
+    @classmethod
+    def from_json(cls, text: str, source: str):
         config = cls()
         field_names = {field.name for field in fields(cls)}
 
-        for key, value in json.loads(filename.read_text()).items():
+        for key, value in json.loads(text).items():
             if key not in field_names:
-                print(f'Warning: ignoring unknown setting "{key}" in {filename}')
+                print(f'Warning: ignoring unknown setting "{key}" in {source}')
                 continue
             # convert the JSON value to the type of the default value, e.g. Path or InstallationMode
             default = getattr(config, key)
@@ -598,6 +615,11 @@ def main():
         CONFIG = InstallationConfig.load(config_file)
         UNATTENDED = True
         print(f"Unattended installation using settings from {config_file}")
+    elif yes_no_choice("Use the recommended default installation?"):
+        print(f"Downloading default settings from {CONFIG.default_config_url}")
+        CONFIG = InstallationConfig.download(CONFIG.default_config_url)
+        UNATTENDED = True
+        print("Unattended installation using the default settings")
 
     check_python()
 
