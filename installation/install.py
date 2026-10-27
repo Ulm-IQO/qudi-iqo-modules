@@ -326,20 +326,6 @@ def choose_venv_name():
             CONFIG.venv_name = choice
 
 
-def load_previous_config():
-    """Offer to reuse the settings of a previous installation in the chosen directory."""
-    global CONFIG
-    if not CONFIG.config_file.exists():
-        return False
-    if not yes_no_choice(f"Found previous installation settings in {CONFIG.config_file}. Reuse them?"):
-        return False
-    install_dir = CONFIG.install_dir
-    CONFIG = InstallationConfig.load(CONFIG.config_file)
-    # the installation directory chosen now takes precedence over the stored one
-    CONFIG.install_dir = install_dir
-    return True
-
-
 def run(cmd, cwd=None):
     print(f"> {cmd}")
     subprocess.check_call(cmd, shell=True, cwd=cwd)
@@ -364,18 +350,24 @@ def check_git():
     print("Found Git installation")
 
 
+def confirm_existing_venv():
+    if not CONFIG.venv_dir.exists():
+        return
+
+    print(f"Virtual environment '{CONFIG.venv_dir}' already exists.")
+    if not configured_choice(
+        "Continuing will modify the existing virtual environment, do you want to continue?", "modify_existing_venv"
+    ):
+        print("Aborting Qudi installation")
+        sys.exit(1)
+
+
 def create_venv():
     if not CONFIG.venv_dir.exists():
         print(f"Creating virtual environment in '{CONFIG.venv_dir}'...")
         venv.create(CONFIG.venv_dir, with_pip=True)
     else:
-        print(f"Virtual environment '{CONFIG.venv_dir}' already exists.")
-
-        if not configured_choice(
-            "Continuing will modify the existing virtual environment, do you want to continue?", "modify_existing_venv"
-        ):
-            print("Aborting Qudi installation")
-            sys.exit(1)
+        print(f"Using existing virtual environment '{CONFIG.venv_dir}'.")
 
 
 def install_modules():
@@ -536,8 +528,14 @@ def copy_desktop_files(destination_dir: Path):
         print(f"Created shortcut at {destination}")
 
 
+def choose_shortcuts():
+    """Ask for the shortcuts up front, so the installation itself runs without further questions."""
+    configured_choice("Create Start Menu shortcuts?", "create_start_menu_shortcuts")
+    configured_choice("Create Desktop shortcuts?", "create_desktop_shortcuts")
+
+
 def start_menu_shortcut():
-    if not configured_choice("Create Start Menu shortcuts?", "create_start_menu_shortcuts"):
+    if not CONFIG.create_start_menu_shortcuts:
         return
 
     if os.name == "nt":
@@ -549,7 +547,7 @@ def start_menu_shortcut():
 
 
 def desktop_shortcut():
-    if not configured_choice("Create Desktop shortcuts?", "create_desktop_shortcuts"):
+    if not CONFIG.create_desktop_shortcuts:
         return
 
     desktop = Path.home() / "Desktop"
@@ -605,13 +603,17 @@ def main():
 
     if not UNATTENDED:
         choose_install_dir()
+        choose_venv_name()
+        installation_choice()
+
+    confirm_existing_venv()
+    choose_shortcuts()
+
+    if not UNATTENDED:
+        print("\nAll questions answered, the installation now runs without further input.\n")
 
     CONFIG.install_dir.mkdir(parents=True, exist_ok=True)
     os.chdir(CONFIG.install_dir)
-
-    if not UNATTENDED and not load_previous_config():
-        choose_venv_name()
-        installation_choice()
 
     if CONFIG.core_dir or CONFIG.iqo_modules_dir:
         check_git()

@@ -35,7 +35,7 @@ On Linux, additionally make sure that all system libraries required by `PySide6`
     - Follow the instructions of the installation script and choose your installation method and location. If unsure, just use the defaults.
         - A Qudi start script `qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
         - Additionally, the scripts and shortcuts `qudi_jupyter` (starts Jupyter Lab in the `scripts` folder) and `qudi_environment` (opens a terminal with the Qudi environment activated) are created.
-        - The chosen settings are stored in `installation.json` in the installation location. Running the script again with the same location offers to reuse them.
+        - The chosen settings are stored in `installation.json` in the installation location. It can be passed to `python install.py --config installation.json` to repeat the installation unattended (see below).
         - You can copy the shortcut to a desired location and double-click it to start Qudi.
         - Do not move the installation folder or any file within this directory (except the shortcut), as this will break the Qudi installation.
     - Start Qudi using the `qudi` shortcut mentioned above or, if created during installation, the desktop or start menu shortcuts.
