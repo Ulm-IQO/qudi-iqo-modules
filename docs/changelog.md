@@ -15,6 +15,8 @@
 ### New Features
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
 - Added pulse shaping to the `pulsed` tool chain
+- Installation script now creates launcher, Jupyter and environment scripts and shortcuts, a `scripts` folder and stores the chosen settings in `installation.json` for reuse
+- Installation script supports unattended installation via `python install.py --config <settings file>`
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure

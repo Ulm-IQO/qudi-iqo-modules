@@ -31,10 +31,32 @@ Installation requirements depend on the method being used:
     - Navigate to the downloaded `install.py` script, e.g. `cd Downloads` (if you downloaded it into your `Downloads` folder)
     - Execute the script using Python: `python install.py`
     - Follow the instructions of the installation script and choose your installation method and location. If unsure, just use the defaults.
-        - A Qudi start script `start_qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
+        - A Qudi start script `qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
+        - Additionally, the scripts and shortcuts `qudi_jupyter` (starts Jupyter Lab in the `scripts` folder) and `qudi_environment` (opens a terminal with the Qudi environment activated) are created.
+        - The chosen settings are stored in `installation.json` in the installation location. Running the script again with the same location offers to reuse them.
         - You can copy the shortcut to a desired location and double-click it to start Qudi.
         - Do not move the installation folder or any file within this directory (except the shortcut), as this will break the Qudi installation.
     - Start Qudi using the `qudi` shortcut mentioned above or, if created during installation, the desktop or start menu shortcuts.
+
+### Unattended installation
+
+The installation script can run without asking any questions by passing a settings file: `python install.py --config my_settings.json`.
+The `installation.json` stored by a previous installation can be used as a template. All keys are optional, missing keys use the defaults shown here:
+
+```json
+{
+    "install_dir": "~/qudi",
+    "venv_name": "qudi-env",
+    "core_mode": "PyPi",
+    "iqo_mode": "Editable",
+    "modify_existing_venv": false,
+    "create_start_menu_shortcuts": false,
+    "create_desktop_shortcuts": false
+}
+```
+
+- `core_mode` / `iqo_mode`: `"Editable"` clones the repository into the installation location and installs it in editable mode, `"PyPi"` installs the latest stable release.
+- `modify_existing_venv`: whether to continue if the virtual environment already exists. If `false`, the installation is aborted in that case.
 
 
 ## Manual Installation
