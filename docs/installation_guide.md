@@ -22,6 +22,8 @@ Installation requirements depend on the method being used:
   2. `Git`, [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
   3. [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
 
+On Linux, additionally make sure that all system libraries required by `PySide6` (Qt) are installed, as they are not installed by `pip`. Minimal installations may e.g. lack `libgthread-2.0.so.0` (openSUSE package `libgthread-2_0-0`), which makes the installation fail with `ImportError: ... cannot open shared object file`. The package providing a missing library can be found with your package manager, e.g. `zypper search --provides <library>`, `dnf provides '*/<library>'` or `apt-file search <library>`.
+
 ### Run the installation script
 
 1. Download the [installation script](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/installation/install.py)
