@@ -661,15 +661,21 @@ class SequenceGeneratorLogic(LogicBase):
     @QtCore.Slot()
     def refresh_predefined_methods(self):
         """ Re-import all predefined generator modules and rebuild the available generate methods.
-        Keeps the previous methods if the import fails.
+        Modules that fail to import are reported in the log. For those, the previously imported
+        version is used if available. If rebuilding the generate methods fails as a whole, the
+        previous methods are kept. Existing generation parameters are preserved, even if a generator
+        sets default values for them during initialization.
         """
+        old_pog = self._pog
+        old_generation_parameters = self._generation_parameters.copy()
         try:
-            pog = PulseObjectGenerator(sequencegeneratorlogic=self)
-            pog.activate_plugins()
+            self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+            self._pog.activate_plugins()
         except:
+            self._pog = old_pog
             self.log.exception('Refreshing predefined methods failed. Keeping previous methods:')
-        else:
-            self._pog = pog
+        self._generation_parameters.update(old_generation_parameters)
+        self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
         self.sigPredefinedMethodsUpdated.emit()
 
     @property

@@ -1218,6 +1218,17 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def predefined_methods_updated(self):
+        # Rebuild global parameter widgets since reloaded generators can add generation parameters
+        self._disconnect_predefined_methods_tab_signals()
+        while self._pm.global_param_gridLayout.count() > 0:
+            item = self._pm.global_param_gridLayout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self._channel_selection_comboboxes = list()
+        self._global_param_widgets = list()
+        self._create_pm_global_params()
+        self.generation_parameters_updated(self.pulsedmasterlogic().generation_parameters)
+
         # Remove widgets of the previously available methods
         for method_name in self._pm.gen_buttons:
             for parent, attr, layout in (
@@ -2923,7 +2934,7 @@ class PulsedMeasurementGui(GuiBase):
             self.pulsedmasterlogic().set_alternative_data_type(second_plot)
 
         # Axis labels for the selected method are provided by the logic (computed from the active
-        # measurement settings), 
+        # measurement settings),
         current_type = self.pulsedmasterlogic().alternative_data_type
         method_labels = self.pulsedmasterlogic().alt_plot_labels.get(current_type)
         if method_labels:

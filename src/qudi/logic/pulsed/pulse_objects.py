@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import copy
 import inspect
 import importlib
+import os
 import sys
 import numpy as np
 import warnings
@@ -31,7 +32,8 @@ from functools import partial
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions, PulseEnvelope, PulseEnvelopeType
 from qudi.util.helpers import natural_sort
-from qudi.util.module_finder import get_module_names_from_ns, get_modules_from_ns, get_modules_from_path, is_subclass
+from qudi.util.module_finder import get_classes_in_module, get_module_names_from_ns, is_subclass, \
+    iter_directory_module_names
 
 
 class PulseBlockElement(object):
@@ -1777,29 +1779,31 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         # Generator sub class predicate
         self.is_generator_class = partial(is_subclass, base=PredefinedGeneratorBase)
 
+        self.failed_modules = list()
+
         # Import predefined generator modules
         # Import default namespace "qudi.logic.pulsed.predefined_generate_methods"
         import qudi.logic.pulsed.predefined_generate_methods as _default_generator_ns
-
-        for module_name in get_module_names_from_ns(_default_generator_ns):
-            if module_name in sys.modules:
-                try:
-                    importlib.reload(sys.modules[module_name])
-                except:
-                    self.log.exception(f'Exception while reloading module "{module_name}":')
-
-        # Import predefined generator modules and get a list of generator classes
-        generator_classes = list(get_modules_from_ns(
-            _default_generator_ns, self.is_generator_class, logger=self.log
-        ).values())
+        generator_classes = self.__import_generator_classes(
+            get_module_names_from_ns(_default_generator_ns)
+        )
 
         # Get predefined generator modules from non-default directory if a path has been given
         if isinstance(sequencegeneratorlogic.predefined_methods_import_path, (tuple, list, set)):
             for path in sequencegeneratorlogic.predefined_methods_import_path:
                 try:
-                    generator_classes.extend(get_modules_from_path(path, self.is_generator_class))
+                    module_names = list(iter_directory_module_names(path))
                 except:
                     self.log.exception(f'Unable to import predefined generator from "{path}":')
+                    continue
+                generator_classes.update(self.__import_generator_classes(module_names, path))
+
+        if self.failed_modules:
+            self.log.warning(
+                'The following predefined generator modules could not be imported (previously '
+                'imported versions are used if available): ' + ', '.join(self.failed_modules)
+            )
+        generator_classes = list(generator_classes.values())
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
@@ -1810,6 +1814,49 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # populate parameters dictionary from generate method signatures
         self.__populate_parameter_dict()
+
+    def __import_generator_classes(self, module_names, path=None):
+        """
+        Helper method to (re-)import the given modules and collect all generator classes in them.
+
+        All modules are removed from the import cache before any of them is imported again. This way
+        modules importing from each other always get the freshly imported version, independent of
+        the import order. If a module fails to import, its previously imported version is restored.
+
+        @param list module_names: Names of the modules to import
+        @param str path: Directory containing the modules if they are imported by their bare name
+
+        @return dict: Generator classes with their fully qualified names as keys
+        """
+        old_modules = dict()
+        for module_name in module_names:
+            module = sys.modules.get(module_name)
+            # Bare module names could belong to an unrelated module outside the given path
+            if module is not None and (path is None or self.__is_module_in_path(module, path)):
+                old_modules[module_name] = sys.modules.pop(module_name)
+
+        generator_classes = dict()
+        for module_name in module_names:
+            try:
+                module = importlib.import_module(module_name)
+            except:
+                self.log.exception(f'Exception while importing module "{module_name}":')
+                self.failed_modules.append(module_name)
+                module = old_modules.get(module_name)
+                if module is None:
+                    continue
+                sys.modules[module_name] = module
+            for cls in get_classes_in_module(module, self.is_generator_class, True).values():
+                generator_classes[f'{cls.__module__}.{cls.__qualname__}'] = cls
+        return generator_classes
+
+    @staticmethod
+    def __is_module_in_path(module, path):
+        module_file = getattr(module, '__file__', None)
+        if module_file is None:
+            return False
+        module_dir = os.path.normcase(os.path.dirname(os.path.abspath(module_file)))
+        return module_dir == os.path.normcase(os.path.abspath(path))
 
     @property
     def predefined_generate_methods(self):

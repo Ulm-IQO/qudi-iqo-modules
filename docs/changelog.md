@@ -19,7 +19,7 @@
 - Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
-- Added a GUI button in the settings tab to refresh predefined generate methods in Pulsed GUI.
+- Added a "Refresh methods" button to the predefined methods config dialog of the Pulsed GUI to re-import predefined generate methods while qudi is running. Modules that fail to import are reported in the log and their previous version is kept.
 - Refactored pulsed logic modules to use module finder that was added to core
 - Added hardware file `hardware.ni_x_series.ni_x_series_counter` to use NI 63xx cards as fastcounters for pulsed measurements.
 - Added resizeable `PulseBlockEditor` columns in `pulsed_gui`
