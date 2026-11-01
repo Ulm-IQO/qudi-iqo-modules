@@ -1,0 +1,85 @@
+# This workflow tests the installation script installation/install.py on Linux and Windows with all supported Python
+# versions: an unattended, editable installation of the tested branch from GitHub including updates and an interactive
+# installation of the PyPI releases. See .github/workflow_utils/test_install_script.py for details.
+
+name: Installation script testing
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'installation/**'
+      - 'pyproject.toml'
+      - '.github/workflows/test_install_script.yml'
+      - '.github/workflow_utils/test_install_script.py'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'installation/**'
+      - 'pyproject.toml'
+      - '.github/workflows/test_install_script.yml'
+      - '.github/workflow_utils/test_install_script.py'
+  # the installation depends on the latest releases on PyPI, so test it regularly
+  schedule:
+    - cron: '0 1 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  make-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Python matrix from pyproject.toml
+        id: build
+        run: |
+          python .github/workflow_utils/fetch_python_versions.py | jq .
+        shell: bash
+
+  test:
+    needs: make-matrix
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest ]
+        python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
+
+    steps:
+    - uses: actions/checkout@v5
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install system libraries required by PySide6
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libglib2.0-0 libfontconfig1 libdbus-1-3
+
+    - name: Test installation script
+      env:
+        # install the tested branch from GitHub, for pull requests from the repository the pull request comes from
+        IQO_REPO: ${{ github.event.pull_request.head.repo.clone_url || format('{0}/{1}.git', github.server_url, github.repository) }}
+        IQO_BRANCH: ${{ github.head_ref || github.ref_name }}
+      shell: bash
+      run: |
+        python .github/workflow_utils/test_install_script.py --with-pypi --work-dir "${{ runner.temp }}/install_test" --iqo-repo "$IQO_REPO" --iqo-branch "$IQO_BRANCH"
+
+    - name: Upload installation logs
+      if: failure()
+      uses: actions/upload-artifact@v6
+      with:
+        name: install-logs-${{ matrix.os }}-${{ matrix.python-version }}
+        path: |
+          ${{ runner.temp }}/install_test/*.out
+          ${{ runner.temp }}/install_test/*/logs/
+          ${{ runner.temp }}/install_test/qudi_log/
+        if-no-files-found: ignore

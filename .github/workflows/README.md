@@ -16,3 +16,13 @@ All the scripts used and version lists saved are in the workflow_save branch in 
 Set to run once every Monday, it runs a single test that resets status variables and runs all the modules. It then compares the values of status variables.
 Has only one job that installs qudi and runs the tests, upon success dumps the status variables to workflow_save branch, and upon failure compares the current values of status variables to the ones saved from the previous run.
 All the scripts and status variable saves are in worflow_save branch.
+
+# test_install_script.yml
+Tests the installation script `installation/install.py` on Linux and Windows with all supported Python versions. It runs on changes to the installation script, `pyproject.toml` or the test itself, and once every Monday, as the installation depends on the latest releases on PyPI.
+The test is done by `.github/workflow_utils/test_install_script.py`, which can also be run locally (`python .github/workflow_utils/test_install_script.py --with-pypi`). It runs the installation script of the checked out code in a temporary directory, the modules are installed from GitHub like in a real installation. The workflow installs the tested branch (for pull requests from the repository the pull request comes from):
+- unattended, editable installation using a settings file (`--config`) with the branch setting, checking the created files, the virtual environment, the Jupyter kernel and a headless qudi start
+- update of the cloned repository, which is reset to an older commit to be behind its remote branch (fast-forward)
+- update with local changes conflicting with the update (stash), which has to stop before installing the packages
+- interactive installation of the PyPI releases with piped answers
+
+On failure, the installation logs are uploaded as artifact.
