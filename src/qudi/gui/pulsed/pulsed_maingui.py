@@ -141,6 +141,9 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
         super().__init__()
 
         uic.loadUi(ui_file, self)
+        self.refresh_button = self.buttonBox.addButton(
+            'Refresh methods', QtWidgets.QDialogButtonBox.ButtonRole.ResetRole
+        )
 
 
 class PulsedMeasurementGui(GuiBase):
@@ -316,6 +319,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pm_cfg.accepted.connect(self.apply_predefined_methods_config)
         self._pm_cfg.rejected.connect(self.keep_former_predefined_methods_config)
         self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_predefined_methods_config)
+        self._pm_cfg.refresh_button.clicked.connect(self.refresh_predefined_methods_clicked)
 
         # Connect signals used in analysis settings dialog
         self._as.accepted.connect(self.update_analysis_settings)
@@ -460,6 +464,7 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+        self.pulsedmasterlogic().sigPredefinedMethodsUpdated.connect(self.predefined_methods_updated)
         return
 
     def _disconnect_main_window_signals(self):
@@ -481,6 +486,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pm_cfg.accepted.disconnect()
         self._pm_cfg.rejected.disconnect()
         self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.disconnect()
+        self._pm_cfg.refresh_button.clicked.disconnect()
 
         # Connect signals used in analysis settings dialog
         self._as.accepted.disconnect()
@@ -615,6 +621,7 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.pulsedmasterlogic().sigPredefinedMethodsUpdated.disconnect()
         return
 
     ###########################################################################
@@ -1198,6 +1205,48 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pm.hintLabel.setVisible(len(self._predefined_methods_to_show) == 0)
         return
+
+    def refresh_predefined_methods_clicked(self):
+        status = self.pulsedmasterlogic().status_dict
+        if status['predefined_generation_busy'] or status['sampload_busy']:
+            self.log.warning('Unable to refresh predefined methods while generation is in progress.')
+            return
+        self._pm_cfg.refresh_button.setEnabled(False)
+        for button in (*self._pm.gen_buttons.values(), *self._pm.samplo_buttons.values()):
+            button.setEnabled(False)
+        self.pulsedmasterlogic().refresh_predefined_methods()
+
+    @QtCore.Slot()
+    def predefined_methods_updated(self):
+        # Rebuild global parameter widgets since reloaded generators can add generation parameters
+        self._disconnect_predefined_methods_tab_signals()
+        while self._pm.global_param_gridLayout.count() > 0:
+            item = self._pm.global_param_gridLayout.takeAt(0)
+            if item.widget() is not None:
+                item.widget().deleteLater()
+        self._channel_selection_comboboxes = list()
+        self._global_param_widgets = list()
+        self._create_pm_global_params()
+        self.generation_parameters_updated(self.pulsedmasterlogic().generation_parameters)
+
+        # Remove widgets of the previously available methods
+        for method_name in self._pm.gen_buttons:
+            for parent, attr, layout in (
+                (self._pm, method_name + '_GroupBox', self._pm.verticalLayout),
+                (self._pm_cfg, 'checkbox_' + method_name, self._pm_cfg.verticalLayout),
+            ):
+                widget = getattr(parent, attr)
+                layout.removeWidget(widget)
+                widget.deleteLater()
+                delattr(parent, attr)
+        # Remove trailing stretch added by _create_predefined_methods
+        last_item = self._pm.verticalLayout.itemAt(self._pm.verticalLayout.count() - 1)
+        if last_item is not None and last_item.spacerItem() is not None:
+            self._pm.verticalLayout.takeAt(self._pm.verticalLayout.count() - 1)
+
+        self._create_predefined_methods()
+        self._activate_predefined_methods_settings_ui()
+        self._pm_cfg.refresh_button.setEnabled(True)
 
     ###########################################################################
     #                Predefined Methods tab related methods                   #
@@ -2885,7 +2934,7 @@ class PulsedMeasurementGui(GuiBase):
             self.pulsedmasterlogic().set_alternative_data_type(second_plot)
 
         # Axis labels for the selected method are provided by the logic (computed from the active
-        # measurement settings), 
+        # measurement settings),
         current_type = self.pulsedmasterlogic().alternative_data_type
         method_labels = self.pulsedmasterlogic().alt_plot_labels.get(current_type)
         if method_labels:
