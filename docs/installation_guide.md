@@ -33,7 +33,7 @@ On Linux, additionally make sure that all system libraries required by `PySide6`
     - Navigate to the downloaded `install.py` script, e.g. `cd Downloads` (if you downloaded it into your `Downloads` folder)
     - Execute the script using Python: `python install.py`
     - Follow the instructions of the installation script and choose your installation method and location. If unsure, answer the first question with `y` to use the default installation ([`default.json`](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/installation/default.json): recommended option 1 in `~/qudi`, with Desktop and Start Menu shortcuts), which then runs without further questions.
-        - Otherwise, all questions are asked before the installation starts, after which it runs without further input.
+        - Otherwise, all questions are asked before the installation starts, after which it runs without further input. For editable installations, you can enter a branch to install instead of the default branch.
         - A Qudi start script `qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
         - Additionally, the scripts and shortcuts `qudi_jupyter` (starts Jupyter Lab in the `scripts` folder) and `qudi_environment` (opens a terminal with the Qudi environment activated) are created.
         - A log of the installation, including all questions, answers and errors, is written to `logs/install_<date>.log` in the installation location (updates log to `logs/update_<date>.log`). If the script stops before the installation location is created, the log is written next to `install.py` instead. The terminal stays open at the end, so errors can be read even if the script was started by double-clicking. Please attach the log when reporting installation problems.
@@ -53,6 +53,8 @@ The `installation.json` stored by a previous installation can be used as a templ
     "venv_name": "qudi-env",
     "core_mode": "PyPi",
     "iqo_mode": "Editable",
+    "core_branch": "",
+    "iqo_branch": "",
     "modify_existing_venv": false,
     "create_start_menu_shortcuts": false,
     "create_desktop_shortcuts": false
@@ -60,6 +62,7 @@ The `installation.json` stored by a previous installation can be used as a templ
 ```
 
 - `core_mode` / `iqo_mode`: `"Editable"` clones the repository into the installation location and installs it in editable mode, `"PyPi"` installs the latest stable release.
+- `core_branch` / `iqo_branch`: branch cloned for an `"Editable"` installation, e.g. to install a branch with a new feature. Empty for the default branch of the repository. Ignored for `"PyPi"` installations.
 - `modify_existing_venv`: whether to continue if the virtual environment already exists. If `false`, the installation is aborted in that case.
 
 

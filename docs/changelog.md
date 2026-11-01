@@ -19,6 +19,7 @@
 - Installation script supports unattended installation via `python install.py --config <settings file>`
 - Installation script and update write a log file to `logs` in the installation location
 - Installation script places an update script `qudi_update` in the installation location, which upgrades PyPI packages and updates editable packages via `git`
+- Installation script can install a certain branch of the editable packages (`core_branch` / `iqo_branch` setting)
 
 ### Other
 - Displaying Qudi logs in the test workflow upon test failure

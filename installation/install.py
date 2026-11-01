@@ -40,6 +40,9 @@ class InstallationConfig:
     # repositories
     core_repo: str = "https://github.com/Ulm-IQO/qudi-core.git"
     iqo_repo: str = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
+    # branches cloned for editable installations, empty for the default branch of the repository
+    core_branch: str = ""
+    iqo_branch: str = ""
 
     # URLs
     manifest_url: str = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
@@ -403,9 +406,10 @@ def configured_choice(message: str, key: str) -> bool:
     return answer
 
 
-def clone_repo(repo: str, location: Path):
+def clone_repo(repo: str, location: Path, branch: str = ""):
     if not location.exists():
-        run(f'git clone {repo} "{location}"')
+        branch_option = f' --branch "{branch}"' if branch else ""
+        run(f'git clone{branch_option} {repo} "{location}"')
     else:
         print(f"{location} already exists, doing nothing.")
 
@@ -482,6 +486,31 @@ def check_python():
     print(f"Found Python version {version}")
 
 
+def check_branches():
+    """Check that the configured branches exist before anything is installed."""
+    for repo, branch, location in (
+        (CONFIG.core_repo, CONFIG.core_branch, CONFIG.core_dir),
+        (CONFIG.iqo_repo, CONFIG.iqo_branch, CONFIG.iqo_modules_dir),
+    ):
+        if not branch:
+            continue
+        if location is None:
+            print(f'Warning: ignoring branch "{branch}" of {repo}, as the release from PyPI is installed.')
+            continue
+        if location.exists():
+            print(f'Warning: ignoring branch "{branch}" of {repo}, as {location} already exists.')
+            continue
+        # the full ref name only matches the branch itself, not other branches ending with the same name
+        result = subprocess.run(
+            ["git", "ls-remote", "--exit-code", "--heads", repo, f"refs/heads/{branch}"], capture_output=True, text=True
+        )
+        if result.returncode == 2:
+            raise SystemExit(f'Branch "{branch}" not found in {repo}.')
+        if result.returncode:
+            raise SystemExit(f"Could not access {repo}: {result.stderr.strip()}")
+        print(f'Found branch "{branch}" in {repo}')
+
+
 def check_git():
     if shutil.which("git") is None:
         print("Git not found. Please install Git.")
@@ -513,13 +542,13 @@ def install_modules():
     run(f'"{CONFIG.python_bin}" -m pip install --upgrade pip')
 
     if CONFIG.core_dir:
-        clone_repo(CONFIG.core_repo, CONFIG.core_dir)
+        clone_repo(CONFIG.core_repo, CONFIG.core_dir, CONFIG.core_branch)
         run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.core_dir}"')
     else:
         run(f'"{CONFIG.python_bin}" -m pip install qudi-core')
 
     if CONFIG.iqo_modules_dir:
-        clone_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir)
+        clone_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir, CONFIG.iqo_branch)
         run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
     else:
         run(f'"{CONFIG.python_bin}" -m pip install qudi-iqo-modules')
@@ -572,10 +601,13 @@ def abort_update(repo: Path, branch: str, upstream: str):
     raise SystemExit(f"Update aborted, {repo} was not changed.")
 
 
-def update_repo(repo_url: str, repo: Path):
-    """Update a cloned repository as little invasive as possible, asking the user if local changes are in the way."""
+def update_repo(repo_url: str, repo: Path, branch: str = ""):
+    """Update a cloned repository as little invasive as possible, asking the user if local changes are in the way.
+
+    The currently checked out branch is updated, `branch` is only used if the repository has to be cloned.
+    """
     if not repo.exists():
-        clone_repo(repo_url, repo)
+        clone_repo(repo_url, repo, branch)
         return
 
     print(f"Updating {repo}")
@@ -622,13 +654,13 @@ def update_modules():
     run(f'"{CONFIG.python_bin}" -m pip install --upgrade pip')
 
     if CONFIG.core_dir:
-        update_repo(CONFIG.core_repo, CONFIG.core_dir)
+        update_repo(CONFIG.core_repo, CONFIG.core_dir, CONFIG.core_branch)
         run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.core_dir}"')
     else:
         run(f'"{CONFIG.python_bin}" -m pip install --upgrade qudi-core')
 
     if CONFIG.iqo_modules_dir:
-        update_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir)
+        update_repo(CONFIG.iqo_repo, CONFIG.iqo_modules_dir, CONFIG.iqo_branch)
         run(f'"{CONFIG.python_bin}" -m pip install -e "{CONFIG.iqo_modules_dir}"')
     else:
         run(f'"{CONFIG.python_bin}" -m pip install --upgrade qudi-iqo-modules')
@@ -861,6 +893,16 @@ def installation_choice():
         CONFIG.iqo_mode = InstallationMode.EDITABLE
 
 
+def choose_branches():
+    """Ask for the branches of the editable installations, the default branch is used if no branch is entered."""
+    for name, key, location in (
+        ("qudi-core", "core_branch", CONFIG.core_dir),
+        ("qudi-iqo-modules", "iqo_branch", CONFIG.iqo_modules_dir),
+    ):
+        if location is not None:
+            setattr(CONFIG, key, ask(f"Branch of {name} to install (press Enter for the default branch): ").strip())
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Install Qudi and the qudi-iqo-modules.")
     parser.add_argument(
@@ -913,6 +955,7 @@ def main(args):
         choose_install_dir()
         choose_venv_name()
         installation_choice()
+        choose_branches()
 
     confirm_existing_venv()
     choose_shortcuts()
@@ -926,6 +969,7 @@ def main(args):
 
     if CONFIG.core_dir or CONFIG.iqo_modules_dir:
         check_git()
+    check_branches()
 
     create_venv()
 
