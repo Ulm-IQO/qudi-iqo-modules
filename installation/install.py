@@ -538,10 +538,13 @@ def git_identity(repo: Path) -> list[str]:
 def stash_and_fast_forward(repo: Path, branch: str, upstream: str):
     if not git(repo, "merge", "--ff-only", "--autostash", upstream):
         raise SystemExit(f"Could not update {repo}, your local changes were restored.")
-    if git_output(repo, "diff", "--name-only", "--diff-filter=U"):
-        print(
-            f"Re-applying your local changes caused conflicts. Resolve them in {repo}, "
-            'your changes are also kept in "git stash list".'
+    conflicts = git_output(repo, "diff", "--name-only", "--diff-filter=U")
+    if conflicts:
+        # stop before installing the packages, as the conflict markers can break e.g. pyproject.toml
+        raise SystemExit(
+            f"Re-applying your local changes caused conflicts in {', '.join(conflicts.splitlines())}. "
+            f'Resolve them in {repo} and drop the stash with "git stash drop" (your changes are kept in '
+            '"git stash list" until then), then run the update again.'
         )
 
 

@@ -69,7 +69,7 @@ The installation script places `qudi_update.sh` (Linux) / `qudi_update.ps1` (Win
 - Packages installed from PyPI are upgraded to the latest release.
 - Editable packages are updated with `git`, as little invasive as possible: the current branch is fast-forwarded to its remote branch, which keeps uncommitted changes in files that were not updated.
   If that is not possible, you are asked how to continue:
-    - **Stash** (recommended for uncommitted changes, only offered if there are no local commits): the changes are stashed, the branch is fast-forwarded and the changes are re-applied. If re-applying conflicts, the changes stay in `git stash list`.
+    - **Stash** (recommended for uncommitted changes, only offered if there are no local commits): the changes are stashed, the branch is fast-forwarded and the changes are re-applied. If re-applying conflicts, the update stops before installing the packages: resolve the conflicts, drop the stash with `git stash drop` (the changes stay in `git stash list` until then) and run the update again.
     - **New branch** (recommended for local commits): the local commits and uncommitted changes are saved to a new branch `<branch>-local-changes-<date>`, and the branch is reset to the remote state. Apply the changes later with `git merge <new branch>`.
     - **Merge manually**: the remote branch is merged into the local one; conflicts have to be resolved and committed before running the update again.
     - **Abort** (default): nothing is changed.
