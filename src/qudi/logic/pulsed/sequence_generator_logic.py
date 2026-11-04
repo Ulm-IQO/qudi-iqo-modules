@@ -91,6 +91,8 @@ def _dataclass_to_dict(obj, exclude=()):
 def _default_generator_settings():
     """Factory for the default SequenceGeneratorSettings, used both as the StatusVar default
     and as the fallback when restoring a malformed/legacy status value.
+
+    Uses generation_parameters_class(), since the class may be rebuilt after import.
     """
     return SequenceGeneratorSettings(
         generation_parameters=generation_parameters_class()(),
@@ -101,6 +103,8 @@ def _default_generator_settings():
 def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_blocks, log):
     """Walk `asset`'s block/ensemble NAME references and return independent copies of everything
     it points to - see PulseObjects (pulsed_data/pulsed_measurement.py) for why this exists.
+
+    Missing references are logged and skipped.
 
     Parameters
     ----------
@@ -138,7 +142,7 @@ def _resolve_asset_closure(asset, saved_pulse_block_ensembles, saved_pulse_block
     blocks = {}
     missing_blocks = set()
 
-    # Tri-state : True/False come from PulseSequence.is_sequence and
+    # Tri-state: True/False come from PulseSequence.is_sequence and
     # PulseBlockEnsemble.is_sequence, while None means "not a pulse asset at all".
     asset_is_sequence = getattr(asset, 'is_sequence', None)
 
@@ -224,7 +228,7 @@ class SequenceGeneratorLogic(LogicBase):
     # status vars
     # Bundles the generation parameters (channel usage and common parameters used during
     # pulsed object generation for predefined methods) and the pulse generator hardware settings
-    # (activation config, sample rate, levels, ...) mirrored locally 
+    # (activation config, sample rate, levels, ...) mirrored locally
     _generator_settings = StatusVar(
         default=_default_generator_settings(),
         constructor=lambda x: SequenceGeneratorSettings.from_dict(x)
@@ -233,7 +237,6 @@ class SequenceGeneratorLogic(LogicBase):
         representer=lambda obj: obj.to_dict(),
     )
 
-    
     pulser_benchmarks = StatusVar(
         default=None,
         constructor=lambda value: PulserBenchmarks.from_dict(value) if isinstance(value, dict) else PulserBenchmarks(),
@@ -259,6 +262,7 @@ class SequenceGeneratorLogic(LogicBase):
     sigAvailableSequencesUpdated = QtCore.Signal(list)
     sigBenchmarkComplete = QtCore.Signal()
 
+    #: (asset_name, produced_sequence): whether the generate method returned a PulseSequence.
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
     def __init__(self, *args, **kwargs):
@@ -277,9 +281,9 @@ class SequenceGeneratorLogic(LogicBase):
         self._saved_pulse_sequences = dict()
 
     def _migrate_legacy_settings_if_needed(self):
-        """One-time upgrade path for a status file saved by either the pre-refactor version of this module ,
-        or a later format with pulser_benchmarks nested inside '_generator_settings' instead of its own
-        independent StatusVar. 
+        """One-time upgrade path for a status file saved by either the pre-refactor version of
+        this module, or a later format with pulser_benchmarks nested inside '_generator_settings'
+        instead of its own independent StatusVar.
         """
         file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
         try:
@@ -327,6 +331,8 @@ class SequenceGeneratorLogic(LogicBase):
         generation_parameter_extensions.py declares, not what comes in via
         additional_predefined_methods_path.
 
+        Saved values for these fields are re-read from the status file, since the StatusVar restore
+        ran before they existed.
         """
         declared = self._pog.collect_generation_parameter_contributors()
         if not declared:
@@ -378,6 +384,7 @@ class SequenceGeneratorLogic(LogicBase):
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
+        # Must run first: the StatusVars are already restored at this point.
         self._migrate_legacy_settings_if_needed()
 
         if not os.path.exists(self._assets_storage_dir):
@@ -412,6 +419,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+        # Before activate_plugins(), so plugins see all parameters.
         self._merge_generator_declared_parameters()
         self._pog.activate_plugins()
 
@@ -932,7 +940,7 @@ class SequenceGeneratorLogic(LogicBase):
         # Check if generation is in progress and do nothing if that is the case
         if self.module_state() != 'locked':
             current = self._generator_settings.generation_parameters
-            
+            # Warn about unknown keys, since update_from_dict() drops them silently.
             gen_params_cls = generation_parameters_class()
             known_keys = {f.name for f in fields(gen_params_cls)}
             if isinstance(settings, dict):
@@ -948,8 +956,8 @@ class SequenceGeneratorLogic(LogicBase):
                 self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
                 return self.generation_parameters
 
-            # Sanity checks. Only channels this call actually changes are checked 
-            # Every *_channel field is checked, not just the four built-in ones
+            # Sanity checks. Only channels this call actually changes are checked.
+            # Every *_channel field is checked, not just the four built-in ones.
             active_channels = self._generator_settings.pulse_generator_settings.activation_config.channels
             for field_name in (f.name for f in fields(gen_params_cls) if f.name.endswith('_channel')):
                 channel = getattr(requested, field_name)
@@ -1232,7 +1240,7 @@ class SequenceGeneratorLogic(LogicBase):
     def resolve_asset_closure(self, asset):
         """Independent copies of every PulseBlockEnsemble/PulseBlock `asset` (a loaded
         PulseBlockEnsemble or PulseSequence, or None) actually references by name. Used by
-        PulsedMasterLogic to build a self-contained PulsedMeasurement.objects 
+        PulsedMasterLogic to build a self-contained PulsedMeasurement.objects
 
         Parameters
         ----------
@@ -1448,7 +1456,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_sequence(sequence)
 
         created_name = gen_params.get('name') if 'name' not in kwargs_dict else kwargs_dict['name']
-        
+        # Search sequences first: the default sequence has the same name as ensembles[0].
         created_asset = next(
             (asset for asset in (*sequences, *ensembles) if asset.name == created_name), None
         )
@@ -1998,7 +2006,7 @@ class SequenceGeneratorLogic(LogicBase):
                         created_waveforms:
                             list, a list of created waveform names
                         ensemble_info:
-                            dict, information about the ensemble returned by analyze_block_ensemble
+                            EnsembleAnalysisResult, returned by analyze_block_ensemble
 
         This method is creating the actual samples (voltages and logic states) for each time step
         of the analog and digital channels specified in the PulseBlockEnsemble.
@@ -2434,7 +2442,7 @@ class SequenceGeneratorLogic(LogicBase):
                             '_legacy_data',
                         ),
                     )
-                    
+                    # Filter rejected keys here too, since ensemble_info isn't filtered by from_dict().
                     existing_info.update(
                         {
                             key: value

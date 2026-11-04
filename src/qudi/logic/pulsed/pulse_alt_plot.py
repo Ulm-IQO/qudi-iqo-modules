@@ -161,7 +161,7 @@ class AltPlotAnalyzer(AltPlotMethodBase):
             self.__settings.parameters.update(self._get_method_kwargs(instance.compute))
 
         # Drop any persisted parameter that no longer corresponds to a real method (e.g. removed
-        # or renamed since last session) 
+        # or renamed since last session)
         valid_parameter_names = set()
         for instance in self._methods.values():
             valid_parameter_names.update(inspect.signature(instance.compute).parameters.keys())

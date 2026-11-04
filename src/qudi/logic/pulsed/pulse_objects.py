@@ -410,6 +410,7 @@ class PulseBlockEnsemble(object):
 
     This object is used as a construction plan to create one sampled file.
     """
+    #: Class attribute so that unpickled older assets have it too.
     is_sequence = False
 
     def __init__(self, name, block_list=None, rotating_frame=True):
@@ -617,6 +618,7 @@ class PulseBlockEnsemble(object):
 
     @staticmethod
     def ensemble_from_dict(ensemble_dict):
+        # .get() for the info containers: saved file headers don't include all of them.
         new_ens = PulseBlockEnsemble(
             name=ensemble_dict['name'],
             block_list=ensemble_dict['block_list'],
@@ -1111,14 +1113,14 @@ def _as_generation_parameter_contributor(entry, owner):
                 f'{owner.__name__}.generation_parameter_contributors: "{name}" is not a valid '
                 f'parameter name.'
             )
-       
+        # Unhashable defaults need a factory, which is the same check dataclass uses.
         spec = (
             field(default_factory=lambda value=default: copy.deepcopy(value))
             if default.__class__.__hash__ is None
             else field(default=default)
         )
         specs.append((name, type(default), spec))
-    
+
     return make_dataclass(
         f'{owner.__name__}Parameters', specs, bases=(BaseGenerationParameters,), frozen=True
     )

@@ -89,7 +89,7 @@ class PulseExtractor(PulseExtractorBase):
         self._gated_extraction_methods = dict()
         self._ungated_extraction_methods = dict()
         # The real, shared ExtractionParameters instance held by PulsedMeasurementLogic's
-        # settings 
+        # settings
         self._parameters = pulsedmeasurementlogic.extraction_parameters
         # Currently selected extraction method
         self._current_extraction_method = None

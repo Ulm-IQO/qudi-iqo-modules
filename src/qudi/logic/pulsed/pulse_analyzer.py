@@ -127,7 +127,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         # add references to all analysis methods in each instance to a dict
         self.__populate_method_dict(instance_list=analyzer_instances)
 
-        # Drop any persisted parameter that no longer corresponds to a real method 
+        # Drop any persisted parameter that no longer corresponds to a real method
         valid_parameter_names = set()
         for method in self._analysis_methods.values():
             valid_parameter_names.update(inspect.signature(method).parameters.keys())
@@ -136,7 +136,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
             del self._parameters[param]
 
         # Fill in defaults (from method signatures) for any valid parameter name not already
-        # present in the shared, persisted self._parameters dict 
+        # present in the shared, persisted self._parameters dict
         self.__populate_parameter_dict()
 
         # Ensure a valid current method is selected

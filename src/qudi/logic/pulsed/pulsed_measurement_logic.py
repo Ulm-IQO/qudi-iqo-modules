@@ -167,6 +167,7 @@ def _default_measurement_settings():
     """Factory for the default PulsedMeasurementSettings, used both as the StatusVar default
     and as the fallback when restoring a malformed/legacy status value.
 
+    The mutable containers are created fresh on each call so they aren't shared between instances.
     """
     return PulsedMeasurementSettings(
         microwave_settings=_DEFAULT_MICROWAVE_SETTINGS,
@@ -232,14 +233,14 @@ class PulsedMeasurementLogic(LogicBase):
         representer=lambda obj: obj.settings.measurement_settings.to_dict(),
     )
 
-    # timer_interval_s/fit_configs are deliberately independent StatusVars, 
+    # Kept as separate StatusVars, not part of the measurement settings.
     _timer_interval_s = StatusVar(name='timer_interval_s', default=5.0)
     # fit_configs' representer/constructor read/write self.fit_config_model directly
     _fit_configs = StatusVar(name='fit_configs', default=None)
 
     # notification signals for master module (i.e. GUI)
     sigMeasurementDataUpdated = QtCore.Signal()
-    
+    # Emits a message when an analysis tick fails and '' once a tick succeeds again.
     sigAnalysisProblem = QtCore.Signal(str)
     sigTimerUpdated = QtCore.Signal(float, int, float)
     sigFitUpdated = QtCore.Signal(str, object, bool)
@@ -276,17 +277,15 @@ class PulsedMeasurementLogic(LogicBase):
         self.alt_fc = None
 
         # Holding area for a newly loaded asset/closure that hasn't been committed as the
-        # actively-measured one yet 
+        # actively-measured one yet
         self._pending_loaded_asset = None
         self._pending_ensembles = {}
         self._pending_blocks = {}
 
-       
-
     @property
     def _settings(self):
         """The real, shared PulsedMeasurementSettings this module actually works with - lives on
-        self._pulsed_measurement.settings.measurement_settings. 
+        self._pulsed_measurement.settings.measurement_settings.
         """
         return self._pulsed_measurement.settings.measurement_settings
 
@@ -346,8 +345,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @loaded_asset.setter
     def loaded_asset(self, asset):
-        """Does NOT apply the new asset's settings immediately - only stores it as pending.
-       """
+        """Only stores the asset as pending. It's applied by _commit_pending_asset() on start."""
         if asset is not self._loaded_asset:
             self.log.warning(
                 'A new sequence/ensemble has been loaded, but its settings have not been applied '
@@ -380,8 +378,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def get_pulsed_measurement(self, generator_settings=None, ensembles=None, blocks=None):
         """Build a PulsedMeasurement snapshot bundling this module's settings/data/loaded asset
-        with the caller-supplied SequenceGeneratorSettings and resolved ensemble/block closure
-        
+        with the caller-supplied SequenceGeneratorSettings and resolved ensemble/block closure.
 
         Returns independent copies (not live references), so the snapshot is frozen in time.
 
@@ -425,8 +422,8 @@ class PulsedMeasurementLogic(LogicBase):
 
     def _migrate_legacy_settings_if_needed(self):
         """One-time upgrade path for a status file saved by either the pre-refactor version of
-        this module , or a later format with timer_interval_s/fit_configs nested inside '_settings' instead of their
-        own independent StatusVars.
+        this module, or a later format with timer_interval_s/fit_configs nested inside '_settings'
+        instead of their own independent StatusVars.
         """
         file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
         try:
@@ -456,13 +453,13 @@ class PulsedMeasurementLogic(LogicBase):
             except Exception:
                 self.log.exception('Failed to migrate legacy measurement settings - keeping defaults:')
 
-           
+
             self._timer_interval_s = float(
                 raw_status.get('_PulsedMeasurementLogic__timer_interval', self._timer_interval_s)
             )
             return
 
-        
+        # Intermediate format had timer_interval_s/fit_configs nested inside '_settings'
         nested = raw_status.get('_settings')
         if isinstance(nested, dict):
             if 'timer_interval_s' in nested:
@@ -473,8 +470,7 @@ class PulsedMeasurementLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        # Must run first: self._settings has already been restored (or defaulted) by qudi-core's
-        # StatusVar machinery by this point
+        # Must run first: the StatusVars are already restored at this point.
         self._migrate_legacy_settings_if_needed()
 
         # Create an instance of PulseExtractor
@@ -611,6 +607,7 @@ class PulsedMeasurementLogic(LogicBase):
                 settings, kwargs, self._settings.fast_counter_settings, FastCounterSettings
             )
         except SettingsTypeError as err:
+            # Logged, not raised: an exception in a queued slot doesn't reach the caller.
             self.log.error(f'Unable to apply new fast counter settings. {err}')
             self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
             return self.fast_counter_settings
@@ -1245,7 +1242,7 @@ class PulsedMeasurementLogic(LogicBase):
                 if self._data_stash.recall(stashed_raw_data_tag) is not None:
                      self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
                                      ''.format(stashed_raw_data_tag))
-                
+
                 # start microwave source
                 if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_on()
@@ -1554,11 +1551,8 @@ class PulsedMeasurementLogic(LogicBase):
                 )
                 return
 
-            # laser_data legitimately being all-zero is effectively never valid experimental data
-            #  it means extraction either got a flat/undetectable trace or explicitly gave up (several
-            # built-in extraction methods, and potentially custom ones, silently return all-zeros
-            # on failure rather than raising). raw_data is already available from
-            # _extract_laser_pulses() above, so distinguish the two likely causes
+            # All-zero laser_data means extraction got a flat trace or gave up (several extraction
+            # methods return all-zeros on failure). Check raw_data to tell the two causes apart.
             if not self.measurement_data.laser_data.any():
                 if not self.measurement_data.raw_data.any():
                     self._report_analysis_problem(
@@ -1761,17 +1755,18 @@ class PulsedMeasurementLogic(LogicBase):
         """Resolved closure of the currently loaded sequence/ensemble - name/type plus the
         loaded asset/ensembles/blocks/elements structure, embedded directly into every raw/laser/
         signal .dat file's metadata rather than requiring a separate '.pulsedmeasurement'
-        snapshot file. 
+        snapshot file.
 
         'pulse objects' always carries the same three keys - 'sequence', 'ensembles', 'blocks' -
         whichever kind of asset is loaded, so evaluation code reads one fixed shape. The kind is
         reconstructed rather than stated: an empty 'sequence' means a bare PulseBlockEnsemble was
-        loaded, and it is then the single entry under 'ensembles'. 
+        loaded, and it is then the single entry under 'ensembles'.
+
         Parameters
         ----------
         ensembles : dict
             Optional, {name: PulseBlockEnsemble} already resolved by the caller (see
-            SequenceGeneratorLogic.resolve_asset_closure()) 
+            SequenceGeneratorLogic.resolve_asset_closure())
         blocks : dict
             Optional, {name: PulseBlock}, same caveat as `ensembles`.
         omit_generation_method_parameters : bool
@@ -1904,7 +1899,7 @@ class PulsedMeasurementLogic(LogicBase):
         generator_settings : SequenceGeneratorSettings
             Optional, the SequenceGeneratorLogic settings in effect for this measurement.
         ensembles : dict
-            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller 
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller
         blocks : dict
             Optional, {name: PulseBlock}
         save_measurement_snapshot : bool

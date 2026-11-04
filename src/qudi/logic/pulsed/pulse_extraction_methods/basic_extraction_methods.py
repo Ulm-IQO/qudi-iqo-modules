@@ -56,6 +56,7 @@ class BasicPulseExtractor(PulseExtractorBase):
         timetrace_sum = np.sum(count_data, 0)
 
         # apply gaussian filter to remove noise and compute the gradient of the timetrace sum.
+        # No try/except: the analysis loop handles errors and keeps the previous data.
         conv = ndimage.gaussian_filter1d(timetrace_sum.astype(float), conv_std_dev)
         conv_deriv = np.gradient(conv)
 
@@ -242,13 +243,13 @@ class BasicPulseExtractor(PulseExtractorBase):
         Detects the laser pulses in the ungated timetrace data and extracts them.
     
         @param numpy.ndarray count_data: The raw timetrace data (1D) from an ungated fast counter
-        @param count_threshold: 
-        @param min_laser_length: 
-        @param threshold_tolerance: 
-        
+        @param count_threshold:
+        @param min_laser_length:
+        @param threshold_tolerance:
+
         @return 2D numpy.ndarray:   2D array, the extracted laser pulses of the timetrace.
                                     dimensions: 0: laser number, 1: time bin
-    
+
         Procedure:
             Threshold detection:
             ---------------

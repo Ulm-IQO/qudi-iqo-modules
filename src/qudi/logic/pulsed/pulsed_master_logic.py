@@ -699,6 +699,7 @@ class PulsedMasterLogic(LogicBase):
                            'propagated yet - saving now would save stale data from the previously '
                            'loaded asset. Wait for loading/sampling to finish and try again.')
             return
+        # Always needed: the pulse objects go into every saved file's metadata.
         ensembles, blocks = self.sequencegeneratorlogic().resolve_asset_closure(
             self.pulsedmeasurementlogic().loaded_asset
         )
@@ -897,7 +898,7 @@ class PulsedMasterLogic(LogicBase):
         """
         self.pulsedmeasurementlogic().refresh_generator_settings(self.sequencegeneratorlogic().generator_settings)
 
-    
+
     def loaded_asset_updated(self, asset_name, asset_type):
         """
         @param asset_name:
