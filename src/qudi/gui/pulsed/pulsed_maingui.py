@@ -41,6 +41,40 @@ from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
+from qudi.logic.pulsed.pulsed_fsm.generator_state import GeneratorState
+from qudi.logic.pulsed.pulsed_fsm.measurement_state import MeasurementState
+from qudi.logic.pulsed.pulsed_fsm.master_state import SampLoadState
+
+#: Status bar text per state. Only the idle members are absent - see _state_text() for what happens
+#: to a state nobody has given a caption, which deliberately is not "Ready".
+_STATE_TEXT = {
+    GeneratorState.GENERATING: 'Generating…',
+    GeneratorState.SAMPLING_ENSEMBLE: 'Sampling ensemble…',
+    GeneratorState.SAMPLING_SEQUENCE: 'Sampling sequence…',
+    GeneratorState.BENCHMARKING: 'Benchmarking pulse generator…',
+    MeasurementState.RUNNING: 'Measurement running',
+    MeasurementState.PAUSED: 'Measurement paused',
+    # The generator does not lock itself while uploading, so its own machine reads IDLE for the
+    # whole of this step. Without this entry the label says "Ready" through a multi-minute upload,
+    # while the run/stop action sits greyed out - the label and the buttons contradicting each other.
+    SampLoadState.LOADING: 'Loading…',
+}
+
+#: Shown when all three machines are idle.
+_IDLE_TEXT = 'Ready'
+
+#: Between two activities that are genuinely running at once.
+_STATE_JOIN = ' · '
+
+
+def _state_text(state):
+    """Caption for one state, falling back to the state's own name.
+
+    Never "Ready" for an unrecognised state: a member added to one of the enums without a caption
+    here is busy by definition, and reporting it as idle would be the exact fault this display was
+    extended to fix. The bare enum name is ugly, which is the point - it is visible.
+    """
+    return _STATE_TEXT.get(state) or getattr(state, 'name', str(state))
 
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
@@ -301,6 +335,7 @@ class PulsedMeasurementGui(GuiBase):
             self.show_predefined_methods_config)
         self._mw.pulser_on_off_PushButton.clicked.connect(self.pulser_on_off_clicked)
         self._mw.clear_device_PushButton.clicked.connect(self.clear_pulser_clicked)
+        self._mw.reset_toolchain_PushButton.clicked.connect(self.reset_toolchain_clicked)
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
         self._mw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
         self._mw.action_pull_data.triggered.connect(self.pull_data_clicked)
@@ -460,6 +495,17 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+
+        self.pulsedmasterlogic().sigGeneratorStateChanged.connect(self.state_display_updated)
+        self.pulsedmasterlogic().sigMeasurementStateChanged.connect(self.state_display_updated)
+        self.pulsedmasterlogic().sigSampLoadStateChanged.connect(self.state_display_updated)
+        # Queued: reset_toolchain() stops the measurement through a queued emit of its own, so the
+        # measurement_running flag this reads may still be stale for another hop. Harmless - the
+        # resync is about re-enabling controls, and sigMeasurementStatusUpdated corrects the rest a
+        # moment later.
+        self.pulsedmasterlogic().sigToolchainReset.connect(
+            self._resync_from_logic, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.state_display_updated()
         return
 
     def _disconnect_main_window_signals(self):
@@ -467,6 +513,7 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.action_Predefined_Methods_Config.triggered.disconnect()
         self._mw.pulser_on_off_PushButton.clicked.disconnect()
         self._mw.clear_device_PushButton.clicked.disconnect()
+        self._mw.reset_toolchain_PushButton.clicked.disconnect()
         self._mw.action_run_stop.triggered.disconnect()
         self._mw.action_continue_pause.triggered.disconnect()
         self._mw.action_pull_data.triggered.disconnect()
@@ -615,7 +662,49 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
         self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.pulsedmasterlogic().sigGeneratorStateChanged.disconnect()
+        self.pulsedmasterlogic().sigMeasurementStateChanged.disconnect()
+        self.pulsedmasterlogic().sigSampLoadStateChanged.disconnect()
+        self.pulsedmasterlogic().sigToolchainReset.disconnect()
         return
+
+    @QtCore.Slot()
+    @QtCore.Slot(object, object)
+    def state_display_updated(self, _old_state=None, _new_state=None):
+        """Refresh the toolbar state label and the busy spinner from all three state machines.
+
+        Reads the current states rather than the signal arguments, since any of the three may have
+        sent this and the label describes all of them together.
+
+        The three are not alternatives - more than one can be running at once. A measurement does
+        not stop the generator being driven, which is exactly how the pulse generator ends up
+        rewritten mid-acquisition, so every active one is listed rather than only the first. Showing
+        just the measurement there would hide the cause of the very failure most likely to follow.
+        """
+        master = self.pulsedmasterlogic()
+        generator = master.generator_state
+
+        # Most-significant first, so the compound reads "Measurement running · Sampling ensemble…".
+        active = []
+        if master.measurement_state is not MeasurementState.IDLE:
+            active.append(_state_text(master.measurement_state))
+        if generator is not GeneratorState.IDLE:
+            active.append(_state_text(generator))
+        elif master.sampload_state is SampLoadState.LOADING:
+            # Only when the generator is not already speaking for itself. LOADING is the one step of
+            # the chain it does not cover: it does not lock while uploading. The chain's other two
+            # states are always accompanied by a generator state that describes them better.
+            active.append(_state_text(SampLoadState.LOADING))
+
+        busy = bool(active)
+        self._mw.state_Label.setText(
+            '  {0}'.format(_STATE_JOIN.join(active) if busy else _IDLE_TEXT)
+        )
+        self._mw.state_Label.setStyleSheet(
+            'color: {0};'.format((palette.orange if busy else palette.green).name())
+        )
+        # The spinner follows every busy state, not just sampload/benchmark as before.
+        self._mw.loading_indicator_action.setVisible(busy)
 
     ###########################################################################
     #                    Main window related methods                          #
@@ -643,6 +732,16 @@ class PulsedMeasurementGui(GuiBase):
                                                     'from all loaded files.')
         self._mw.control_ToolBar.addWidget(self._mw.clear_device_PushButton)
 
+        # Never disabled anywhere: it is the way out when everything else has been greyed out, and
+        # a disabled escape hatch is the failure it exists to undo.
+        self._mw.reset_toolchain_PushButton = QtWidgets.QPushButton(self._mw)
+        self._mw.reset_toolchain_PushButton.setText('Reset')
+        self._mw.reset_toolchain_PushButton.setToolTip(
+            'Return the pulsed toolchain to idle after an error.\n'
+            'Stops any running measurement and clears a stuck generate/sample/load chain.\n'
+            'Does not change settings, delete assets, or clear the pulse generator memory.')
+        self._mw.control_ToolBar.addWidget(self._mw.reset_toolchain_PushButton)
+
         self._mw.current_loaded_asset_Label = QtWidgets.QLabel(self._mw)
         sizepolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
                                            QtWidgets.QSizePolicy.Policy.Fixed)
@@ -654,6 +753,15 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.current_loaded_asset_Label.setText('  No Asset Loaded')
         self._mw.current_loaded_asset_Label.setToolTip('Display the currently loaded asset.')
         self._mw.control_ToolBar.addWidget(self._mw.current_loaded_asset_Label)
+
+        # What the toolchain is doing right now, driven by the three state machines.
+        self._mw.state_Label = QtWidgets.QLabel(self._mw)
+        font = self._mw.state_Label.font()
+        font.setBold(True)
+        font.setPointSize(font.pointSize() + 1)
+        self._mw.state_Label.setFont(font)
+        self._mw.state_Label.setToolTip('Current state of the pulsed toolchain.')
+        self._mw.control_ToolBar.addWidget(self._mw.state_Label)
 
         self._mw.loading_indicator = CircleLoadingIndicator(parent=self._mw)
         self._mw.loading_indicator_action = self._mw.control_ToolBar.addWidget(
@@ -708,6 +816,62 @@ class PulsedMeasurementGui(GuiBase):
     def clear_pulser_clicked(self):
         """ Delete all loaded files in the device's current memory. """
         self.pulsedmasterlogic().clear_pulse_generator()
+        return
+
+    @QtCore.Slot()
+    def reset_toolchain_clicked(self):
+        """Ask first if it would end a measurement, then hand off to the logic.
+
+        The confirmation is only for the case that loses something: stopping a running measurement
+        discards whatever has been acquired and not saved. With nothing running there is nothing to
+        lose, so the reset just happens.
+        """
+        if self.pulsedmasterlogic().status_dict['measurement_running']:
+            answer = QtWidgets.QMessageBox.question(
+                self._mw,
+                'Reset pulsed toolchain',
+                'A measurement is currently running and will be stopped.\n'
+                'Unsaved measurement data will be lost.\n\nContinue?',
+                QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No,
+            )
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
+        self.pulsedmasterlogic().reset_toolchain()
+        return
+
+    @QtCore.Slot()
+    def _resync_from_logic(self):
+        """Re-derive every widget's enabled state from the logic.
+
+        The cure for a GUI left out of step by an update that never arrived. Rather than a second
+        copy of the widget lists, this calls the same slots that maintain them normally - they are
+        all idempotent, and keeping them as the only place a given widget is touched is what stops
+        the two drifting apart.
+
+        Order matters at the end: sampling_or_loading_finished() only re-enables the run/stop action
+        when the chain has actually been released, so it has to run after reset_toolchain() has done
+        that. It is also the only path that re-enables that action after a benchmark.
+        """
+        master = self.pulsedmasterlogic()
+        self.measurement_status_updated(
+            master.status_dict['measurement_running'],
+            master.measurement_state is MeasurementState.PAUSED,
+        )
+        self.pulser_running_updated(master.status_dict['pulser_running'])
+        # Reading the loaded asset goes to the pulse generator, which is quite possibly the thing
+        # that is unwell - this runs when something has already gone wrong. Showing it as empty is
+        # worse than showing it correctly but far better than an exception out of a queued slot,
+        # which would abandon the rest of the resync and leave the toolbar dead.
+        try:
+            asset_name, asset_type = master.loaded_asset
+        except Exception:
+            self.log.exception('Could not read the loaded asset back from the pulse generator '
+                               'while resyncing the GUI. Showing it as empty:')
+            asset_name, asset_type = '', ''
+        self.loaded_asset_updated(asset_name, asset_type)
+        self.sampling_or_loading_finished()
+        self.state_display_updated()
         return
 
     @QtCore.Slot(str, str)
@@ -1999,29 +2163,23 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().load_ensemble(ensemble_name)
         return
 
+    # The asset label and the spinner are no longer touched here: what the toolchain is doing now
+    # has its own widget, updated by state_display_updated() from the state machines. These three
+    # slots only enable/disable the run button, which is not derivable from those states.
     @QtCore.Slot()
     def sampling_or_loading_busy(self):
         if self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(False)
-
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  loading...')
-            self._mw.loading_indicator_action.setVisible(True)
 
     @QtCore.Slot()
     def benchmark_busy(self):
         if self.pulsedmasterlogic().status_dict['benchmark_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
-            label = self._mw.current_loaded_asset_Label
-            label.setText('  benchmarking...')
-            self._mw.loading_indicator_action.setVisible(True)
-
     @QtCore.Slot()
     def sampling_or_loading_finished(self):
         if not self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
-            self._mw.loading_indicator_action.setVisible(False)
 
     def generate_predefined_clicked(self, method_name, sample_and_load=False):
         """

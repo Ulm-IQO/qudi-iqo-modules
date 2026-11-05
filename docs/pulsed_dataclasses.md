@@ -330,26 +330,28 @@ since `fields()` never reports `ClassVar`/`InitVar`.
 import from `sequence_generator_logic_data.py`. A circular import between the two would make the merge
 silently skip extensions depending on which module happened to be imported first.
 
-#### Writing an extension — the shape
+#### No extensions are declared by default
+
+The file ships with an empty extension section, so `GenerationParameters` has exactly the 14 fields of
+`CoreGenerationParameters` and nothing else. Adding one is the whole of the worked example in
+[Extending this](#extending-this--notes-for-physicists):
 
 ```python
 @dataclass(frozen=True)
-class MySetupParameters(BaseGenerationParameters):
-    time_delay: float = 4.0
+class NVCentreParameters(BaseGenerationParameters):
+    green_aom_delay: float = 700e-9
 ```
 
-That is the whole thing, and there is no registration step: `_build_generation_parameters()` finds
-every contributor through `BaseGenerationParameters.__subclasses__()`, so simply defining the class
-in this file puts it in effect. Coercion is driven by the annotated type, a spin box appears on the
-Predefined Methods tab, and the value is saved to and restored from the status file.
+Two lines is the complete modern form, and there is no registration step:
+`_build_generation_parameters()` finds every contributor through
+`BaseGenerationParameters.__subclasses__()`, so simply defining the class in this file puts it in
+effect. Coercion is driven by the annotated type, a spin box appears on the Predefined Methods tab,
+and the value is saved to and restored from the status file.
 
-> **Note:** `generation_parameter_extensions.py` currently defines **no** extension classes, so
-> `GenerationParameters` has exactly the 14 fields of `CoreGenerationParameters`. The example above
-> is illustrative — writing it into that file is what activates it.
->
-> Older extensions carry a hand-written `_coerce_fields()` classmethod. It predates the automatic,
-> type-driven version and does exactly what the base class now does for a `float` field. **Do not
-> write one in a new class.**
+> **Note:** older extensions carry a hand-written `_coerce_fields()` classmethod. It predates the
+> automatic, type-driven version and does exactly what the base class now does for a `float` field.
+> **Do not write one in a new class** — override it only for a field whose type cannot express its
+> own constraints.
 
 ---
 
@@ -637,11 +639,18 @@ new object. That is required: `AltPlotAnalyzer` holds this exact instance.
 
 #### `ExecutionState` *(mutable)* — the pause-aware clock
 
-`is_paused`, `start_time`, `time_of_pause`, `elapsed_pause`, with `start()`, `pause()`, `unpause()`
-and `get_live_elapsed_time()`.
+`is_paused`, `start_time`, `time_of_pause`, with `start()`, `pause()`, `unpause()` and
+`get_live_elapsed_time()`.
 
 The trick worth knowing: `unpause()` pushes `start_time` *forward* by the pause duration, so elapsed
-time never counts paused seconds and no separate accumulator is needed.
+time never counts paused seconds and no separate accumulator is needed. (There used to be an
+`elapsed_pause` field for that accumulator; it survived the switch but was never read again, so it
+silently returned 0.0 forever. Removed.)
+
+**This class is now driven by the state machine, not called directly.** `PulsedMeasurementLogic.
+_sync_measurement_clock()` listens to `MeasurementStateMachine.sigStateChanged` and maps each
+transition onto one clock operation, so `is_paused` cannot drift out of step with the real state.
+Do not call `start()`/`pause()`/`unpause()` from measurement code.
 
 #### `MeasurementInformation` *(mutable, dict-like)*
 
@@ -924,6 +933,22 @@ Ten busy/running flags, all defaulting to `False`: `sampling_ensemble_busy`, `sa
 
 Each has a property getter/setter over the dict entry, so `PulsedMasterLogic` gets typo-proof named
 access while `pulsed_maingui.py`'s existing `status_dict['flag']` reads and writes keep working.
+
+**Six of the ten are now derived — do not write to them.** `PulsedMasterLogic._sync_status_dict()`
+recomputes `predefined_generation_busy`, `sampling_ensemble_busy`, `sampling_sequence_busy`,
+`measurement_running`, `loading_busy` and `sampload_busy` from the three state machines on every
+transition, so anything you assign is silently overwritten at the next one. Change the state instead.
+
+| Flag | Source |
+|---|---|
+| the six above | **derived** from `GeneratorState` / `MeasurementState` / `SampLoadState` |
+| `pulser_running`, `microwave_running` | real, set from the hardware's own running signals |
+| `fitting_busy`, `benchmark_busy` | real, master-owned (the GUI writes `benchmark_busy` itself) |
+
+A second caveat for the derived ones: they are computed from **mirrors** of the other two modules'
+states, which arrive over queued signals and are therefore one hop behind. That is fine for display,
+which is all they are for. **Never gate a decision on them** - ask the owning module directly, as
+`PulsedMasterLogic._generator_busy` does.
 
 #### `FitContainers` *(frozen)*
 
