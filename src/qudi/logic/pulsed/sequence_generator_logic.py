@@ -1240,7 +1240,7 @@ class SequenceGeneratorLogic(LogicBase):
     def resolve_asset_closure(self, asset):
         """Independent copies of every PulseBlockEnsemble/PulseBlock `asset` (a loaded
         PulseBlockEnsemble or PulseSequence, or None) actually references by name. Used by
-        PulsedMasterLogic to build a self-contained PulsedMeasurement.objects
+        PulsedMasterLogic to build a self-contained PulsedMeasurement.metadata.objects
 
         Parameters
         ----------

@@ -640,7 +640,7 @@ class PulsedMasterLogic(LogicBase):
         self.status_dict.benchmark_busy = False
 
     def get_pulsed_measurement(self):
-        """Full settings+data+objects snapshot of the current measurement, combining both
+        """Full data+metadata snapshot of the current measurement, combining both
         sub-modules' state.
 
         Returns
@@ -898,7 +898,7 @@ class PulsedMasterLogic(LogicBase):
         """
         self.pulsedmeasurementlogic().refresh_generator_settings(self.sequencegeneratorlogic().generator_settings)
 
-
+    @QtCore.Slot(str, str)
     def loaded_asset_updated(self, asset_name, asset_type):
         """
         @param asset_name:

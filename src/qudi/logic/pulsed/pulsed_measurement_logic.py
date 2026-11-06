@@ -75,7 +75,9 @@ from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
     _DEFAULT_READOUT_SETTINGS,
 )
 from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
-from qudi.logic.pulsed.pulsed_data.pulsed_measurement import PulsedMeasurement, PulsedData, PulseObjects, Settings
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement import (
+    FitResults, PulsedMeasurement, PulsedMetadata, PulseObjects, Settings
+)
 from qudi.logic.pulsed.pulsed_data.settings_coercion import (
     SettingsTypeError,
     as_settings_dict,
@@ -215,22 +217,28 @@ class PulsedMeasurementLogic(LogicBase):
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
 
     # status variables
-    # Single PulsedMeasurement instance holding this module's working state: settings,
-    # acquired/evaluated data, and the loaded pulse asset. Only measurement_settings is actually
-    # persisted (see representer/constructor below) - `data`/`objects` are transient, rebuilt on
-    # every activation. name='_settings' keeps the on-disk key unchanged despite the Python
+    # Single PulsedMeasurement instance holding this module's working state: data plus metadata
+    # (settings, loaded pulse asset, fit results). Only measurement_settings is actually persisted
+    # (see representer/constructor below) - everything else is transient, rebuilt on every
+    # activation. name='_settings' keeps the on-disk key unchanged despite the Python
     # attribute rename, so _migrate_legacy_settings_if_needed() keeps working off that string key.
     _pulsed_measurement = StatusVar(
         name='_settings',
-        default=PulsedMeasurement(settings=Settings(measurement_settings=_default_measurement_settings())),
-        constructor=lambda x: PulsedMeasurement(
-            settings=Settings(
-                measurement_settings=PulsedMeasurementSettings.from_dict(x)
-                if isinstance(x, dict)
-                else _default_measurement_settings()
+        default=PulsedMeasurement(
+            metadata=PulsedMetadata(
+                settings=Settings(measurement_settings=_default_measurement_settings())
             )
         ),
-        representer=lambda obj: obj.settings.measurement_settings.to_dict(),
+        constructor=lambda x: PulsedMeasurement(
+            metadata=PulsedMetadata(
+                settings=Settings(
+                    measurement_settings=PulsedMeasurementSettings.from_dict(x)
+                    if isinstance(x, dict)
+                    else _default_measurement_settings()
+                )
+            )
+        ),
+        representer=lambda obj: obj.metadata.settings.measurement_settings.to_dict(),
     )
 
     # Kept as separate StatusVars, not part of the measurement settings.
@@ -285,47 +293,47 @@ class PulsedMeasurementLogic(LogicBase):
     @property
     def _settings(self):
         """The real, shared PulsedMeasurementSettings this module actually works with - lives on
-        self._pulsed_measurement.settings.measurement_settings.
+        self._pulsed_measurement.metadata.settings.measurement_settings.
         """
-        return self._pulsed_measurement.settings.measurement_settings
+        return self._pulsed_measurement.metadata.settings.measurement_settings
 
     @_settings.setter
     def _settings(self, new_settings):
-        self._pulsed_measurement.settings = replace(
-            self._pulsed_measurement.settings, measurement_settings=new_settings
+        self._pulsed_measurement.metadata.settings = replace(
+            self._pulsed_measurement.metadata.settings, measurement_settings=new_settings
         )
 
     @property
     def measurement_data(self):
         """The real, shared PulsedMeasurementData held on self._pulsed_measurement.data"""
-        return self._pulsed_measurement.data.measurement_data
+        return self._pulsed_measurement.data
 
     @property
     def _loaded_asset(self):
         """Whichever PulseBlockEnsemble/PulseSequence is currently loaded, held on
-        self._pulsed_measurement.objects.loaded_asset. Not independently persisted - only ever set
-        externally by PulsedMasterLogic"""
-        return self._pulsed_measurement.objects.loaded_asset
+        self._pulsed_measurement.metadata.objects.loaded_asset. Not independently persisted - only
+        ever set externally by PulsedMasterLogic"""
+        return self._pulsed_measurement.metadata.objects.loaded_asset
 
     @_loaded_asset.setter
     def _loaded_asset(self, asset):
-        self._pulsed_measurement.objects.loaded_asset = asset
+        self._pulsed_measurement.metadata.objects.loaded_asset = asset
 
     @property
     def _fit_result(self):
-        return self._pulsed_measurement.data.fit_result
+        return self._pulsed_measurement.metadata.fit_results.primary
 
     @_fit_result.setter
     def _fit_result(self, result):
-        self._pulsed_measurement.data.fit_result = result
+        self._pulsed_measurement.metadata.fit_results.primary = result
 
     @property
     def _fit_result_alt(self):
-        return self._pulsed_measurement.data.fit_result_alt
+        return self._pulsed_measurement.metadata.fit_results.alternative
 
     @_fit_result_alt.setter
     def _fit_result_alt(self, result):
-        self._pulsed_measurement.data.fit_result_alt = result
+        self._pulsed_measurement.metadata.fit_results.alternative = result
 
     def _apply_microwave_settings(self, new_settings):
         self._settings = replace(self._settings, microwave_settings=new_settings)
@@ -356,10 +364,10 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     def refresh_generator_settings(self, generator_settings):
-        """Keep self._pulsed_measurement.settings.generator_settings fresh without a Connector to
-        SequenceGeneratorLogic."""
-        self._pulsed_measurement.settings = replace(
-            self._pulsed_measurement.settings, generator_settings=generator_settings
+        """Keep self._pulsed_measurement.metadata.settings.generator_settings fresh without a
+        Connector to SequenceGeneratorLogic."""
+        self._pulsed_measurement.metadata.settings = replace(
+            self._pulsed_measurement.metadata.settings, generator_settings=generator_settings
         )
 
     def refresh_loaded_asset_closure(self, ensembles, blocks):
@@ -373,8 +381,8 @@ class PulsedMeasurementLogic(LogicBase):
         """Promote whatever's pending (from the last loaded_asset/refresh_loaded_asset_closure()
         call) to the actively-measured asset """
         self._loaded_asset = self._pending_loaded_asset
-        self._pulsed_measurement.objects.ensembles = self._pending_ensembles
-        self._pulsed_measurement.objects.blocks = self._pending_blocks
+        self._pulsed_measurement.metadata.objects.ensembles = self._pending_ensembles
+        self._pulsed_measurement.metadata.objects.blocks = self._pending_blocks
 
     def get_pulsed_measurement(self, generator_settings=None, ensembles=None, blocks=None):
         """Build a PulsedMeasurement snapshot bundling this module's settings/data/loaded asset
@@ -400,24 +408,23 @@ class PulsedMeasurementLogic(LogicBase):
         """
         current = self._pulsed_measurement
         return PulsedMeasurement(
-            settings=Settings(
-                measurement_settings=current.settings.measurement_settings,
-                generator_settings=generator_settings,
-            ),
-            data=PulsedData(
-                measurement_data=current.data.measurement_data.copy(),
-                fit_result=current.data.fit_result,
-                fit_result_alt=current.data.fit_result_alt,
-            ),
-            objects=PulseObjects(
-                loaded_asset=(
-                    current.objects.loaded_asset.copy()
-                    if current.objects.loaded_asset is not None
-                    else None
+            metadata=PulsedMetadata(
+                settings=Settings(
+                    measurement_settings=current.metadata.settings.measurement_settings,
+                    generator_settings=generator_settings,
                 ),
-                ensembles=dict(ensembles) if ensembles else {},
-                blocks=dict(blocks) if blocks else {},
+                objects=PulseObjects(
+                    loaded_asset=(
+                        current.metadata.objects.loaded_asset.copy()
+                        if current.metadata.objects.loaded_asset is not None
+                        else None
+                    ),
+                    ensembles=dict(ensembles) if ensembles else {},
+                    blocks=dict(blocks) if blocks else {},
+                ),
+                fit_results=FitResults(*current.metadata.fit_results),
             ),
+            data=current.data.copy(),
         )
 
     def _migrate_legacy_settings_if_needed(self):
@@ -1685,8 +1692,7 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Initializing the signal, error, laser and raw data arrays.
 
-        Builds a fresh PulsedMeasurementData/PulsedData and assigns self._pulsed_measurement.data
-        wholesale
+        Builds a fresh PulsedMeasurementData and assigns it to self._pulsed_measurement.data.
         """
         settings = self._settings.readout_settings
         fc_settings = self._settings.fast_counter_settings
@@ -1710,18 +1716,12 @@ class PulsedMeasurementLogic(LogicBase):
         else:
             raw_data = np.zeros(number_of_bins, dtype='int64')
 
-        new_measurement_data = PulsedMeasurementData(
+        self._pulsed_measurement.data = PulsedMeasurementData(
             signal_data=signal_data,
             signal_alt_data=signal_alt_data,
             measurement_error=measurement_error,
             laser_data=laser_data,
             raw_data=raw_data,
-        )
-        existing_data = self._pulsed_measurement.data
-        self._pulsed_measurement.data = PulsedData(
-            measurement_data=new_measurement_data,
-            fit_result=existing_data.fit_result if existing_data is not None else None,
-            fit_result_alt=existing_data.fit_result_alt if existing_data is not None else None,
         )
 
         self.sigMeasurementDataUpdated.emit()

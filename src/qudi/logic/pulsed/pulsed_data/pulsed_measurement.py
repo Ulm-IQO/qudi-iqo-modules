@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Container bundling the settings, data and pulse objects of a pulsed measurement.
+Container bundling the data and metadata (settings, pulse objects, fit results) of a pulsed
+measurement.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -83,30 +84,42 @@ class Settings:
 
 
 @dataclass
-class PulsedData:
-    """Measurement data arrays and the fit results computed for them.
+class FitResults:
+    """Fit results of the signal data (primary) and the alternative data (alternative).
 
     The fit results are lmfit ModelResult objects. to_dict() exports them as plain dicts, which
-    from_dict() cannot turn back into ModelResults, so they are lost on a round trip.
+    from_dict() cannot turn back into ModelResults, so they are lost on a round trip. Also supports
+    tuple-style unpacking and indexing.
     """
 
-    measurement_data: PulsedMeasurementData
-    fit_result: Optional[object] = None  # lmfit.model.ModelResult
-    fit_result_alt: Optional[object] = None  # lmfit.model.ModelResult
+    primary: Optional[object] = None  # lmfit.model.ModelResult
+    alternative: Optional[object] = None  # lmfit.model.ModelResult
+
+    @property
+    def as_tuple(self):
+        return (self.primary, self.alternative)
+
+    def __iter__(self):
+        return iter(self.as_tuple)
+
+    def __len__(self):
+        return len(self.as_tuple)
+
+    def __getitem__(self, index):
+        return self.as_tuple[index]
 
     def to_dict(self):
         return {
-            'measurement_data': self.measurement_data.to_dict(),
-            'fit_result': FitContainer.dict_result(self.fit_result) if self.fit_result is not None else None,
-            'fit_result_alt': (
-                FitContainer.dict_result(self.fit_result_alt) if self.fit_result_alt is not None else None
+            'primary': FitContainer.dict_result(self.primary) if self.primary is not None else None,
+            'alternative': (
+                FitContainer.dict_result(self.alternative) if self.alternative is not None else None
             ),
         }
 
     @classmethod
     def from_dict(cls, data):
         # Fit results can't be restored, see class docstring.
-        return cls(measurement_data=PulsedMeasurementData.from_dict(data['measurement_data']))
+        return cls()
 
 
 @dataclass
@@ -253,30 +266,52 @@ class PulseObjects:
 
 
 @dataclass
-class PulsedMeasurement:
-    """Snapshot of a pulsed measurement: its settings, data and pulse objects.
-
-    `data` and `objects` hold copies, so the snapshot doesn't change while the measurement keeps
-    running.
-    """
+class PulsedMetadata:
+    """Everything describing a measurement apart from its data: settings, pulse objects and fit
+    results."""
 
     settings: Settings
-    data: Optional[PulsedData] = None
     objects: PulseObjects = field(default_factory=PulseObjects)
+    fit_results: FitResults = field(default_factory=FitResults)
 
     def to_dict(self):
         return {
             'settings': self.settings.to_dict(),
-            'data': self.data.to_dict() if self.data is not None else None,
             'objects': self.objects.to_dict(),
+            'fit_results': self.fit_results.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        objects_dict = data.get('objects')
+        return cls(
+            settings=Settings.from_dict(data['settings']),
+            objects=PulseObjects.from_dict(objects_dict) if objects_dict is not None else PulseObjects(),
+            fit_results=FitResults.from_dict(data.get('fit_results')),
+        )
+
+
+@dataclass
+class PulsedMeasurement:
+    """Snapshot of a pulsed measurement: its data and metadata.
+
+    `data` and the pulse objects hold copies, so the snapshot doesn't change while the measurement
+    keeps running.
+    """
+
+    metadata: PulsedMetadata
+    data: Optional[PulsedMeasurementData] = None
+
+    def to_dict(self):
+        return {
+            'metadata': self.metadata.to_dict(),
+            'data': self.data.to_dict() if self.data is not None else None,
         }
 
     @classmethod
     def from_dict(cls, data):
         data_dict = data.get('data')
-        objects_dict = data.get('objects')
         return cls(
-            settings=Settings.from_dict(data['settings']),
-            data=PulsedData.from_dict(data_dict) if data_dict is not None else None,
-            objects=PulseObjects.from_dict(objects_dict) if objects_dict is not None else PulseObjects(),
+            metadata=PulsedMetadata.from_dict(data['metadata']),
+            data=PulsedMeasurementData.from_dict(data_dict) if data_dict is not None else None,
         )

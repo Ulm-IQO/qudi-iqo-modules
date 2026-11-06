@@ -30,7 +30,7 @@ from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import Generati
 | [`generation_parameter_extensions.py`](generation_parameter_extensions.py) | **Your lab's** extra generation parameters | 2 |
 | [`sequence_generator_logic_data.py`](sequence_generator_logic_data.py) | `SequenceGeneratorLogic` — generation parameters, pulser hardware mirror, sampling results | 14 |
 | [`pulsed_measurement_logic_data.py`](pulsed_measurement_logic_data.py) | `PulsedMeasurementLogic` — microwave, fast counter, readout, live measurement state | 13 classes + 1 function |
-| [`pulsed_measurement.py`](pulsed_measurement.py) | The top-level snapshot of one complete measurement | 4 |
+| [`pulsed_measurement.py`](pulsed_measurement.py) | The top-level snapshot of one complete measurement | 5 |
 | [`pulsed_master_logic_data.py`](pulsed_master_logic_data.py) | `PulsedMasterLogic` — busy flags, fit containers | 2 |
 | [`settings_coercion.py`](settings_coercion.py) | Shared helper every settings setter calls | 1 class + 2 functions |
 
@@ -124,7 +124,8 @@ shared `_DEFAULT_*` instances for whole missing sections.
 | `PulsedMeasurementData` | the measurement loop writes into these arrays on every analysis tick |
 | `ExecutionState`, `DataStashCache`, `SequenceSamplingState` | per-run scratch state, never persisted |
 | `MeasurementInformation`, `SamplingInformation`, `GenerationMethodParameters` | live **on** a pulse object and are written by the generate/sample step |
-| `PulsedMeasurement`, `PulsedData`, `PulseObjects` | freezing the container would not freeze the mutable things inside it, only imply it misleadingly |
+| `PulsedMeasurement`, `PulsedMetadata`, `PulseObjects` | freezing the container would not freeze the mutable things inside it, only imply it misleadingly |
+| `FitResults` | `PulsedMeasurementLogic.do_fit()` sets `primary`/`alternative` individually after each fit |
 
 The consequence shows up in `PulsedMeasurementSettings.update_from_dict()`: for the shared ones it
 calls `.update(...)` **in place** and never rebinds the reference, because rebinding would silently
@@ -160,41 +161,44 @@ does exactly that, and says so in a comment.
 ```
 PulsedMeasurement                                   [mutable]  pulsed_measurement.py
 │
-├── settings : Settings                             [frozen]
-│   │
-│   ├── measurement_settings : PulsedMeasurementSettings          [frozen]
-│   │   ├── microwave_settings        : MicrowaveSettings         [frozen]
-│   │   ├── fast_counter_settings     : FastCounterSettings       [frozen]
-│   │   ├── readout_settings          : ReadoutSettings           [frozen]
-│   │   ├── alternate_signal_settings : AlternativeSignalSettings (shared, mutable)
-│   │   ├── extraction_parameters     : ExtractionParameters      (dict subclass, shared)
-│   │   └── analysis_parameters       : AnalysisParameters        (dict subclass, shared)
-│   │
-│   └── generator_settings : SequenceGeneratorSettings | None     [frozen]
-│       ├── generation_parameters     : GenerationParameters      [frozen, BUILT AT IMPORT]
-│       │   ├── ... CoreGenerationParameters' 14 fields
-│       │   └── ... every lab extension's fields
-│       └── pulse_generator_settings  : PulseGeneratorSettings    [frozen]
-│           ├── activation_config     : ActivationConfig          [frozen]
-│           ├── analog_levels         : AnalogLevels              [frozen]
-│           ├── digital_levels        : DigitalLevels             [frozen]
-│           └── sample_rate / interleave / flags / upload_speed
+├── data : PulsedMeasurementData | None             [mutable]   raw/laser/signal arrays
 │
-├── data : PulsedData | None                        [mutable]
-│   ├── measurement_data : PulsedMeasurementData    [mutable]   raw/laser/signal arrays
-│   ├── fit_result       : lmfit ModelResult | None             (one-way export only)
-│   └── fit_result_alt   : lmfit ModelResult | None             (one-way export only)
-│
-└── objects : PulseObjects                          [mutable]
-    ├── loaded_asset : PulseBlockEnsemble | PulseSequence | None ← lives in pulse_objects.py
-    │   ├── loaded_sequence : PulseSequence | None      ┐ properties over the one slot above,
-    │   └── loaded_ensemble : PulseBlockEnsemble | None ┘ not fields — see PulseObjects
-    ├── ensembles : {name: PulseBlockEnsemble}                   independent copies
-    └── blocks    : {name: PulseBlock}                           independent copies
+└── metadata : PulsedMetadata                       [mutable]
+    │
+    ├── settings : Settings                         [frozen]
+    │   │
+    │   ├── measurement_settings : PulsedMeasurementSettings          [frozen]
+    │   │   ├── microwave_settings        : MicrowaveSettings         [frozen]
+    │   │   ├── fast_counter_settings     : FastCounterSettings       [frozen]
+    │   │   ├── readout_settings          : ReadoutSettings           [frozen]
+    │   │   ├── alternate_signal_settings : AlternativeSignalSettings (shared, mutable)
+    │   │   ├── extraction_parameters     : ExtractionParameters      (dict subclass, shared)
+    │   │   └── analysis_parameters       : AnalysisParameters        (dict subclass, shared)
+    │   │
+    │   └── generator_settings : SequenceGeneratorSettings | None     [frozen]
+    │       ├── generation_parameters     : GenerationParameters      [frozen, BUILT AT IMPORT]
+    │       │   ├── ... CoreGenerationParameters' 14 fields
+    │       │   └── ... every lab extension's fields
+    │       └── pulse_generator_settings  : PulseGeneratorSettings    [frozen]
+    │           ├── activation_config     : ActivationConfig          [frozen]
+    │           ├── analog_levels         : AnalogLevels              [frozen]
+    │           ├── digital_levels        : DigitalLevels             [frozen]
+    │           └── sample_rate / interleave / flags / upload_speed
+    │
+    ├── objects : PulseObjects                      [mutable]
+    │   ├── loaded_asset : PulseBlockEnsemble | PulseSequence | None ← lives in pulse_objects.py
+    │   │   ├── loaded_sequence : PulseSequence | None      ┐ properties over the one slot above,
+    │   │   └── loaded_ensemble : PulseBlockEnsemble | None ┘ not fields — see PulseObjects
+    │   ├── ensembles : {name: PulseBlockEnsemble}                   independent copies
+    │   └── blocks    : {name: PulseBlock}                           independent copies
+    │
+    └── fit_results : FitResults                    [mutable]
+        ├── primary     : lmfit ModelResult | None              (one-way export only)
+        └── alternative : lmfit ModelResult | None              (one-way export only)
 ```
 
-Each pulse object in `objects` carries three more containers from this package, attached as plain
-attributes rather than nested here:
+Each pulse object in `metadata.objects` carries three more containers from this package, attached
+as plain attributes rather than nested here:
 
 ```
 PulseBlockEnsemble / PulseSequence          (pulse_objects.py)
@@ -813,9 +817,15 @@ a second, independently-writable answer to a question the structure already sett
 name` fails that test and stays: nothing else in the file identifies which asset was loaded when a
 sequence references several ensembles.
 
-#### `PulsedData` *(mutable)*
+#### `FitResults` *(mutable)*
 
-`measurement_data: PulsedMeasurementData` plus `fit_result` / `fit_result_alt`.
+```python
+primary     : Optional[object] = None   # lmfit ModelResult of the signal data
+alternative : Optional[object] = None   # lmfit ModelResult of the alternative data
+```
+
+Like `FitContainers` in `pulsed_master_logic_data.py`, it also supports tuple-style unpacking and
+indexing: `fit, fit_alt = metadata.fit_results`.
 
 The fit results are `lmfit.model.ModelResult` objects with a **one-way** export path:
 `FitContainer.dict_result()` gives model name and parameter values/stderr for the saved metadata, and
@@ -892,21 +902,30 @@ already-taken snapshot.
   under `ensembles`, that flag follows it there, while every *other* ensemble under `ensembles`
   keeps its own copy (those are not duplicated anywhere). There is no `from_metadata_dict()`.
 
-#### `PulsedMeasurement` *(mutable)* — the root
+#### `PulsedMetadata` *(mutable)*
 
 ```python
-settings : Settings
-data     : Optional[PulsedData] = None
-objects  : PulseObjects = field(default_factory=PulseObjects)
+settings    : Settings
+objects     : PulseObjects = field(default_factory=PulseObjects)
+fit_results : FitResults = field(default_factory=FitResults)
 ```
+
+Everything that describes a measurement apart from its data.
 
 (`field(default_factory=...)` rather than `= PulseObjects()`: a dataclass refuses a mutable default
 outright, because one shared instance would be handed to every object ever constructed. The same
 applies to every `dict`/`list`/`set`/`np.ndarray` default in this package.)
 
+#### `PulsedMeasurement` *(mutable)* — the root
+
+```python
+metadata : PulsedMetadata
+data     : Optional[PulsedMeasurementData] = None
+```
+
 Built by `PulsedMeasurementLogic.get_pulsed_measurement()` / `PulsedMasterLogic.get_pulsed_measurement()`
-as a frozen-in-time snapshot — `data` and `objects` are populated from `.copy()` calls, not live
-references.
+as a frozen-in-time snapshot — `data` and `metadata.objects` are populated from `.copy()` calls,
+not live references.
 
 It doubles as `PulsedMeasurementLogic`'s **actual live storage**: the module's `_settings`,
 `measurement_data`, `_loaded_asset`, `_fit_result` and `_fit_result_alt` are all properties reading
@@ -1014,7 +1033,7 @@ the `constructor` on activation.
 
 | StatusVar | Module | On-disk key | Round trip |
 |---|---|---|---|
-| `_pulsed_measurement` | `PulsedMeasurementLogic` | `_settings` | representer writes only `settings.measurement_settings.to_dict()`; `data`/`objects` are transient and rebuilt each activation |
+| `_pulsed_measurement` | `PulsedMeasurementLogic` | `_settings` | representer writes only `metadata.settings.measurement_settings.to_dict()`; everything else is transient and rebuilt each activation |
 | `_generator_settings` | `SequenceGeneratorLogic` | `_generator_settings` | `SequenceGeneratorSettings.to_dict()` / `.from_dict()` |
 | `pulser_benchmarks` | `SequenceGeneratorLogic` | `pulser_benchmarks` | `PulserBenchmarks.to_dict()` / `.from_dict()` |
 

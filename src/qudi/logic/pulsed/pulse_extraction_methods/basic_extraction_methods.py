@@ -55,10 +55,17 @@ class BasicPulseExtractor(PulseExtractorBase):
         # sum up all gated timetraces to ease flank detection
         timetrace_sum = np.sum(count_data, 0)
 
-        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum.
-        # No try/except: the analysis loop handles errors and keeps the previous data.
-        conv = ndimage.gaussian_filter1d(timetrace_sum.astype(float), conv_std_dev)
-        conv_deriv = np.gradient(conv)
+        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum
+        try:
+            conv = ndimage.gaussian_filter1d(timetrace_sum.astype(float), conv_std_dev)
+        except Exception:
+            self.log.exception('Gaussian smoothing failed during gated_conv_deriv extraction:')
+            conv = np.zeros(timetrace_sum.size)
+        try:
+            conv_deriv = np.gradient(conv)
+        except Exception:
+            self.log.exception('Gradient computation failed during gated_conv_deriv extraction:')
+            conv_deriv = np.zeros(conv.size)
 
         # get indices of rising and falling flank
         rising_ind, falling_ind = sorted([int(np.clip(conv_deriv.argmax() - flank_width, 0, len(timetrace_sum))),
@@ -128,12 +135,20 @@ class BasicPulseExtractor(PulseExtractorBase):
         if not isinstance(number_of_lasers, int):
             return return_dict
 
-        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum.
-        conv = ndimage.gaussian_filter1d(count_data.astype(float), conv_std_dev)
-        conv_deriv = np.gradient(conv)
+        # apply gaussian filter to remove noise and compute the gradient of the timetrace sum
+        try:
+            conv = ndimage.gaussian_filter1d(count_data.astype(float), conv_std_dev)
+        except Exception:
+            self.log.exception('Gaussian smoothing failed during ungated_conv_deriv extraction:')
+            conv = np.zeros(count_data.size)
+        try:
+            conv_deriv = np.gradient(conv)
+        except Exception:
+            self.log.exception('Gradient computation failed during ungated_conv_deriv extraction:')
+            conv_deriv = np.zeros(conv.size)
 
-        # A completely flat derivative carries no flanks to find, so there is nothing to extract.
-        # Return zeros to signal that rather than letting argmax/argmin pick arbitrary indices.
+        # if gaussian smoothing or derivative failed, the returned array only contains zeros.
+        # Check for that and return also only zeros to indicate a failed pulse extraction.
         if len(conv_deriv.nonzero()[0]) == 0:
             return_dict['laser_counts_arr'] = np.zeros((number_of_lasers, 10), dtype='int64')
             return return_dict
@@ -141,8 +156,20 @@ class BasicPulseExtractor(PulseExtractorBase):
         # use a reference for array, because the exact position of the peaks or dips
         # (i.e. maxima or minima, which are the inflection points in the pulse) are distorted by
         # a large conv_std_dev value.
-        conv = ndimage.gaussian_filter1d(count_data.astype(float), 10)
-        conv_deriv_ref = np.gradient(conv)
+        try:
+            conv = ndimage.gaussian_filter1d(count_data.astype(float), 10)
+        except Exception:
+            self.log.exception(
+                'Reference gaussian smoothing failed during ungated_conv_deriv extraction:'
+            )
+            conv = np.zeros(count_data.size)
+        try:
+            conv_deriv_ref = np.gradient(conv)
+        except Exception:
+            self.log.exception(
+                'Reference gradient computation failed during ungated_conv_deriv extraction:'
+            )
+            conv_deriv_ref = np.zeros(conv.size)
 
         # initialize arrays to contain indices for all rising and falling
         # flanks, respectively
@@ -243,13 +270,13 @@ class BasicPulseExtractor(PulseExtractorBase):
         Detects the laser pulses in the ungated timetrace data and extracts them.
     
         @param numpy.ndarray count_data: The raw timetrace data (1D) from an ungated fast counter
-        @param count_threshold:
-        @param min_laser_length:
-        @param threshold_tolerance:
-
+        @param count_threshold: 
+        @param min_laser_length: 
+        @param threshold_tolerance: 
+        
         @return 2D numpy.ndarray:   2D array, the extracted laser pulses of the timetrace.
                                     dimensions: 0: laser number, 1: time bin
-
+    
         Procedure:
             Threshold detection:
             ---------------
