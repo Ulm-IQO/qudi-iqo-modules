@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This file contains dataclasses used by PulsedMasterLogic to store and manage its busy/running
-status flags and the fit containers it exposes to the GUI.
+Data containers for PulsedMasterLogic: status flags and fit containers.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -24,24 +23,11 @@ from dataclasses import dataclass
 from qudi.util.datafitting import FitContainer
 
 
-##############################################################################
-#   The following classes are for the PulsedMasterLogic class and are used  #
-#         to store and manage its status flags and fit containers.          #
-##############################################################################
-
 class PulsedMasterStatus(dict):
-    """dict-based structured container for PulsedMasterLogic's busy/running status flags.
+    """Busy/running status flags of PulsedMasterLogic. All flags default to False.
 
-    Kept as a dict subclass (the same pattern as AnalysisParameters/ExtractionParameters/
-    GenerationMethodParameters in pulsed_measurement_logic_data.py, and SequenceStep in
-    pulse_objects.py) rather than a plain dataclass, because
-    qudi.gui.pulsed.pulsed_maingui.PulsedMeasurementGui reads AND writes these flags directly
-    via "pulsedmasterlogic().status_dict['flag_name']" (including plain assignment, e.g.
-    "status_dict['benchmark_busy'] = True"). Subclassing dict keeps that GUI code working
-    unchanged while giving PulsedMasterLogic itself named, typo-proof attribute access
-    (self.status_dict.sampload_busy instead of self.status_dict['sampload_busy']).
-
-    All flags default to False.
+    A dict subclass because the pulsed GUI reads and writes the flags by key
+    (`status_dict['benchmark_busy'] = True`). Attribute access works as well.
     """
 
     _FLAG_NAMES = (
@@ -81,8 +67,7 @@ class PulsedMasterStatus(dict):
 
     @property
     def sampload_busy(self) -> bool:
-        """True while a sample-and-load operation (sample immediately followed by load) is in
-        progress."""
+        """True while a sample-and-load operation is in progress."""
         return self['sampload_busy']
 
     @sampload_busy.setter
@@ -162,12 +147,9 @@ class PulsedMasterStatus(dict):
 
 @dataclass(frozen=True)
 class FitContainers:
-    """Bundles the primary and alternative-data FitContainer instances exposed by
-    PulsedMeasurementLogic, so callers can use named access (.primary/.alternative) instead of
-    an anonymous (fc, alt_fc) tuple.
+    """The primary and alternative FitContainer of PulsedMeasurementLogic.
 
-    Supports iteration/indexing so existing tuple-style call sites (fit_containers[0],
-    fit_containers[1]) keep working unchanged.
+    Also supports tuple-style unpacking and indexing.
     """
 
     primary: FitContainer

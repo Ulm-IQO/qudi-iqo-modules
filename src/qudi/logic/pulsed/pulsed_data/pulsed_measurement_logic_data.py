@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the dataclasses used by PulsedMeasurementLogic to store and manage its
-settings and data for pulsed measurements.
+Settings and data containers for PulsedMeasurementLogic.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -27,14 +26,8 @@ import time
 import numpy as np
 
 
-##############################################################################
-#   The following dataclasses are for the PulsedMeasurementLogic class and   #
-# are used to store and manage the settings and data for pulsed measurements #
-##############################################################################
 def _as_bool(value):
-    """Converts a value to a boolean. If the value is a string,
-    it checks for common truthy values.
-    """
+    """Convert a value to bool, treating only '1', 'true', 'yes' and 'on' as True for strings."""
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
     return bool(value)
@@ -110,7 +103,7 @@ class MicrowaveSettings:
 
 @dataclass(frozen=True)
 class ReadoutSettings:
-    """User-facing settings that define how a pulsed measurement is analyzed."""
+    """Settings defining how a pulsed measurement is analyzed."""
 
     invoke_settings: bool
     controlled_variable: np.ndarray
@@ -121,13 +114,9 @@ class ReadoutSettings:
     labels: tuple[str, str]
 
     def __post_init__(self):
-        # Copy first so freezing this array's writeable flag never affects a shared/live array
-        # some future caller might construct this with directly.
+        # Copy before making read-only, so the caller's array is not affected.
         object.__setattr__(self, 'controlled_variable', self.controlled_variable.copy())
         self.controlled_variable.flags.writeable = False
-        # Sorted here rather than only in update_from_dict() so the invariant holds for every
-        # construction path - from_dict(), replace(), and direct construction alike. sorted()
-        # also returns a new list, so a caller's live list can never alias our state.
         object.__setattr__(self, 'laser_ignore_list', sorted(self.laser_ignore_list))
 
     
@@ -169,7 +158,7 @@ class ReadoutSettings:
 
 @dataclass
 class PulsedMeasurementData:
-    """Arrays and timing information that make up the current pulsed measurement."""
+    """Data arrays and timing of the current pulsed measurement."""
 
     raw_data: np.ndarray
     laser_data: np.ndarray
@@ -214,7 +203,7 @@ class PulsedMeasurementData:
         )
 @dataclass
 class DataStashCache:
-    """Manages the memory for stashed/recalled raw data."""
+    """Stashed raw data, keyed by tag."""
     cache: dict = field(default_factory=dict)
     active_tag: Optional[str] = None
 
@@ -240,17 +229,10 @@ class DataStashCache:
 
 @dataclass
 class AlternativeSignalSettings:
-    """Settings for the alternative (second) plot: which AltPlotAnalyzer method is selected, plus
-    every loaded method's parameter values.
+    """Selected alternative plot method and the parameters of all loaded methods.
 
-    `parameters` stays a plain dict (not fixed fields) because AltPlotAnalyzer discovers parameter
-    names dynamically from whichever AltPlotMethodBase subclasses are loaded - built-in ones plus
-    any lab-supplied ones via `alt_plot_import_path` - so the valid key set isn't known at
-    class-definition time.
-
-    Deliberately NOT frozen (unlike its sibling *Settings dataclasses): AltPlotAnalyzer holds this
-    exact instance and mutates it in place as its live state, the same pattern
-    PulseExtractor/PulseAnalyzer already use for ExtractionParameters/AnalysisParameters.
+    `parameters` is a dict because the available methods are only known at runtime. Not frozen,
+    since AltPlotAnalyzer updates this instance in place.
     """
     method: Optional[str] = None
     parameters: dict = field(default_factory=dict)
@@ -275,7 +257,7 @@ class AlternativeSignalSettings:
 
 @dataclass
 class ExecutionState:
-    """Manages the live running state, pausing, and timing of the measurement loop."""
+    """Running state and timing of the measurement loop."""
 
     is_paused: bool = False
     start_time: float = 0.0
@@ -303,11 +285,11 @@ class ExecutionState:
         """Called when the user resumes."""
         if self.is_paused:
             self.is_paused = False
-            # Push the start time forward so the pause duration isn't counted
+            # Exclude the pause from the elapsed time
             self.start_time += (time.time() - self.time_of_pause)
-            
+
     def get_live_elapsed_time(self) -> float:
-        """Calculates the true running time, ignoring pauses."""
+        """Elapsed measurement time, excluding pauses."""
         if self.is_paused:
             return self.time_of_pause - self.start_time
         return time.time() - self.start_time
@@ -315,13 +297,10 @@ class ExecutionState:
 
 @dataclass
 class MeasurementInformation:
-    """Metadata about the currently loaded pulse block ensemble/sequence (number of laser
-    pulses, controlled variable array, etc.), used to auto-populate PulsedMeasurementSettings
-    when 'invoke_settings' is enabled.
+    """Measurement information of the loaded ensemble/sequence, used to fill in the readout
+    settings when 'invoke_settings' is enabled.
 
-    All fields default to None ("not yet available"). Use is_valid (or plain bool(...), which
-    mirrors it) to check whether enough information is present to invoke measurement settings -
-    this replaces the previous "check 5 required keys are present in a plain dict" convention.
+    Fields are None until known. bool(instance) is True once all mandatory fields are set.
     """
     number_of_lasers: Optional[int] = None
     controlled_variable: Optional[np.ndarray] = None
@@ -337,16 +316,14 @@ class MeasurementInformation:
 
     @property
     def is_valid(self) -> bool:
-        """True only if every field required to invoke measurement settings is present."""
+        """True if all mandatory fields are set."""
         return all(getattr(self, name) is not None for name in self._MANDATORY_FIELDS)
 
     def __bool__(self):
         return self.is_valid
 
     def __eq__(self, other):
-        """Custom equality: the auto-generated dataclass __eq__ would compare
-        controlled_variable with plain '==', which raises "truth value of an array is
-        ambiguous" once it holds a populated numpy array (the normal case)."""
+        """Compare controlled_variable with np.array_equal, since '==' fails on arrays."""
         if not isinstance(other, MeasurementInformation):
             return NotImplemented
         if not np.array_equal(self.controlled_variable, other.controlled_variable):
@@ -379,8 +356,7 @@ class MeasurementInformation:
         raise KeyError(key)
 
     def __setitem__(self, key, value):
-        """Allows dict-item-assignment (e.g. block_ensemble.measurement_information['alternating']
-        = False), used throughout predefined_generate_methods/*.py, on this typed dataclass."""
+        """Allow item assignment, as used by the predefined generate methods."""
         if key not in self._field_names():
             raise KeyError(
                 'MeasurementInformation has no field "{0}". Valid fields: {1}'.format(
@@ -441,9 +417,10 @@ class MeasurementInformation:
 
 
 class AnalysisParameters(dict):
-    """Persisted PulseAnalyzer settings: analysis method kwargs plus the selected method under
-    'method'. Stays a dict subclass (not a plain dataclass) because pulse_analyzer.py reads/
-    mutates it directly as an ordinary dict."""
+    """PulseAnalyzer settings: the selected method under 'method' plus its parameters.
+
+    A dict subclass because PulseAnalyzer uses it as a plain dict.
+    """
 
     @property
     def method(self):
@@ -452,7 +429,7 @@ class AnalysisParameters(dict):
 
     @property
     def parameters(self) -> dict:
-        """All method keyword-argument parameters, excluding the 'method' key itself."""
+        """All parameters except 'method'."""
         return {key: value for key, value in self.items() if key != 'method'}
 
     def to_dict(self) -> dict:
@@ -464,8 +441,7 @@ class AnalysisParameters(dict):
 
 
 class ExtractionParameters(dict):
-    """Same purpose as AnalysisParameters, but for the persisted PulseExtractor settings - see
-    pulse_extractor.py."""
+    """PulseExtractor settings, see AnalysisParameters."""
 
     @property
     def method(self):
@@ -484,13 +460,9 @@ class ExtractionParameters(dict):
 
 
 class GenerationMethodParameters(dict):
-    """dict-based structured container for the keyword arguments used to (re-)generate the
-    currently loaded PulseBlockEnsemble/PulseSequence via a predefined generator method.
+    """Keyword arguments of the predefined method that generated the loaded ensemble/sequence.
 
-    Kept as a dict subclass for the same reason as AnalysisParameters/ExtractionParameters:
-    PulseBlockEnsemble/PulseSequence (pulse_objects.py) already store this as a plain dict on
-    their own 'generation_method_parameters' attribute, and the parameter names vary freely
-    depending on which predefined generator method produced the ensemble/sequence.
+    A dict subclass because the parameter names depend on the generator method.
     """
 
     def to_dict(self) -> dict:
@@ -502,60 +474,20 @@ class GenerationMethodParameters(dict):
 
 
 def to_plain_metadata(value):
-    """Recursively convert `value` into types whose repr() is valid Python needing no imports.
+    """Recursively convert `value` into plain Python types for saved-file metadata.
 
-    qudi.util.datastorage writes every saved-file metadata value with repr() and reads it back with
-    a bare eval() (metadata_to_str_dict()/str_dict_to_metadata()). A repr that NAMES A TOOL instead
-    of spelling the value out therefore raises NameError on the way back in, and
-    str_dict_to_metadata() silently keeps the raw string rather than raising - so the value looks
-    fine in the file but arrives as a str, and a caller doing
-    metadata['generation parameters']['rabi_period'] fails far away from the cause with
-    "string indices must be integers". Four such reprs actually occur here:
-
-        array([0., 1., ...])                                     numpy arrays
-        np.int64(5943750)                                        numpy scalars (numpy >= 2.0)
-        qudi.logic.pulsed.sampling_functions.PulseEnvelope(...)   PulseEnvelope, and the
-                                                                 PulseEnvelopeType enum inside it
-        nan / inf / -inf                                         non-finite floats
-
-    str_dict_to_metadata() does try importing the missing name once, but that cannot rescue any of
-    them: there is no module called "np"; importing "qudi" binds only the top-level package, not the
-    sampling_functions submodule the repr addresses; "array" resolves to the *stdlib* array module,
-    whose array() then rejects the argument; and there is no module called "nan" either. Converting
-    here - at the save boundary, so only the header text is affected - makes the file
-    self-describing instead, which also means it no longer depends on numpy's repr staying stable
-    across versions.
-
-    The non-finite floats are the one case that changes the value's TYPE (float -> str), and that is
-    unavoidable rather than a preference: Python has no literal for nan or inf, so no value that is
-    still a float can repr as something eval() resolves. They are written as 'nan'/'inf'/'-inf' and
-    a reader recovers the number with float(v). Writing None instead would have collapsed the three
-    cases together; a float subclass with a constructor-shaped __repr__ was rejected as not worth a
-    class. This matters more than it looks: PulseGeneratorSettings.upload_speed is nan until the
-    pulse generator has been benchmarked (PulserBenchmarks.estimate_combined_speed()), so before
-    this branch existed EVERY saved file on a fresh install had its whole 'pulsed measurement
-    settings' block come back as an unparsed str - one leaf poisons the entire key.
-
-    Also fixes a silent data loss unrelated to parsing: numpy summarises the repr of any array
-    longer than np.get_printoptions()['threshold'] (1000 by default) as
-    "array([0., 1., 2., ..., 1497., 1498., 1499.])". A controlled variable with more than 1000
-    points is therefore written to the header with its middle values already gone - unrecoverably,
-    since the text itself no longer contains them. tolist() writes all of them.
-
-    NOTE the branch order: dict/list/tuple/set are tested BEFORE the to_dict() duck-type at the
-    bottom, because AnalysisParameters/ExtractionParameters/GenerationMethodParameters are dict
-    subclasses that also define to_dict() (see this module's docstrings, and convention 5 in
-    pulsed_data/README.md) - matching them as dicts keeps their contents recursed instead of
-    bouncing through a redundant round trip.
+    Metadata is written with repr() and read back with eval(), so values must repr as plain
+    literals. This converts numpy arrays and scalars, enums and objects with a to_dict() method.
+    Non-finite floats are written as the strings 'nan', 'inf' and '-inf', since Python has no
+    literal for them; read them back with float(). Arrays are written in full, avoiding numpy's
+    "..." summary for long arrays.
     """
     if isinstance(value, np.ndarray):
         return to_plain_metadata(value.tolist())
     if isinstance(value, np.generic):
-        # Recursed rather than returned directly (like the ndarray branch above) so a numpy nan/inf
-        # reaches the non-finite branch below instead of leaving here as a raw Python float.
+        # Recurse so that nan/inf are handled below
         return to_plain_metadata(value.item())
     if isinstance(value, float) and not math.isfinite(value):
-        # 'nan' / 'inf' / '-inf' - see the fourth row of the table in this docstring.
         return repr(value)
     if isinstance(value, dict):
         return {to_plain_metadata(key): to_plain_metadata(item) for key, item in value.items()}
@@ -564,9 +496,7 @@ def to_plain_metadata(value):
     if isinstance(value, tuple):
         return tuple(to_plain_metadata(item) for item in value)
     if isinstance(value, (set, frozenset)):
-        # Sorted rather than left as a set so the header text for identical settings is identical
-        # every run (set repr order is arbitrary), and so the value stays literal-parseable - an
-        # empty set reprs as "set()", which is a call, not a literal.
+        # Sorted list for a stable order; an empty set would repr as "set()"
         items = [to_plain_metadata(item) for item in value]
         try:
             return sorted(items)
@@ -574,19 +504,15 @@ def to_plain_metadata(value):
             return items
     if isinstance(value, Enum):
         return to_plain_metadata(value.value)
-    # Duck-typed rather than importing PulseEnvelope: this file sits below sampling_functions.py in
-    # the layering, and any future metadata value offering to_dict() should convert the same way.
+    # Checked after dict, since some dict subclasses here also define to_dict()
     to_dict = getattr(value, 'to_dict', None)
     if callable(to_dict):
         return to_plain_metadata(to_dict())
     return value
 
 
-# Default sub-settings for PulsedMeasurementSettings.from_dict()'s per-field fallbacks (a saved
-# settings file predating a given field) and for pulsed_measurement_logic.py's
-# _default_measurement_settings() (a brand new settings object). Defined once, here, since
-# pulsed_measurement_logic_data.py cannot import from pulsed_measurement_logic.py (that direction
-# would be circular) - this is the lower-level file, so it owns the shared literals instead.
+# Defaults used by PulsedMeasurementSettings.from_dict() for missing keys and by
+# PulsedMeasurementLogic for new settings.
 _DEFAULT_MICROWAVE_SETTINGS = MicrowaveSettings(power=-30.0, frequency=2870e6, use_ext_microwave=False)
 _DEFAULT_FAST_COUNTER_SETTINGS = FastCounterSettings(
     record_length=3.0e-6, bin_width=1.0e-9, number_of_gates=0, is_gated=False
@@ -604,19 +530,10 @@ _DEFAULT_READOUT_SETTINGS = ReadoutSettings(
 
 @dataclass(frozen=True)
 class PulsedMeasurementSettings:
-    """Settings PulsedMeasurementLogic persists: microwave, fast counter, readout, alternative
-    signal processing, extraction/analysis parameters.
+    """Settings saved by PulsedMeasurementLogic.
 
-    extraction_parameters/analysis_parameters are SHARED, live objects - PulseExtractor/
-    PulseAnalyzer mutate them in place, so update_from_dict() mutates them in place too rather
-    than replacing the reference.
-
-    timer_interval_s/fit_configs/pulser_benchmarks are deliberately NOT here - they're
-    operational bookkeeping, persisted as independent StatusVars on their owning logic module.
-
-    sampling_information/measurement_information/generation_method_parameters live on the loaded
-    asset (SequenceGeneratorLogic) and are exposed as properties here, not copied - avoids a
-    save/load race that existed when this data was copied on every load.
+    alternate_signal_settings, extraction_parameters and analysis_parameters are shared with
+    AltPlotAnalyzer, PulseExtractor and PulseAnalyzer, so update_from_dict() updates them in place.
     """
 
     microwave_settings: MicrowaveSettings
@@ -638,14 +555,7 @@ class PulsedMeasurementSettings:
 
     @classmethod
     def from_dict(cls, data):
-        """Tolerant of a saved dict missing keys added after it was written (e.g. an older save
-        file that predates a field being added to this class) - falls back to that field's
-        own default rather than raising KeyError. extraction_parameters/analysis_parameters
-        don't need an explicit fallback here: ExtractionParameters.from_dict()/
-        AnalysisParameters.from_dict() already return an empty container for non-dict input
-        (including None from a missing key), so data.get(...) with no second argument is
-        sufficient.
-        """
+        """Missing keys fall back to their defaults."""
         return cls(
             microwave_settings=(
                 MicrowaveSettings.from_dict(data['microwave_settings'])
@@ -667,10 +577,7 @@ class PulsedMeasurementSettings:
             analysis_parameters=AnalysisParameters.from_dict(data.get('analysis_parameters')),
         )
 
-    #: Top-level status-file key names used by the ~20 individually-declared StatusVars that
-    #: existed on PulsedMeasurementLogic before this class was introduced (one file-level key
-    #: per StatusVar, instead of everything nested under a single '_settings' key). Used only to
-    #: detect a pre-refactor status file - see PulsedMeasurementLogic._migrate_legacy_settings_if_needed().
+    #: StatusVar names of the old status file format, used to detect it.
     LEGACY_STATUS_VAR_KEYS = frozenset({
         '_PulsedMeasurementLogic__microwave_power',
         '_PulsedMeasurementLogic__microwave_freq',
@@ -698,16 +605,9 @@ class PulsedMeasurementSettings:
 
     @classmethod
     def from_legacy_dict(cls, raw):
-        """Reconstruct settings from the pre-refactor flat, individually-StatusVar'd format
-        (key names below are the exact, name-mangled-where-applicable old StatusVar names).
+        """Build settings from the old status file format.
 
-        is_gated stays at its default: the old format never persisted it (always a live hardware
-        query), and on_activate() re-syncs it from hardware right after this runs anyway.
-
-        '_PulsedMeasurementLogic__timer_interval'/'fit_configs' are still in
-        LEGACY_STATUS_VAR_KEYS (valid legacy-format signals) but deliberately not reconstructed
-        here - PulsedMeasurementLogic._migrate_legacy_settings_if_needed() migrates those two
-        directly into its own independent StatusVars instead.
+        is_gated is not saved in the old format and is read from hardware on activation.
         """
         return cls.from_dict({
             'microwave_settings': {
@@ -759,8 +659,7 @@ class PulsedMeasurementSettings:
             value = data['readout_settings']
             readout_settings = value if isinstance(value, ReadoutSettings) else self.readout_settings.update_from_dict(value)
 
-        # alternate_signal_settings is a shared object too (AltPlotAnalyzer holds this exact
-        # instance, see its class docstring): mutate it in place, never replace the reference.
+        # Shared objects are updated in place, see class docstring.
         alternate_signal_settings = self.alternate_signal_settings
         if 'alternate_signal_settings' in data:
             value = data['alternate_signal_settings']
@@ -768,8 +667,6 @@ class PulsedMeasurementSettings:
                 value.to_dict() if isinstance(value, AlternativeSignalSettings) else value
             )
 
-        # extraction_parameters/analysis_parameters are shared objects (see class docstring):
-        # mutate the existing dict in place, never replace the reference.
         if 'extraction_parameters' in data:
             value = data['extraction_parameters']
             self.extraction_parameters.update(value if isinstance(value, dict) else ExtractionParameters.from_dict(value))

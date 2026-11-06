@@ -2,68 +2,42 @@
 """
 Lab-specific extensions to the global pulse generation parameters.
 
-THIS IS THE FILE TO EDIT if your lab needs an extra global generation setting (an AOM delay, a
-second microwave channel, a calibration factor, ...). Declare one frozen dataclass inheriting from
-`BaseGenerationParameters` and its fields become first-class generation parameters everywhere: a
-widget appears on the Predefined Methods tab, the value is saved to and restored from the status
-file, and predefined generate methods can read it.
+Edit this file to add a global generation setting for your lab (an AOM delay, a second microwave
+channel, ...). Declare a frozen dataclass inheriting from `BaseGenerationParameters`. Its fields
+get a widget on the Predefined Methods tab, are saved in the status file and can be read by
+predefined generate methods. sequence_generator_logic_data.py merges all subclasses declared here
+with `CoreGenerationParameters` into the `GenerationParameters` class.
 
-Nothing else needs to change. sequence_generator_logic_data.py imports this module and merges every
-subclass declared here with the built-in `CoreGenerationParameters` into the single
-`GenerationParameters` class the rest of the pulsed toolchain uses.
+A parameter needed by only one predefined generator can be declared on the generator class
+instead, see `PredefinedGeneratorBase.generation_parameter_contributors` in pulse_objects.py.
 
-For a parameter only one predefined generator needs, declare it on that generator class instead - see
-`PredefinedGeneratorBase.generation_parameter_contributors` in pulse_objects.py. That route also
-reaches generators loaded through the additional_predefined_methods_path config option, which cannot
-edit this file.
-
-`BaseGenerationParameters` lives here rather than in sequence_generator_logic_data.py purely so
-this file has no import back into it - a cycle would make the merge silently skip extensions
-depending on which module got imported first.
-
-Worked example
---------------
+Example
+-------
     @dataclass(frozen=True)
     class NVCentreParameters(BaseGenerationParameters):
-        '''Extra generation parameters for the NV setup.'''
-
         green_aom_delay: float = 700e-9
         readout_channel: str = 'd_ch4'
 
-That is the whole class. A predefined generate method then reads it as
-`self.generation_parameters['green_aom_delay']`, or directly off the settings object as
-`self.generator_settings.generation_parameters.green_aom_delay`.
+A predefined generate method reads it as `self.generation_parameters['green_aom_delay']`.
 
-How a saved value gets back into a field
-----------------------------------------
-A status file holds text, so a value read back out of it may not have the type its field declares -
-a float can arrive as '700e-9', a bool as 'False'. `_coerce_fields()` converts it, choosing how from
-the declared type alone:
+Loading saved values
+--------------------
+Values read from the status file are converted based on the field's declared type:
 
-    declared type      conversion applied to the saved value
-    -----------------  ------------------------------------------------------------------
     int, float, str    int(value), float(value), str(value)
-    bool               as_bool(value)   - 'False'/'no'/'off'/'0' are False, not True
-    an Enum subclass   looked up by member name, else by member value
-    any other class    an instance passes through as-is; a dict goes through that class's
-                       from_dict() if it has one - this is how PulseEnvelope round-trips
+    bool               as_bool(value), so 'False'/'no'/'off'/'0' are False
+    Enum subclass      looked up by member name, else by member value
+    other classes      instances are kept; dicts go through the class's from_dict()
 
-You write none of that; it follows from the annotation you already wrote, which is also why a
-field's default can no longer drift out of sync with its restore path - there is only one of each.
+If a value cannot be converted, a warning is logged and the field keeps its current value or
+default.
 
-If a value cannot be converted (a corrupted status file), the failure is logged and that one field
-falls back to its current value, else its default. It is deliberately not raised: a StatusVar
-constructor swallows an exception and returns the whole default object, so one bad key would
-otherwise silently reset every generation parameter.
-
-Custom handling for one awkward field
--------------------------------------
-Type detection cannot know that a fraction must stay within [0, 1]. Override `_coerce_fields()`, let
-`super()` do the automatic work for everything, and patch only the field that needs it:
+To add custom handling for a field, override `_coerce_fields()`, call `super()` and patch the
+result:
 
     @dataclass(frozen=True)
     class NVCentreParameters(BaseGenerationParameters):
-        green_aom_delay: float = 700e-9        # still fully automatic
+        green_aom_delay: float = 700e-9
         laser_power_fraction: float = 0.5
 
         @classmethod
@@ -72,20 +46,10 @@ Type detection cannot know that a fraction must stay within [0, 1]. Override `_c
             coerced['laser_power_fraction'] = min(1.0, max(0.0, coerced['laser_power_fraction']))
             return coerced
 
-A field whose type is mutable
------------------------------
-`str`, `int`, `float`, `bool` and `Enum` members are immutable, so writing the default straight
-after the annotation is fine. A mutable type is not: one default object would be shared by every
-instance of the class that did not override it, so whichever code mutated it first would change
-the default everyone else sees. Python refuses the declaration outright rather than let that
-happen:
-
-    ValueError: mutable default <class 'PulseEnvelope'> for field envelope is not allowed:
-                use default_factory
-
-`PulseEnvelope` is the one to watch here, because it is a supported field type but is *not*
-immutable - it is a plain `@dataclass` carrying a `parameters` dict. So give it a factory, which
-builds a fresh envelope per instance:
+Mutable defaults
+----------------
+Fields of a mutable type need `field(default_factory=...)`, otherwise Python raises
+"ValueError: mutable default ... is not allowed". This includes `PulseEnvelope`:
 
     from dataclasses import dataclass, field
     from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
@@ -96,10 +60,7 @@ builds a fresh envelope per instance:
             default_factory=lambda: PulseEnvelope(PulseEnvelopeType.rectangle)
         )
 
-`CoreGenerationParameters.pulse_envelope` is written exactly this way. The same applies to a
-`dict`, a `list`, a numpy array, or an instance of any class that defines `__eq__` - defining
-`__eq__` sets `__hash__` to None, which is precisely the test Python applies to decide a default
-is mutable. If in doubt, use `field(default_factory=...)`; it is never wrong.
+The same applies to dicts, lists, numpy arrays and instances of classes that define `__eq__`.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -128,21 +89,18 @@ _logger = getLogger(__name__)
 
 
 def as_bool(value):
-    """Converts a value to a boolean. If the value is a string, it checks for common truthy values.
+    """Convert a value to bool, treating only '1', 'true', 'yes' and 'on' as True for strings.
 
-    Needed because `bool('False')` is True, so a bool round-tripped through a status file as text
-    would come back inverted under a plain `bool()`.
+    Plain `bool('False')` would return True.
 
     Parameters
     ----------
     value : object
-        The value to interpret as a boolean.
+        The value to convert.
 
     Returns
     -------
     bool
-        For a string, whether it is one of '1', 'true', 'yes' or 'on', case-insensitively.
-        Otherwise `bool(value)`.
     """
     if isinstance(value, str):
         return value.strip().lower() in {'1', 'true', 'yes', 'on'}
@@ -150,31 +108,29 @@ def as_bool(value):
 
 
 def _coerce_value(value, declared_type):
-    """Convert one saved value to the type its generation parameter field declares.
+    """Convert a saved value to the declared type of its field.
 
     Parameters
     ----------
     value : object
-        The raw value, as read from a status file or handed over by a GUI widget.
+        The raw value from the status file or a GUI widget.
     declared_type : type
         The field's declared type.
 
     Returns
     -------
     object
-        `value` converted to `declared_type`, or `value` unchanged where `declared_type` carries no
-        usable conversion rule - a parameterised generic, a Union, or an annotation that could not
-        be resolved to a real type object.
+        The converted value. Returned unchanged for generics, Unions and unresolved annotations.
 
     Raises
     ------
     TypeError, ValueError, KeyError
-        If the conversion itself fails. `_coerce_fields()` handles these.
+        If the conversion fails.
     """
     if get_origin(declared_type) is not None or not isinstance(declared_type, type):
         return value
     if declared_type is bool:
-        # Must precede int: bool is a subclass of int, and bool('False') is True.
+        # Before int, since bool is a subclass of int.
         return as_bool(value)
     if declared_type in (int, float, str):
         return declared_type(value)
@@ -183,96 +139,62 @@ def _coerce_value(value, declared_type):
     if issubclass(declared_type, Enum) and isinstance(value, str):
         return declared_type[value] if value in declared_type.__members__ else declared_type(value)
     if isinstance(value, dict) and hasattr(declared_type, 'from_dict'):
-        # The convention every persisted class in this package follows, so a nested settings object
-        # round-trips through its own from_dict() without this layer knowing anything about it.
         return declared_type.from_dict(value)
     return declared_type(value)
 
 
 @dataclass(frozen=True)
 class BaseGenerationParameters:
-    """Marker base for everything that contributes fields to `GenerationParameters`.
+    """Base class for classes contributing fields to `GenerationParameters`.
 
-    Every subclass of this class is collected by sequence_generator_logic_data.py and merged into
-    the single `GenerationParameters` dataclass the rest of the toolchain annotates against.
+    Subclasses must:
+      * be decorated with `@dataclass(frozen=True)`;
+      * give every field a default (`field(default_factory=...)` for mutable types);
+      * use field names not used by any other contributor;
+      * use str, int, float, bool, Enum or PulseEnvelope fields to get a GUI widget.
 
-    Rules for a subclass:
-      * decorate it with `@dataclass(frozen=True)` - without the decorator its annotations never
-        become fields and the class contributes nothing at all, which the merge rejects by name;
-      * every field needs a default - Python forbids a no-default field following a defaulted one
-        in the merged class;
-      * a field of a mutable type needs `field(default_factory=...)` rather than a plain default,
-        or Python rejects the class with "mutable default ... is not allowed". This catches
-        `PulseEnvelope` despite it being a supported type, along with dict, list, numpy arrays and
-        any class defining `__eq__` - see "A field whose type is mutable" in the module docstring;
-      * field names must not collide with another contributor's - checked at merge time, which
-        raises naming both classes rather than letting one silently win;
-      * field types should be str / int / float / bool / Enum / PulseEnvelope, the set the GUI can
-        build a widget for (see pulsed_maingui._create_pm_global_params);
-      * nothing else. How each field is read back from a saved dict follows from its declared type -
-        see `_coerce_fields()`, and override it only for a field whose type cannot express the
-        handling it needs.
-
-    Do not instantiate a subclass on its own and hand it to set_generation_parameters(): a
-    contributor describes a *fragment* of the schema, not a complete settings object. It is
-    deliberately not an instance of the merged class, so coerce_settings() rejects it instead of
-    treating it as a full replacement and resetting every other field to its default.
+    A subclass instance holds only part of the parameters, so it can't be passed to
+    set_generation_parameters().
     """
 
     @classmethod
     def _coerce_fields(cls, data, current=None):
-        """Return {field_name: coerced value} for this contributor's own fields only.
+        """Return the converted values of this contributor's own fields.
 
-        Each value is taken from `data` when present, otherwise from `current` (an existing merged
-        instance) when one is given, otherwise from the field's declared default. Being tolerant of
-        missing keys is what lets a status file written before a field existed still load, instead
-        of raising and losing every saved parameter.
-
-        This single hook backs both from_dict() (current=None, so absent keys fall back to
-        defaults) and update_from_dict() (current=self, so absent keys keep their current value).
-
-        The conversion applied to each value follows from that field's declared type, so a
-        contributor normally does not override this at all. One that must should call
-        `super()._coerce_fields(data, current)` for everything else and patch only the key
-        concerned. A value that cannot be converted is logged and replaced by that field's current
-        value, else its default, rather than raising - the StatusVar constructor swallows an
-        exception and returns the whole default object, so one bad key would otherwise silently
-        reset every parameter.
+        Each value is taken from `data`, else from `current`, else from the field default.
+        Values that fail to convert are logged and replaced instead of raising, since a raised
+        error would reset all generation parameters when loading the status file.
 
         Parameters
         ----------
         data : dict
-            The saved/incoming values. May be missing any or all of this class's fields.
+            The incoming values. Keys may be missing.
         current : GenerationParameters or None
-            The settings currently in effect, or None to fall back to defaults.
+            The settings currently in effect, or None to use defaults.
 
         Returns
         -------
         dict
-            Keyword arguments for this contributor's fields only.
+            Keyword arguments for this contributor's fields.
         """
         try:
             hints = get_type_hints(cls)
         except (NameError, TypeError):
             hints = {}
-        # Every contributor field must have a default, so a bare instance is simply all of them.
         defaults = cls()
         coerced = {}
         for name in cls._own_field_names():
             default = getattr(defaults, name)
             raw = cls._pick(data, current, name, default)
             if raw is default:
-                # Nothing was saved for this field, so `raw` is the declared default object itself
-                # - already the intended value, and converting it would only invent a complaint
-                # about a field the user never touched (a `dict` default of None, say).
+                # Defaults are used as-is.
                 coerced[name] = raw
                 continue
             try:
                 coerced[name] = _coerce_value(raw, hints.get(name, object))
             except (TypeError, ValueError, KeyError) as err:
                 live = default if current is None else getattr(current, name, default)
-                # `raw` may itself have come off `current` (the key was absent from `data`), in
-                # which case reusing it would fail identically and only the default is sound.
+                # If `raw` came from `current`, fall back to the default instead.
                 fallback = default if live is raw else live
                 _logger.warning(
                     '%s.%s: cannot coerce %r to %s (%s). Ignoring that saved value and using %r '
@@ -285,16 +207,11 @@ class BaseGenerationParameters:
 
     @classmethod
     def _own_field_names(cls):
-        """Names of the fields this contributor itself declares, excluding inherited ones.
-
-        `fields()` reports base-first then own, each in declaration order, so subtracting the bases
-        preserves this class's own order - which `to_dict()` relies on for the Predefined Methods
-        grid layout. `ClassVar`/`InitVar` never appear, since `fields()` does not report them.
+        """Names of the fields declared by this class itself, in declaration order.
 
         Returns
         -------
         tuple of str
-            Field names, in declaration order.
         """
         inherited = {
             f.name for base in cls.__mro__[1:] if is_dataclass(base) for f in fields(base)
@@ -303,24 +220,7 @@ class BaseGenerationParameters:
 
     @staticmethod
     def _pick(data, current, name, default):
-        """Raw value for `name`: from `data`, else from `current`, else `default`.
-
-        Parameters
-        ----------
-        data : dict
-            The saved/incoming values.
-        current : GenerationParameters or None
-            The settings currently in effect, or None to fall back to `default`.
-        name : str
-            Field name to look up.
-        default : object
-            Value to use when `name` appears in neither source.
-
-        Returns
-        -------
-        object
-            The value, uncoerced.
-        """
+        """Return the value for `name` from `data`, else from `current`, else `default`."""
         if name in data:
             return data[name]
         if current is not None:
@@ -331,7 +231,7 @@ class BaseGenerationParameters:
 ##############################################################################
 #                                                                            #
 #             Add your lab's generation parameter classes below.             #
-#                See the module docstring for a worked example.              #
+#                  See the module docstring for an example.                  #
 #                                                                            #
 ##############################################################################
 
