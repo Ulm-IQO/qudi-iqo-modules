@@ -1461,19 +1461,13 @@ If settings do reset unexpectedly:
 
 | File | Pins |
 |---|---|
-| [`../../../../../tests/test_pulsed_measurement.py`](../../../../../tests/test_pulsed_measurement.py) | the bulk of it — `to_dict()`/`from_dict()` round trips for `PulsedMeasurement`/`PulsedMeasurementSettings`/`SequenceGeneratorSettings`/`SamplingInformation`; tolerance of a dict missing a key; that fit results are deliberately *not* restored; both `from_legacy_dict()` paths against realistic pre-refactor status dicts; that `LEGACY_STATUS_VAR_KEYS` is not a dataclass field; `.copy()` independence for pulse objects and `PulsedMeasurementData`; pickle round trip of a whole snapshot; block/ensemble closure resolution |
-| [`../../../../../tests/test_pulsed_measurement_logic_data.py`](../../../../../tests/test_pulsed_measurement_logic_data.py) | `ExecutionState` pause behaviour, `DataStashCache` stash/recall, `AnalysisParameters`/`ExtractionParameters` round trip |
+| [`../../../../../tests/test_pulsed_measurement.py`](../../../../../tests/test_pulsed_measurement.py) | the bulk of it — `to_dict()`/`from_dict()` round trips for `PulsedMeasurement`/`PulsedMeasurementSettings`/`SequenceGeneratorSettings`/`SamplingInformation`; tolerance of a dict missing a key; that fit results are deliberately *not* restored; both `from_legacy_dict()` paths against realistic pre-refactor status dicts; pickle round trip of a whole snapshot; block/ensemble closure resolution; saved file headers; `ExecutionState` pause behaviour |
 
 Run them with:
 
 ```
-python -m pytest tests/test_pulsed_measurement.py tests/test_pulsed_measurement_logic_data.py
+python -m pytest tests/test_pulsed_measurement.py
 ```
-
-> `tests/test_migration.py` is **not** part of this suite despite the name. It is a scratch script
-> with a hardcoded absolute path to one person's `rabi.ensemble`, containing no test function and
-> doing its work at import time — pytest will error collecting it on any other machine. If you want a
-> real regression test for unpickling a legacy `.ensemble`, it needs rewriting around a fixture file.
 
 If you add a field, add it to the relevant round-trip test — that is what catches a `to_dict()` and
 `from_dict()` that have drifted apart.
