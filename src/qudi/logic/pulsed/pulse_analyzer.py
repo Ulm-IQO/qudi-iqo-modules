@@ -88,8 +88,8 @@ class PulseAnalyzer(PulseAnalyzerBase):
 
         # Dictionary holding references to all analysis methods
         self._analysis_methods = dict()
-        # dictionary containing all possible parameters that can be used by the analysis methods
-        self._parameters = dict()
+        # The real, shared AnalysisParameters instance held by PulsedMeasurementLogic's settings
+        self._parameters = pulsedmeasurementlogic.analysis_parameters
         # Currently selected analysis method
         self._current_analysis_method = None
         # Analyzer sub class predicate
@@ -127,21 +127,27 @@ class PulseAnalyzer(PulseAnalyzerBase):
         # add references to all analysis methods in each instance to a dict
         self.__populate_method_dict(instance_list=analyzer_instances)
 
-        # populate "_parameters" dictionary from analysis method signatures
+        # Drop any persisted parameter that no longer corresponds to a real method
+        valid_parameter_names = set()
+        for method in self._analysis_methods.values():
+            valid_parameter_names.update(inspect.signature(method).parameters.keys())
+        valid_parameter_names.discard('laser_data')
+        for param in [p for p in list(self._parameters) if p not in valid_parameter_names and p != 'method']:
+            del self._parameters[param]
+
+        # Fill in defaults (from method signatures) for any valid parameter name not already
+        # present in the shared, persisted self._parameters dict
         self.__populate_parameter_dict()
 
-        # Set default analysis method
-        self._current_analysis_method = natural_sort(self._analysis_methods)[0]
-
-        # Update from parameter_dict if handed over
-        if isinstance(pulsedmeasurementlogic.analysis_parameters, dict):
-            # Delete unused parameters
-            params = [p for p in pulsedmeasurementlogic.analysis_parameters if
-                      p not in self._parameters and p != 'method']
-            for param in params:
-                del pulsedmeasurementlogic.analysis_parameters[param]
-            # Update parameter dict and current method
-            self.analysis_settings = pulsedmeasurementlogic.analysis_parameters
+        # Ensure a valid current method is selected
+        if self._parameters.get('method') not in self._analysis_methods:
+            invalid_method = self._parameters.get('method')
+            if invalid_method is not None:
+                self.log.warning(
+                    'Analysis method "{0}" could not be found in PulseAnalyzer. '
+                    'Falling back to default.'.format(invalid_method)
+                )
+            self._parameters['method'] = natural_sort(self._analysis_methods)[0]
         return
 
     @property
@@ -152,14 +158,15 @@ class PulseAnalyzer(PulseAnalyzerBase):
 
         @return dict: dictionary with keys being the parameter name and values being the parameter
         """
+        current_method = self._parameters.get('method')
         # Get reference to the extraction method
-        method = self._analysis_methods.get(self._current_analysis_method)
+        method = self._analysis_methods.get(current_method)
 
         # Get keyword arguments for the currently selected method
         settings_dict = self._get_analysis_method_kwargs(method)
 
         # Attach current analysis method name
-        settings_dict['method'] = self._current_analysis_method
+        settings_dict['method'] = current_method
         return settings_dict
 
     @analysis_settings.setter
@@ -174,12 +181,13 @@ class PulseAnalyzer(PulseAnalyzerBase):
         if not isinstance(settings_dict, dict):
             return
 
-        # go through all key-value pairs in settings_dict and update self._parameters and
-        # self._current_analysis_method accordingly. Ignore unknown parameters.
+        # go through all key-value pairs in settings_dict and update self._parameters
+        # (including the current method, stored under the 'method' key) accordingly. Ignore
+        # unknown parameters.
         for parameter, value in settings_dict.items():
             if parameter == 'method':
                 if value in self._analysis_methods:
-                    self._current_analysis_method = value
+                    self._parameters['method'] = value
                 else:
                     self.log.error('Analysis method "{0}" could not be found in PulseAnalyzer.'
                                    ''.format(value))
@@ -199,18 +207,6 @@ class PulseAnalyzer(PulseAnalyzerBase):
         """
         return self._analysis_methods
 
-    @property
-    def full_settings_dict(self):
-        """
-        Returns the full set of parameters for all methods as well as the currently selected method
-        in order to store them in a StatusVar in PulsedMeasurementLogic.
-
-        @return dict: full set of parameters and currently selected analysis method.
-        """
-        settings_dict = self._parameters.copy()
-        settings_dict['method'] = self._current_analysis_method
-        return settings_dict
-
     def analyse_laser_pulses(self, laser_data):
         """
         Wrapper method to call the currently selected analysis method with laser_data and the
@@ -223,7 +219,8 @@ class PulseAnalyzer(PulseAnalyzerBase):
                                                 and the measurement error corresponding to each
                                                 data point.
         """
-        analysis_method = self._analysis_methods[self._current_analysis_method]
+        current_method = self._parameters.get('method')
+        analysis_method = self._analysis_methods[current_method]
 
         kwargs = self._get_analysis_method_kwargs(analysis_method)
         return analysis_method(laser_data=laser_data, **kwargs)
@@ -258,7 +255,10 @@ class PulseAnalyzer(PulseAnalyzerBase):
         Helper method to populate the dictionaries containing all references to callable analysis
         methods contained in analyzer instances passed to this method.
 
-        @param list instance_list: List containing instances of analyzer classes
+        Parameters
+        ----------
+        instance_list : list
+            List containing instances of analyzer classes.
         """
         self._analysis_methods = dict()
         for instance in instance_list:
@@ -269,11 +269,12 @@ class PulseAnalyzer(PulseAnalyzerBase):
 
     def __populate_parameter_dict(self):
         """
-        Helper method to populate the dictionary containing all possible keyword arguments from all
-        analysis methods.
+        Helper method to fill in default values (from method signatures) for any analysis
+        method keyword argument not already present in the shared self._parameters dict. Never
+        overwrites an already-present (e.g. persisted) value.
         """
-        self._parameters = dict()
         for method in self._analysis_methods.values():
-            self._parameters.update(self._get_analysis_method_kwargs(method=method))
+            for name, default in self._get_analysis_method_kwargs(method=method).items():
+                self._parameters.setdefault(name, default)
         return
 

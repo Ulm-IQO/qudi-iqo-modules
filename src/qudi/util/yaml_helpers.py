@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import fields
 
 from qudi.logic.pulsed.sampling_functions import PulseEnvelope
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
 
 def dataclass_representer(representer, data):
     tag = f'!{data.__class__.__name__}'
@@ -32,3 +33,8 @@ def dataclass_representer(representer, data):
 def pulse_envelope_constructor(loader, node):
     data = loader.construct_mapping(node, deep=True)
     return PulseEnvelope.from_dict(data)
+
+
+def sampling_information_constructor(loader, node):
+    data = loader.construct_mapping(node, deep=True)
+    return SamplingInformation.from_dict(data)

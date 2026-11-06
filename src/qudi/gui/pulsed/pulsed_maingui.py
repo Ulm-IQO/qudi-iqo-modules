@@ -1300,6 +1300,17 @@ class PulsedMeasurementGui(GuiBase):
                     widget.addItem(option.name, PulseEnvelope(option))
                 widget.setCurrentText(value.type.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
+            else:
+                # Without this branch `widget` would still be bound to the previous iteration's
+                # widget, which then gets silently re-registered under this parameter's name.
+                # Reachable for any generation parameter whose type is outside the set above -
+                # note the checks are `type(x) is`, not isinstance, so an int/float subclass
+                # (numpy scalar, IntEnum) lands here too.
+                self.log.error('The generation parameter "{0}" has an invalid type ({1}).\n'
+                               'Only str, int, float, bool, Enum and PulseEnvelope can be shown '
+                               'in the global parameters editor - skipping it.'
+                               ''.format(param, type(value).__name__))
+                continue
 
             widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
 
@@ -2065,7 +2076,9 @@ class PulsedMeasurementGui(GuiBase):
         )
 
     @QtCore.Slot(object, bool)
-    def predefined_generated(self, asset_name, is_sequence):
+    def predefined_generated(self, asset_name, produced_sequence):
+        """`produced_sequence` reports whether the generate method returned any PulseSequence - a
+        different question from PulseSequence.is_sequence, which asks whether an object is one."""
         # Enable all "Generate" buttons in predefined methods tab
         for button in self._pm.gen_buttons.values():
             button.setEnabled(True)
@@ -2081,7 +2094,7 @@ class PulsedMeasurementGui(GuiBase):
             self._pg.sample_ensemble_PushButton.setEnabled(False)
             self._pg.samplo_ensemble_PushButton.setEnabled(False)
             self._pg.load_ensemble_PushButton.setEnabled(False)
-            if is_sequence:
+            if produced_sequence:
                 self._sg.load_sequence_PushButton.setEnabled(False)
                 self._sg.samplo_sequence_PushButton.setEnabled(False)
                 self._sg.sample_sequence_PushButton.setEnabled(False)
@@ -2369,8 +2382,8 @@ class PulsedMeasurementGui(GuiBase):
 
         # Fit settings dialog
         fit_containers = self.pulsedmasterlogic().fit_containers
-        self._pa.first_plot_fitwidget.link_fit_container(fit_containers[0])
-        self._pa.second_plot_fitwidget.link_fit_container(fit_containers[1])
+        self._pa.first_plot_fitwidget.link_fit_container(fit_containers.primary)
+        self._pa.second_plot_fitwidget.link_fit_container(fit_containers.alternative)
         self._pa.first_plot_fitwidget.sigDoFit.connect(
             lambda x: self.pulsedmasterlogic().do_fit(x, False)
         )
@@ -2406,6 +2419,11 @@ class PulsedMeasurementGui(GuiBase):
         for method_name in natural_sort(self.pulsedmasterlogic().alt_plot_methods):
             self._pa.second_plot_ComboBox.addItem(method_name)
         self._pa.second_plot_ComboBox.blockSignals(False)
+
+        self._pa.ana_param_errorbars_CheckBox.setToolTip(
+            'Controls whether the saved plot thumbnail shows error bars. The saved data file always '
+            'includes error data regardless of this setting.'
+        )
 
         # Recall StatusVars into widgets
         self._pa.ana_param_errorbars_CheckBox.blockSignals(True)

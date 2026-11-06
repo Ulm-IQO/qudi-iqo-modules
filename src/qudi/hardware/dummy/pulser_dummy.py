@@ -562,10 +562,15 @@ class PulserDummy(PulserInterface):
                              respective asset loaded into the channel,
                              string describing the asset type ('waveform' or 'sequence')
         """
-        # Determine if it's a waveform or a sequence
+        # Determine if it's a waveform or a sequence. Waveform names always carry a '_ch<N>'
+        # suffix (see load_waveform(), which parses them the same way); a loaded sequence's name
+        # is stored bare, with no suffix at all - including, potentially, no underscore whatsoever
+        # (e.g. a sequence simply named "Rabi"), so this must not assume rsplit('_', 1) always
+        # yields two pieces.
         asset_type = None
         for asset_name in self.current_loaded_assets.values():
-            if 'ch' in asset_name.rsplit('_', 1)[1]:
+            name_parts = asset_name.rsplit('_ch', 1)
+            if len(name_parts) == 2 and name_parts[1].isdigit():
                 current_type = 'waveform'
             else:
                 current_type = 'sequence'

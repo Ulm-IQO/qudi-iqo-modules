@@ -48,6 +48,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         bin_width = self.fast_counter_settings.get('bin_width')
 
         if not isinstance(bin_width, float):
+            self.log.warning('Analysis aborted: fast counter bin_width is not a valid float '
+                             '(got {0!r}) - returning zero signal.'.format(bin_width))
             return np.zeros(num_of_lasers), np.zeros(num_of_lasers)
 
         # Convert the times in seconds to bins (i.e. array indices)
@@ -100,6 +102,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         bin_width = self.fast_counter_settings.get('bin_width')
 
         if not isinstance(bin_width, float):
+            self.log.warning('Analysis aborted: fast counter bin_width is not a valid float '
+                             '(got {0!r}) - returning zero signal.'.format(bin_width))
             return np.zeros(num_of_lasers), np.zeros(num_of_lasers)
 
         # Convert the times in seconds to bins (i.e. array indices)
@@ -140,6 +144,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         bin_width = self.fast_counter_settings.get('bin_width')
 
         if not isinstance(bin_width, float):
+            self.log.warning('Analysis aborted: fast counter bin_width is not a valid float '
+                             '(got {0!r}) - returning zero signal.'.format(bin_width))
             return np.zeros(num_of_lasers), np.zeros(num_of_lasers)
 
         # Convert the times in seconds to bins (i.e. array indices)
@@ -206,6 +212,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         bin_width = self.fast_counter_settings.get('bin_width')
 
         if not isinstance(bin_width, float):
+            self.log.warning('Analysis aborted: fast counter bin_width is not a valid float '
+                             '(got {0!r}) - returning zero signal.'.format(bin_width))
             return np.zeros(num_of_lasers), np.zeros(num_of_lasers)
 
         # Convert the times in seconds to bins (i.e. array indices)

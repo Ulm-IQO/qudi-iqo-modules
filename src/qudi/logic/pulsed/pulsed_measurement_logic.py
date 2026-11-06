@@ -19,6 +19,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os.path
+import pickle
+import shutil
 
 from PySide6 import QtCore
 import numpy as np
@@ -26,6 +28,7 @@ import time
 import datetime
 import matplotlib.pyplot as plt
 
+from dataclasses import replace
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -33,7 +36,15 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
-from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
+from qudi.util.datastorage import (
+    TextDataStorage,
+    CsvDataStorage,
+    NpyDataStorage,
+    create_dir_for_file,
+    get_timestamp_filename,
+)
+from qudi.util.paths import get_module_app_data_path
+from qudi.util.yaml import yaml_load
 from qudi.util.units import ScaledFloat
 from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
@@ -43,6 +54,36 @@ from qudi.logic.pulsed.pulse_alt_plot import AltPlotAnalyzer
 from qudi.interface.pulser_interface import PulserInterface
 from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.interface.microwave_interface import MicrowaveInterface
+
+#IMPORT ALL CLASSES FROM DATA CLASS
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement_logic_data import (
+    AlternativeSignalSettings,
+    AnalysisParameters,
+    DataStashCache,
+    ExecutionState,
+    ExtractionParameters,
+    GenerationMethodParameters,
+    MeasurementInformation,
+    to_plain_metadata,
+    MicrowaveSettings,
+    FastCounterSettings,
+    ReadoutSettings,
+    PulsedMeasurementSettings,
+    PulsedMeasurementData,
+    _DEFAULT_MICROWAVE_SETTINGS,
+    _DEFAULT_FAST_COUNTER_SETTINGS,
+    _DEFAULT_READOUT_SETTINGS,
+)
+from qudi.logic.pulsed.pulsed_data.sequence_generator_logic_data import SamplingInformation
+from qudi.logic.pulsed.pulsed_data.pulsed_measurement import (
+    FitResults, PulsedMeasurement, PulsedMetadata, PulseObjects, Settings
+)
+from qudi.logic.pulsed.pulsed_data.settings_coercion import (
+    SettingsTypeError,
+    as_settings_dict,
+    coerce_settings,
+)
+
 
 
 def _data_storage_from_cfg_option(cfg_str):
@@ -54,6 +95,90 @@ def _data_storage_from_cfg_option(cfg_str):
     if cfg_str == 'npy':
         return NpyDataStorage
     raise ValueError('Invalid ConfigOption value to specify data storage type.')
+
+
+_DEFAULT_FIT_CONFIGS = (
+    {'name': 'Gaussian Dip',
+     'model': 'Gaussian',
+     'estimator': 'Dip',
+     'custom_parameters': None},
+
+    {'name': 'Gaussian Peak',
+     'model': 'Gaussian',
+     'estimator': 'Peak',
+     'custom_parameters': None},
+
+    {'name': 'Lorentzian Dip',
+     'model': 'Lorentzian',
+     'estimator': 'Dip',
+     'custom_parameters': None},
+
+    {'name': 'Lorentzian Peak',
+     'model': 'Lorentzian',
+     'estimator': 'Peak',
+     'custom_parameters': None},
+
+    {'name': 'Double Lorentzian Dips',
+     'model': 'DoubleLorentzian',
+     'estimator': 'Dips',
+     'custom_parameters': None},
+
+    {'name': 'Double Lorentzian Peaks',
+     'model': 'DoubleLorentzian',
+     'estimator': 'Peaks',
+     'custom_parameters': None},
+
+    {'name': 'Triple Lorentzian Dip',
+     'model': 'TripleLorentzian',
+     'estimator': 'Dips',
+     'custom_parameters': None},
+
+    {'name': 'Triple Lorentzian Peaks',
+     'model': 'TripleLorentzian',
+     'estimator': 'Peaks',
+     'custom_parameters': None},
+
+    {'name': 'Sine',
+     'model': 'Sine',
+     'estimator': 'default',
+     'custom_parameters': None},
+
+    {'name': 'Double Sine',
+     'model': 'DoubleSine',
+     'estimator': 'default',
+     'custom_parameters': None},
+
+    {'name': 'Exp. Decay Sine',
+     'model': 'ExponentialDecaySine',
+     'estimator': 'Decay',
+     'custom_parameters': None},
+
+    {'name': 'Stretched Exp. Decay Sine',
+     'model': 'ExponentialDecaySine',
+     'estimator': 'Stretched Decay',
+     'custom_parameters': None},
+
+    {'name': 'Stretched Exp. Decay',
+     'model': 'ExponentialDecay',
+     'estimator': 'Stretched Decay',
+     'custom_parameters': None},
+)
+
+
+def _default_measurement_settings():
+    """Factory for the default PulsedMeasurementSettings, used both as the StatusVar default
+    and as the fallback when restoring a malformed/legacy status value.
+
+    The mutable containers are created fresh on each call so they aren't shared between instances.
+    """
+    return PulsedMeasurementSettings(
+        microwave_settings=_DEFAULT_MICROWAVE_SETTINGS,
+        fast_counter_settings=_DEFAULT_FAST_COUNTER_SETTINGS,
+        readout_settings=_DEFAULT_READOUT_SETTINGS,
+        alternate_signal_settings=AlternativeSignalSettings(),
+        extraction_parameters=ExtractionParameters(),
+        analysis_parameters=AnalysisParameters(),
+    )
 
 
 class PulsedMeasurementLogic(LogicBase):
@@ -92,51 +217,39 @@ class PulsedMeasurementLogic(LogicBase):
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
 
     # status variables
-    # ext. microwave settings
-    __microwave_power = StatusVar(default=-30.0)
-    __microwave_freq = StatusVar(default=2870e6)
-    __use_ext_microwave = StatusVar(default=False)
+    # Single PulsedMeasurement instance holding this module's working state: data plus metadata
+    # (settings, loaded pulse asset, fit results). Only measurement_settings is actually persisted
+    # (see representer/constructor below) - everything else is transient, rebuilt on every
+    # activation. name='_settings' keeps the on-disk key unchanged despite the Python
+    # attribute rename, so _migrate_legacy_settings_if_needed() keeps working off that string key.
+    _pulsed_measurement = StatusVar(
+        name='_settings',
+        default=PulsedMeasurement(
+            metadata=PulsedMetadata(
+                settings=Settings(measurement_settings=_default_measurement_settings())
+            )
+        ),
+        constructor=lambda x: PulsedMeasurement(
+            metadata=PulsedMetadata(
+                settings=Settings(
+                    measurement_settings=PulsedMeasurementSettings.from_dict(x)
+                    if isinstance(x, dict)
+                    else _default_measurement_settings()
+                )
+            )
+        ),
+        representer=lambda obj: obj.metadata.settings.measurement_settings.to_dict(),
+    )
 
-    # fast counter settings
-    __fast_counter_record_length = StatusVar(default=3.0e-6)
-    __fast_counter_binwidth = StatusVar(default=1.0e-9)
-    __fast_counter_gates = StatusVar(default=0)
-
-    # measurement timer settings
-    __timer_interval = StatusVar(default=5)
-
-    # Pulsed measurement settings
-    _invoke_settings_from_sequence = StatusVar(default=False)
-    _number_of_lasers = StatusVar(default=50)
-    _controlled_variable = StatusVar(default=list(range(50)),
-                                     constructor=lambda x: np.array(x, dtype=float),
-                                     representer=lambda x: list(x))
-    _alternating = StatusVar(default=False)
-    _laser_ignore_list = StatusVar(default=list())
-    _data_units = StatusVar(default=('s', ''))
-    _data_labels = StatusVar(default=('Tau', 'Signal'))
-
-    # PulseExtractor settings
-    extraction_parameters = StatusVar(default=None)
-    analysis_parameters = StatusVar(default=None)
-
-    # Container to store measurement information about the currently loaded sequence
-    _measurement_information = StatusVar(default=dict())
-    # Container to store information about the sampled waveform/sequence currently loaded
-    _sampling_information = StatusVar(default=dict())
-    _generation_method_parameters = StatusVar(default=dict())
-
-    # Data fitting
+    # Kept as separate StatusVars, not part of the measurement settings.
+    _timer_interval_s = StatusVar(name='timer_interval_s', default=5.0)
+    # fit_configs' representer/constructor read/write self.fit_config_model directly
     _fit_configs = StatusVar(name='fit_configs', default=None)
-
-    # alternative (second) plot settings:
-    # Holds the full parameter set of all alternative plot methods plus the currently selected
-    # method (key "method"), persisted analogously to analysis_parameters. Managed by
-    # AltPlotAnalyzer.
-    alt_plot_parameters = StatusVar(default=None)
 
     # notification signals for master module (i.e. GUI)
     sigMeasurementDataUpdated = QtCore.Signal()
+    # Emits a message when an analysis tick fails and '' once a tick succeeds again.
+    sigAnalysisProblem = QtCore.Signal(str)
     sigTimerUpdated = QtCore.Signal(float, int, float)
     sigFitUpdated = QtCore.Signal(str, object, bool)
     sigMeasurementStatusUpdated = QtCore.Signal(bool, bool)
@@ -151,115 +264,222 @@ class PulsedMeasurementLogic(LogicBase):
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
 
-    __default_fit_configs = (
-        {'name': 'Gaussian Dip',
-         'model': 'Gaussian',
-         'estimator': 'Dip',
-         'custom_parameters': None},
-
-        {'name': 'Gaussian Peak',
-         'model': 'Gaussian',
-         'estimator': 'Peak',
-         'custom_parameters': None},
-
-        {'name': 'Lorentzian Dip',
-         'model': 'Lorentzian',
-         'estimator': 'Dip',
-         'custom_parameters': None},
-
-        {'name': 'Lorentzian Peak',
-         'model': 'Lorentzian',
-         'estimator': 'Peak',
-         'custom_parameters': None},
-
-        {'name': 'Double Lorentzian Dips',
-         'model': 'DoubleLorentzian',
-         'estimator': 'Dips',
-         'custom_parameters': None},
-
-        {'name': 'Double Lorentzian Peaks',
-         'model': 'DoubleLorentzian',
-         'estimator': 'Peaks',
-         'custom_parameters': None},
-
-        {'name': 'Triple Lorentzian Dip',
-         'model': 'TripleLorentzian',
-         'estimator': 'Dips',
-         'custom_parameters': None},
-
-        {'name': 'Triple Lorentzian Peaks',
-         'model': 'TripleLorentzian',
-         'estimator': 'Peaks',
-         'custom_parameters': None},
-
-        {'name': 'Sine',
-         'model': 'Sine',
-         'estimator': 'default',
-         'custom_parameters': None},
-
-        {'name': 'Double Sine',
-         'model': 'DoubleSine',
-         'estimator': 'default',
-         'custom_parameters': None},
-
-        {'name': 'Exp. Decay Sine',
-         'model': 'ExponentialDecaySine',
-         'estimator': 'Decay',
-         'custom_parameters': None},
-
-        {'name': 'Stretched Exp. Decay Sine',
-         'model': 'ExponentialDecaySine',
-         'estimator': 'Stretched Decay',
-         'custom_parameters': None},
-
-        {'name': 'Stretched Exp. Decay',
-         'model': 'ExponentialDecay',
-         'estimator': 'Stretched Decay',
-         'custom_parameters': None},
-    )
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # timer for measurement
         self.__analysis_timer = None
-        self.__start_time = 0
-        self.__elapsed_time = 0
-        self.__elapsed_sweeps = 0
+        self.__execution_state = ExecutionState()
+        # last message reported via sigAnalysisProblem - lets _report_analysis_problem() dedup
+        # repeated identical failures instead of logging/emitting on every single tick.
+        self.__last_analysis_problem = None
 
         # threading
         self._threadlock = Mutex()
 
-        # measurement data
-        self.signal_data = np.empty((2, 0), dtype=float)
-        self.signal_alt_data = np.empty((2, 0), dtype=float)
-        self.measurement_error = np.empty((2, 0), dtype=float)
-        self.laser_data = np.zeros((10, 20), dtype='int64')
-        self.raw_data = np.zeros((10, 20), dtype='int64')
-
-        self._saved_raw_data = dict()  # temporary saved raw data
-        self._recalled_raw_data_tag = None  # the currently recalled raw data dict key
-
-        # Paused measurement flag
-        self.__is_paused = False
-        self._time_of_pause = None
-        self._elapsed_pause = 0
-
-        # method manager instances (created in on_activate)
-        self._pulseextractor = None
-        self._pulseanalyzer = None
-        self._altplotanalyzer = None
+        self._data_stash=DataStashCache()  # manages the memory for stashed/recalled raw data
 
         # for fit:
         self.fit_config_model = None  # Model for custom fit configurations
         self.fc = None  # Fit container
         self.alt_fc = None
-        self._fit_result = None
-        self._fit_result_alt = None
+
+        # Holding area for a newly loaded asset/closure that hasn't been committed as the
+        # actively-measured one yet
+        self._pending_loaded_asset = None
+        self._pending_ensembles = {}
+        self._pending_blocks = {}
+
+    @property
+    def _settings(self):
+        """The real, shared PulsedMeasurementSettings this module actually works with - lives on
+        self._pulsed_measurement.metadata.settings.measurement_settings.
+        """
+        return self._pulsed_measurement.metadata.settings.measurement_settings
+
+    @_settings.setter
+    def _settings(self, new_settings):
+        self._pulsed_measurement.metadata.settings = replace(
+            self._pulsed_measurement.metadata.settings, measurement_settings=new_settings
+        )
+
+    @property
+    def measurement_data(self):
+        """The real, shared PulsedMeasurementData held on self._pulsed_measurement.data"""
+        return self._pulsed_measurement.data
+
+    @property
+    def _loaded_asset(self):
+        """Whichever PulseBlockEnsemble/PulseSequence is currently loaded, held on
+        self._pulsed_measurement.metadata.objects.loaded_asset. Not independently persisted - only
+        ever set externally by PulsedMasterLogic"""
+        return self._pulsed_measurement.metadata.objects.loaded_asset
+
+    @_loaded_asset.setter
+    def _loaded_asset(self, asset):
+        self._pulsed_measurement.metadata.objects.loaded_asset = asset
+
+    @property
+    def _fit_result(self):
+        return self._pulsed_measurement.metadata.fit_results.primary
+
+    @_fit_result.setter
+    def _fit_result(self, result):
+        self._pulsed_measurement.metadata.fit_results.primary = result
+
+    @property
+    def _fit_result_alt(self):
+        return self._pulsed_measurement.metadata.fit_results.alternative
+
+    @_fit_result_alt.setter
+    def _fit_result_alt(self, result):
+        self._pulsed_measurement.metadata.fit_results.alternative = result
+
+    def _apply_microwave_settings(self, new_settings):
+        self._settings = replace(self._settings, microwave_settings=new_settings)
+
+    def _apply_fast_counter_settings(self, new_settings):
+        self._settings = replace(self._settings, fast_counter_settings=new_settings)
+
+    def _apply_readout_settings(self, new_settings):
+        self._settings = replace(self._settings, readout_settings=new_settings)
+
+    def _apply_timer_interval(self, new_interval):
+        self._timer_interval_s = float(new_interval)
+
+    @property
+    def loaded_asset(self):
+        return self._loaded_asset
+
+    @loaded_asset.setter
+    def loaded_asset(self, asset):
+        """Only stores the asset as pending. It's applied by _commit_pending_asset() on start."""
+        if asset is not self._loaded_asset:
+            self.log.warning(
+                'A new sequence/ensemble has been loaded, but its settings have not been applied '
+                'to the measurement yet - Saving before starting the measurement uses the '
+                'previous asset\'s name, settings, and data.'
+            )
+        self._pending_loaded_asset = asset
+        return
+
+    def refresh_generator_settings(self, generator_settings):
+        """Keep self._pulsed_measurement.metadata.settings.generator_settings fresh without a
+        Connector to SequenceGeneratorLogic."""
+        self._pulsed_measurement.metadata.settings = replace(
+            self._pulsed_measurement.metadata.settings, generator_settings=generator_settings
+        )
+
+    def refresh_loaded_asset_closure(self, ensembles, blocks):
+        """Stores the resolved closure as pending, same as the loaded_asset setter - not applied
+        until _commit_pending_asset() runs at Play, so the sequence and its ensembles/blocks
+        always commit together, never independently."""
+        self._pending_ensembles = dict(ensembles) if ensembles else {}
+        self._pending_blocks = dict(blocks) if blocks else {}
+
+    def _commit_pending_asset(self):
+        """Promote whatever's pending (from the last loaded_asset/refresh_loaded_asset_closure()
+        call) to the actively-measured asset """
+        self._loaded_asset = self._pending_loaded_asset
+        self._pulsed_measurement.metadata.objects.ensembles = self._pending_ensembles
+        self._pulsed_measurement.metadata.objects.blocks = self._pending_blocks
+
+    def get_pulsed_measurement(self, generator_settings=None, ensembles=None, blocks=None):
+        """Build a PulsedMeasurement snapshot bundling this module's settings/data/loaded asset
+        with the caller-supplied SequenceGeneratorSettings and resolved ensemble/block closure.
+
+        Returns independent copies (not live references), so the snapshot is frozen in time.
+
+        Parameters
+        ----------
+        generator_settings : SequenceGeneratorSettings
+            Optional, the sequence generator settings in effect for this measurement.
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller (see
+            SequenceGeneratorLogic.resolve_asset_closure()).
+        blocks : dict
+            Optional, {name: PulseBlock}, same caveat as `ensembles`.
+
+        Returns
+        -------
+        PulsedMeasurement
+            Snapshot of this module's current settings/data/loaded asset, plus the given
+            generator_settings/ensembles/blocks.
+        """
+        current = self._pulsed_measurement
+        return PulsedMeasurement(
+            metadata=PulsedMetadata(
+                settings=Settings(
+                    measurement_settings=current.metadata.settings.measurement_settings,
+                    generator_settings=generator_settings,
+                ),
+                objects=PulseObjects(
+                    loaded_asset=(
+                        current.metadata.objects.loaded_asset.copy()
+                        if current.metadata.objects.loaded_asset is not None
+                        else None
+                    ),
+                    ensembles=dict(ensembles) if ensembles else {},
+                    blocks=dict(blocks) if blocks else {},
+                ),
+                fit_results=FitResults(*current.metadata.fit_results),
+            ),
+            data=current.data.copy(),
+        )
+
+    def _migrate_legacy_settings_if_needed(self):
+        """One-time upgrade path for a status file saved by either the pre-refactor version of
+        this module, or a later format with timer_interval_s/fit_configs nested inside '_settings'
+        instead of their own independent StatusVars.
+        """
+        file_path = get_module_app_data_path(self.__class__.__name__, self.module_base, self.module_name)
+        try:
+            raw_status = yaml_load(file_path, ignore_missing=True)
+        except Exception:
+            self.log.exception('Failed to read status file while checking for legacy settings format:')
+            return
+
+        if '_settings' not in raw_status and PulsedMeasurementSettings.LEGACY_STATUS_VAR_KEYS.intersection(raw_status):
+            self.log.warning(
+                'Found measurement settings saved by a pre-refactor version of this module '
+                '(individually-keyed microwave/fast counter/readout/etc. settings instead of the '
+                'current consolidated format). Migrating them now instead of silently resetting to '
+                'defaults. The original file has been backed up to "{0}.legacy_backup".'.format(file_path)
+            )
+            try:
+                backup_path = file_path + '.legacy_backup'
+                if not os.path.exists(backup_path):
+                    shutil.copy2(file_path, backup_path)
+            except Exception:
+                self.log.exception(
+                    'Failed to back up legacy status file before migrating (continuing anyway):'
+                )
+
+            try:
+                self._settings = PulsedMeasurementSettings.from_legacy_dict(raw_status)
+            except Exception:
+                self.log.exception('Failed to migrate legacy measurement settings - keeping defaults:')
+
+
+            self._timer_interval_s = float(
+                raw_status.get('_PulsedMeasurementLogic__timer_interval', self._timer_interval_s)
+            )
+            return
+
+        # Intermediate format had timer_interval_s/fit_configs nested inside '_settings'
+        nested = raw_status.get('_settings')
+        if isinstance(nested, dict):
+            if 'timer_interval_s' in nested:
+                self._timer_interval_s = float(nested['timer_interval_s'])
+            if nested.get('fit_configs'):
+                self._fit_configs = tuple(nested['fit_configs'])
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
+        # Must run first: the StatusVars are already restored at this point.
+        self._migrate_legacy_settings_if_needed()
+
         # Create an instance of PulseExtractor
         self._pulseextractor = PulseExtractor(pulsedmeasurementlogic=self)
         self._pulseanalyzer = PulseAnalyzer(pulsedmeasurementlogic=self)
@@ -270,7 +490,7 @@ class PulsedMeasurementLogic(LogicBase):
         # in this logic's thread but in the manager instead.
         self.__analysis_timer = QtCore.QTimer()
         self.__analysis_timer.setSingleShot(False)
-        self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
+        self.__analysis_timer.setInterval(round(1000. * self._timer_interval_s))
         self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
                                               QtCore.Qt.ConnectionType.QueuedConnection)
 
@@ -285,28 +505,29 @@ class PulsedMeasurementLogic(LogicBase):
 
         # Check and configure fast counter
         binning_constraints = self._fastcounter().get_constraints()['hardware_binwidth_list']
-        if self.__fast_counter_binwidth not in binning_constraints:
-            self.__fast_counter_binwidth = binning_constraints[0]
-        if self.__fast_counter_record_length <= 0:
-            self.__fast_counter_record_length = 3e-6
+        fixes = {}
+        if self._settings.fast_counter_settings.bin_width not in binning_constraints:
+            fixes['bin_width'] = binning_constraints[0]
+        if self._settings.fast_counter_settings.record_length <= 0:
+            fixes['record_length'] = 3e-6
+        if fixes:
+            self._apply_fast_counter_settings(self._settings.fast_counter_settings.update_from_dict(fixes))
         self.fast_counter_off()
-        # Set default number of gates to a reasonable number for gated counters (>0 if gated)
-        if self._fastcounter().is_gated() and self.__fast_counter_gates < 1:
-            self.__fast_counter_gates = max(1, self._number_of_lasers)
+        if self._fastcounter().is_gated() and self._settings.fast_counter_settings.number_of_gates < 1:
+            self._apply_fast_counter_settings(
+                replace(
+                    self._settings.fast_counter_settings,
+                    number_of_gates=max(1, self._settings.readout_settings.number_of_lasers),
+                )
+            )
         self.set_fast_counter_settings()
 
         # Check and configure external microwave
-        if self.__use_ext_microwave:
+        if self._settings.microwave_settings.use_ext_microwave:
             self.microwave_off()
-            self.set_microwave_settings(frequency=self.__microwave_freq,
-                                        power=self.__microwave_power,
-                                        use_ext_microwave=True)
-
+            self.set_microwave_settings(self._settings.microwave_settings.to_dict())
         # initialize arrays for the measurement data
         self._initialize_data_arrays()
-
-        # recalled saved raw data dict key
-        self._recalled_raw_data_tag = None
 
         # Connect internal signals
         self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -323,47 +544,52 @@ class PulsedMeasurementLogic(LogicBase):
         self.sigStopTimer.disconnect()
         return
 
-    @extraction_parameters.representer
-    def __repr_extraction_parameters(self, value):
-        return self._pulseextractor.full_settings_dict
+    @property
+    def extraction_parameters(self):
+        """The real, shared ExtractionParameters object (not a copy/dict) - PulseExtractor
+        holds a reference to this exact instance and mutates it in place as its live state."""
+        return self._settings.extraction_parameters
 
-    @analysis_parameters.representer
-    def __repr_analysis_parameters(self, value):
-        return self._pulseanalyzer.full_settings_dict
+    @property
+    def analysis_parameters(self):
+        """The real, shared AnalysisParameters object (not a copy/dict) - PulseAnalyzer holds
+        a reference to this exact instance and mutates it in place as its live state."""
+        return self._settings.analysis_parameters
 
-    @alt_plot_parameters.representer
-    def __repr_alt_plot_parameters(self, value):
-        return self._altplotanalyzer.full_settings_dict
+    @property
+    def alternate_signal_settings(self):
+        """The real, shared AlternativeSignalSettings object (not a copy/dict) - AltPlotAnalyzer
+        holds a reference to this exact instance and mutates it in place as its live state."""
+        return self._settings.alternate_signal_settings
+
+    @property
+    def fit_configs(self):
+        """The persisted tuple of fit configuration dicts, backed by the independent _fit_configs
+        StatusVar (see its declaration and the representer/constructor hooks below)."""
+        return self._fit_configs
 
     @_fit_configs.representer
     def __repr_fit_configs(self, value):
         configs = self.fit_config_model.dump_configs()
-        if len(configs) < 1:
-            configs = None
-        return configs
+        return configs if len(configs) >= 1 else None
 
     @_fit_configs.constructor
     def __constr_fit_configs(self, value):
-        if not value:
-            return self.__default_fit_configs
-        return value
+        return value if value else _DEFAULT_FIT_CONFIGS
 
     ############################################################################
     # Fast counter control methods and properties
     ############################################################################
     @property
     def fast_counter_settings(self):
-        settings_dict = dict()
-        settings_dict['bin_width'] = float(self.__fast_counter_binwidth)
-        settings_dict['record_length'] = float(self.__fast_counter_record_length)
-        settings_dict['number_of_gates'] = int(self.__fast_counter_gates)
-        settings_dict['is_gated'] = bool(self._fastcounter().is_gated())
-        return settings_dict
+        return self._settings.fast_counter_settings.to_dict()
 
     @fast_counter_settings.setter
-    def fast_counter_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_fast_counter_settings(settings_dict)
+    def fast_counter_settings(self, settings):
+        if not isinstance(settings, (FastCounterSettings, dict)):
+            raise SettingsTypeError(f'fast_counter_settings expects FastCounterSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_fast_counter_settings(settings)
         return
 
     @property
@@ -371,44 +597,51 @@ class PulsedMeasurementLogic(LogicBase):
         return self._fastcounter().get_constraints()
 
     @QtCore.Slot(dict)
-    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
+    def set_fast_counter_settings(self, settings=None, **kwargs):
         """
-        Either accepts a settings dictionary as positional argument or keyword arguments.
-        If both are present, both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accepts a FastCounterSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. A dict/kwargs is a partial patch of the current settings,
+        a FastCounterSettings is a full replacement. If both a settings_dict and kwargs are
+        present, the keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : FastCounterSettings or dict or None
+        kwargs
         """
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.fast_counter_settings, FastCounterSettings
+            )
+        except SettingsTypeError as err:
+            # Logged, not raised: an exception in a queued slot doesn't reach the caller.
+            self.log.error(f'Unable to apply new fast counter settings. {err}')
+            self.sigFastCounterSettingsUpdated.emit(self.fast_counter_settings)
+            return self.fast_counter_settings
+
         # Check if fast counter is running and do nothing if that is the case
         counter_status = self._fastcounter().get_status()
         if not counter_status >= 2 and not counter_status < 0:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
-            else:
-                settings_dict.update(kwargs)
+            # Set parameters, check if it is gated
+            if not self._fastcounter().is_gated():
+                requested = replace(requested, number_of_gates=0)
 
-            # Set parameters if present
-            if 'bin_width' in settings_dict:
-                self.__fast_counter_binwidth = float(settings_dict['bin_width'])
-            if 'record_length' in settings_dict:
-                self.__fast_counter_record_length = float(settings_dict['record_length'])
-            if 'number_of_gates' in settings_dict:
-                if self._fastcounter().is_gated():
-                    self.__fast_counter_gates = int(settings_dict['number_of_gates'])
-                else:
-                    self.__fast_counter_gates = 0
+            self._apply_fast_counter_settings(requested)
 
             # Apply the settings to hardware
-            self.__fast_counter_binwidth, \
-            self.__fast_counter_record_length, \
-            self.__fast_counter_gates = self._fastcounter().configure(
-                self.__fast_counter_binwidth,
-                self.__fast_counter_record_length,
-                self.__fast_counter_gates
+            bin_width, record_length, number_of_gates = self._fastcounter().configure(
+                self._settings.fast_counter_settings.bin_width,
+                self._settings.fast_counter_settings.record_length,
+                self._settings.fast_counter_settings.number_of_gates
+             )
+            self._apply_fast_counter_settings(
+                replace(
+                    self._settings.fast_counter_settings,
+                    bin_width=bin_width,
+                    record_length=record_length,
+                    number_of_gates=number_of_gates,
+                    is_gated=self._fastcounter().is_gated(),
+                )
             )
         else:
             self.log.warning('Fast counter is not idle (status: {0}).\n'
@@ -474,11 +707,31 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def elapsed_sweeps(self):
-        return self.__elapsed_sweeps
+        return self.measurement_data.elapsed_sweeps
 
     @property
     def elapsed_time(self):
-        return self.__elapsed_time
+        return self.measurement_data.elapsed_time
+
+    @property
+    def raw_data(self):
+        return self.measurement_data.raw_data
+
+    @property
+    def laser_data(self):
+        return self.measurement_data.laser_data
+
+    @property
+    def signal_data(self):
+        return self.measurement_data.signal_data
+
+    @property
+    def signal_alt_data(self):
+        return self.measurement_data.signal_alt_data
+
+    @property
+    def measurement_error(self):
+        return self.measurement_data.measurement_error
     ############################################################################
 
     ############################################################################
@@ -486,17 +739,16 @@ class PulsedMeasurementLogic(LogicBase):
     ############################################################################
     @property
     def ext_microwave_settings(self):
-        settings_dict = {'power': float(self.__microwave_power),
-                         'frequency': float(self.__microwave_freq),
-                         'use_ext_microwave': bool(self.__use_ext_microwave)}
-        return settings_dict
+        return self._settings.microwave_settings.to_dict()
 
     @ext_microwave_settings.setter
-    def ext_microwave_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_microwave_settings(settings_dict)
+    def ext_microwave_settings(self, settings):
+        if not isinstance(settings, (MicrowaveSettings, dict)):
+            raise SettingsTypeError(f'ext_microwave_settings expects MicrowaveSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_microwave_settings(settings)
         return
-
+    
     @property
     def ext_microwave_constraints(self):
         microwave = self._microwave()
@@ -556,49 +808,56 @@ class PulsedMeasurementLogic(LogicBase):
         return err
 
     @QtCore.Slot(dict)
-    def set_microwave_settings(self, settings_dict=None, **kwargs):
+    def set_microwave_settings(self, settings=None, **kwargs):
         """
         Apply new settings to the external microwave device.
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Either accepts a MicrowaveSettings instance or a settings dictionary as positional
+        argument, or keyword arguments. A dict/kwargs is a partial patch of the current settings,
+        a MicrowaveSettings is a full replacement. If both a settings_dict and kwargs are present,
+        the keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Parameters
+        ----------
+        settings : MicrowaveSettings or dict or None
+        kwargs
         """
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.microwave_settings, MicrowaveSettings
+            )
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to apply new microwave settings. {err}')
+            self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
+            return self.ext_microwave_settings
+
         # Check if microwave is running and do nothing if that is the case
         try:
             microwave = self._microwave()
             if (microwave is not None) and (microwave.module_state() != 'idle') :
                 self.log.warning('Microwave device is running.\nUnable to apply new settings.')
             else:
-                # Determine complete settings dictionary
-                if not isinstance(settings_dict, dict):
-                    settings_dict = kwargs
-                else:
-                    settings_dict.update(kwargs)
-
-                # Set parameters if present
-                if 'power' in settings_dict:
-                    self.__microwave_power = float(settings_dict['power'])
-                if 'frequency' in settings_dict:
-                    self.__microwave_freq = float(settings_dict['frequency'])
-                if 'use_ext_microwave' in settings_dict:
-                    self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and microwave is not None
-
-                if self.__use_ext_microwave and microwave is not None:
+                # use_ext_microwave can only ever be True if a microwave connector is actually
+                # present - otherwise force it back to False regardless of what was requested.
+                if requested.use_ext_microwave and microwave is None:
+                    requested = replace(requested, use_ext_microwave=False)
+                self._apply_microwave_settings(requested)
+                if self._settings.microwave_settings.use_ext_microwave and microwave is not None:
                     # Apply the settings to hardware
-                    microwave.set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
-                    self.__microwave_freq = microwave.cw_frequency
-                    self.__microwave_power = microwave.cw_power
+                    microwave.set_cw(
+                        frequency=self._settings.microwave_settings.frequency, power=self._settings.microwave_settings.power
+                    )
+                    self._apply_microwave_settings(
+                        replace(
+                            self._settings.microwave_settings,
+                            frequency=microwave.cw_frequency,
+                            power=microwave.cw_power,
+                        )
+                    )
+                
         finally:
             # emit update signal for master (GUI or other logic module)
-            self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
-                                                      'frequency': self.__microwave_freq,
-                                                      'use_ext_microwave': self.__use_ext_microwave})
-        return self.__microwave_freq, self.__microwave_power, self.__use_ext_microwave
+            self.sigExtMicrowaveSettingsUpdated.emit(self.ext_microwave_settings)
+        return self.ext_microwave_settings
     ############################################################################
 
     ############################################################################
@@ -651,82 +910,108 @@ class PulsedMeasurementLogic(LogicBase):
     ############################################################################
     @property
     def measurement_settings(self):
-        settings_dict = dict()
-        settings_dict['invoke_settings'] = bool(self._invoke_settings_from_sequence)
-        settings_dict['controlled_variable'] = np.array(self._controlled_variable,
-                                                        dtype=float).copy()
-        settings_dict['number_of_lasers'] = int(self._number_of_lasers)
-        settings_dict['laser_ignore_list'] = list(self._laser_ignore_list).copy()
-        settings_dict['alternating'] = bool(self._alternating)
-        settings_dict['units'] = self._data_units
-        settings_dict['labels'] = self._data_labels
-        return settings_dict
+        return self._settings.readout_settings.to_dict()
 
     @measurement_settings.setter
-    def measurement_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_measurement_settings(settings_dict)
+    def measurement_settings(self, settings):
+        if not isinstance(settings, (ReadoutSettings, dict)):
+            raise SettingsTypeError(f'measurement_settings expects ReadoutSettings or dict, '
+                                    f'got {type(settings).__name__}')
+        self.set_measurement_settings(settings)
         return
 
     @property
     def measurement_information(self):
-        return self._measurement_information
+        """Metadata about whichever PulseBlockEnsemble/PulseSequence is currently loaded """
+        if self._loaded_asset is None:
+            return MeasurementInformation().to_dict()
+        return self._loaded_asset.measurement_information.to_dict()
 
     @measurement_information.setter
     def measurement_information(self, info_dict):
-        # Check if mandatory params to invoke settings are missing and set empty dict in that case.
-        mand_params = ('number_of_lasers',
-                       'controlled_variable',
-                       'laser_ignore_list',
-                       'alternating',
-                       'counting_length')
-        if not isinstance(info_dict, dict) or not all(param in info_dict for param in mand_params):
-            self.log.debug('The set measurement_information did not contain all the necessary '
-                           'information or was not a dict. Setting empty dict.')
-            self._measurement_information = dict()
+        if isinstance(info_dict, MeasurementInformation):
+            info = info_dict
+        elif isinstance(info_dict, dict):
+            info = MeasurementInformation.from_dict(info_dict)
+        else:
+            info = MeasurementInformation()
+
+        if self._loaded_asset is None:
+            self.log.warning('Cannot set measurement_information: no asset is currently loaded.')
             return
 
-        # Set measurement_information dict
-        self._measurement_information = info_dict.copy()
+        # Check if mandatory params to invoke settings are missing and set empty container in
+        # that case.
+        if not info.is_valid:
+            self.log.debug('The set measurement_information did not contain all the necessary '
+                           'information or was not a dict. Setting empty container.')
+            self._loaded_asset.measurement_information = MeasurementInformation()
+            return
+
+        # Mutate the loaded asset's own measurement_information - the same object
+        # SequenceGeneratorLogic sees, not a copy.
+        self._loaded_asset.measurement_information = info
 
         # invoke settings if needed
-        if self._invoke_settings_from_sequence and self._measurement_information:
+        if self._settings.readout_settings.invoke_settings and info:
             self._apply_invoked_settings()
             self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
         return
 
     @property
     def sampling_information(self):
-        return self._sampling_information
+        """Sampling metadata for whichever PulseBlockEnsemble/PulseSequence is currently loaded
+        """
+        if self._loaded_asset is None:
+            return SamplingInformation().to_dict()
+        return self._loaded_asset.sampling_information.to_dict()
 
     @sampling_information.setter
     def sampling_information(self, info_dict):
-        if isinstance(info_dict, dict):
-            self._sampling_information = info_dict
+        if isinstance(info_dict, SamplingInformation):
+            new_value = info_dict
+        elif isinstance(info_dict, dict):
+            new_value = SamplingInformation.from_dict(info_dict)
         else:
-            self._sampling_information = dict()
+            new_value = SamplingInformation()
+        if self._loaded_asset is None:
+            self.log.warning('Cannot set sampling_information: no asset is currently loaded.')
+            return
+        self._loaded_asset.sampling_information = new_value
         return
 
     @property
     def generation_method_parameters(self):
-        return self._generation_method_parameters
+        """Generation kwargs for whichever PulseBlockEnsemble/PulseSequence is currently loaded
+        """
+        if self._loaded_asset is None:
+            return GenerationMethodParameters().to_dict()
+        return self._loaded_asset.generation_method_parameters.to_dict()
 
     @generation_method_parameters.setter
     def generation_method_parameters(self, info_dict):
-        if isinstance(info_dict, dict):
-            self._generation_method_parameters = info_dict
+        if isinstance(info_dict, GenerationMethodParameters):
+            new_value = info_dict
+        elif isinstance(info_dict, dict):
+            new_value = GenerationMethodParameters.from_dict(info_dict)
         else:
-            self._generation_method_parameters = dict()
+            new_value = GenerationMethodParameters()
+        if self._loaded_asset is None:
+            self.log.warning('Cannot set generation_method_parameters: no asset is currently loaded.')
+            return
+        self._loaded_asset.generation_method_parameters = new_value
         return
 
     @property
     def timer_interval(self):
-        return float(self.__timer_interval)
+        return float(self._timer_interval_s)
 
     @timer_interval.setter
     def timer_interval(self, value):
-        if isinstance(value, (int, float)):
-            self.set_timer_interval(value)
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise SettingsTypeError(f'timer_interval expects int or float, '
+                                    f'got {type(value).__name__}')
+        self.set_timer_interval(value)
         return
 
     @property
@@ -736,8 +1021,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @alternative_data_type.setter
     def alternative_data_type(self, alt_data_type):
-        if isinstance(alt_data_type, str) or alt_data_type is None:
-            self.set_alternative_data_type(alt_data_type)
+        if not (isinstance(alt_data_type, str) or alt_data_type is None):
+            raise SettingsTypeError(f'alternative_data_type expects str or None, '
+                                    f'got {type(alt_data_type).__name__}')
+        self.set_alternative_data_type(alt_data_type)
         return
 
     @property
@@ -764,8 +1051,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @analysis_settings.setter
     def analysis_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_analysis_settings(settings_dict)
+        if not isinstance(settings_dict, dict):
+            raise SettingsTypeError(f'analysis_settings expects a dict, '
+                                    f'got {type(settings_dict).__name__}')
+        self.set_analysis_settings(settings_dict)
         return
 
     @property
@@ -774,8 +1063,11 @@ class PulsedMeasurementLogic(LogicBase):
 
     @extraction_settings.setter
     def extraction_settings(self, settings_dict):
-        if isinstance(settings_dict, dict):
-            self.set_extraction_settings(settings_dict)
+        # No dataclass counterpart - see analysis_settings above.
+        if not isinstance(settings_dict, dict):
+            raise SettingsTypeError(f'extraction_settings expects a dict, '
+                                    f'got {type(settings_dict).__name__}')
+        self.set_extraction_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -792,15 +1084,18 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Determine complete settings dictionary
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            settings_dict = as_settings_dict(settings_dict, kwargs)
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to apply new analysis settings. {err}')
+            self.sigAnalysisSettingsUpdated.emit(self.analysis_settings)
+            return
 
+        bin_width = self.fast_counter_settings['bin_width']
         for key in settings_dict:
             if key in ['signal_start', 'signal_end', 'norm_start', 'norm_end']:
-                num_bins_fast = round(settings_dict[key]/self.fast_counter_settings['bin_width'])
-                settings_dict[key] = num_bins_fast * self.fast_counter_settings['bin_width']
+                num_bins_fast = round(settings_dict[key] / bin_width)
+                settings_dict[key] = num_bins_fast * bin_width
 
         # Use threadlock to update settings during a running measurement
         with self._threadlock:
@@ -811,7 +1106,7 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(dict)
     def set_extraction_settings(self, settings_dict=None, **kwargs):
         """
-        Apply new analysis settings.
+        Apply new extraction settings.
         Either accept a settings dictionary as positional argument or keyword arguments.
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
@@ -822,10 +1117,12 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Determine complete settings dictionary
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            settings_dict = as_settings_dict(settings_dict, kwargs)
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to apply new extraction settings. {err}')
+            self.sigExtractionSettingsUpdated.emit(self.extraction_settings)
+            return
 
         # Use threadlock to update settings during a running measurement
         with self._threadlock:
@@ -834,59 +1131,71 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @QtCore.Slot(dict)
-    def set_measurement_settings(self, settings_dict=None, **kwargs):
+    def set_measurement_settings(self, settings=None, **kwargs):
         """
-        Apply new measurement settings.
-        Either accept a settings dictionary as positional argument or keyword arguments.
-        If both are present both are being used by updating the settings_dict with kwargs.
-        The keyword arguments take precedence over the items in settings_dict if there are
-        conflicting names.
+        Apply new measurement (readout) settings.
+        Either accepts a ReadoutSettings instance or a settings dictionary as positional argument,
+        or keyword arguments. A dict/kwargs is a partial patch of the current settings, a
+        ReadoutSettings is a full replacement. If both a settings_dict and kwargs are present, the
+        keyword arguments take precedence for conflicting names.
 
-        @param settings_dict:
-        @param kwargs:
-        @return:
+        Note that not every field can be applied in every module state: only invoke_settings,
+        units and labels are accepted while a measurement is running. Fields the current state
+        does not permit keep their current value, whether they were named explicitly or arrived
+        as part of a complete ReadoutSettings.
+
+        Parameters
+        ----------
+        settings : ReadoutSettings or dict or None
+        kwargs
         """
-        # Determine complete settings dictionary
-        if not isinstance(settings_dict, dict):
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
+        try:
+            requested = coerce_settings(
+                settings, kwargs, self._settings.readout_settings, ReadoutSettings
+            )
+        except SettingsTypeError as err:
+            self.log.error(f'Unable to apply new measurement settings. {err}')
+            self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
+            return self.measurement_settings
 
-        # Check if invoke_settings flag has changed
-        if 'invoke_settings' in settings_dict:
-            self._invoke_settings_from_sequence = bool(settings_dict.get('invoke_settings'))
-
-        # Invoke settings if measurement_information is present and flag is set
-        if self._invoke_settings_from_sequence:
-            if self._measurement_information:
+        # invoke_settings flag can change regardless of module state
+        self._apply_readout_settings(
+            replace(self._settings.readout_settings, invoke_settings=requested.invoke_settings)
+        )
+        if self._settings.readout_settings.invoke_settings:
+            if self.measurement_information:
                 self._apply_invoked_settings()
         else:
-            # Apply settings that can be changed while a measurement is running
+            # units/labels can change while a measurement is running
             with self._threadlock:
-                if 'units' in settings_dict:
-                    self._data_units = settings_dict.get('units')
-                    # self.fc.set_units(self._data_units)
-                if 'labels' in settings_dict:
-                    self._data_labels = list(settings_dict.get('labels'))
-
+                self._apply_readout_settings(
+                    replace(
+                        self._settings.readout_settings,
+                        units=requested.units,
+                        labels=requested.labels,
+                    )
+                )
             if self.module_state() == 'idle':
-                # Get all other parameters if present
-                if 'controlled_variable' in settings_dict:
-                    self._controlled_variable = np.array(settings_dict.get('controlled_variable'),
-                                                         dtype=float)
-                if 'number_of_lasers' in settings_dict:
-                    self._number_of_lasers = int(settings_dict.get('number_of_lasers'))
-                    if self._fastcounter().is_gated():
-                        self.set_fast_counter_settings(number_of_gates=self._number_of_lasers)
-                if 'laser_ignore_list' in settings_dict:
-                    self._laser_ignore_list = sorted(settings_dict.get('laser_ignore_list'))
-                if 'alternating' in settings_dict:
-                    self._alternating = bool(settings_dict.get('alternating'))
-
-        # Perform sanity checks on settings
+                # Everything else describes the pulse sequence being measured and can only change
+                # while no measurement is running.
+                self._apply_readout_settings(
+                    replace(
+                        self._settings.readout_settings,
+                        controlled_variable=requested.controlled_variable,
+                        number_of_lasers=requested.number_of_lasers,
+                        laser_ignore_list=requested.laser_ignore_list,
+                        alternating=requested.alternating,
+                    )
+                )
+                # A gated fast counter needs exactly one gate per laser pulse. Driven off the
+                # actual values rather than "was number_of_lasers named in the call", so this also
+                # heals the two ever drifting apart.
+                if (self._fastcounter().is_gated()
+                        and self._settings.fast_counter_settings.number_of_gates
+                        != self._settings.readout_settings.number_of_lasers):
+                    self.set_fast_counter_settings(
+                        number_of_gates=self._settings.readout_settings.number_of_lasers)
         self._measurement_settings_sanity_check()
-
-        # emit update signal for master (GUI or other logic module)
         self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
         return self.measurement_settings
 
@@ -908,9 +1217,11 @@ class PulsedMeasurementLogic(LogicBase):
         """Start the analysis loop."""
         self.sigMeasurementStatusUpdated.emit(True, False)
 
+        self._commit_pending_asset()
+
         # Check if measurement settings need to be invoked
-        if self._invoke_settings_from_sequence:
-            if self._measurement_information:
+        if self._settings.readout_settings.invoke_settings:
+            if self.measurement_information:
                 self._apply_invoked_settings()
                 self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
             else:
@@ -935,34 +1246,27 @@ class PulsedMeasurementLogic(LogicBase):
                 self._initialize_data_arrays()
 
                 # recall stashed raw data
-                if stashed_raw_data_tag in self._saved_raw_data:
-                    self._recalled_raw_data_tag = stashed_raw_data_tag
-                    self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
-                                  ''.format(stashed_raw_data_tag))
-                else:
-                    self._recalled_raw_data_tag = None
+                if self._data_stash.recall(stashed_raw_data_tag) is not None:
+                     self.log.info('Starting pulsed measurement with stashed raw data "{0}".'
+                                     ''.format(stashed_raw_data_tag))
 
                 # start microwave source
-                if self.__use_ext_microwave:
+                if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_on()
                 # start fast counter
                 self.fast_counter_on()
                 # start pulse generator
                 self.pulse_generator_on()
 
+                # start the time and set the paused state to false
+                self.__execution_state.start()
+
                 # initialize analysis_timer
-                self.__elapsed_time = 0.0
-                self._elapsed_pause = 0
-                self.sigTimerUpdated.emit(self.__elapsed_time,
-                                          self.__elapsed_sweeps,
-                                          self.__timer_interval)
+                self.sigTimerUpdated.emit(self.measurement_data.elapsed_time,
+                                          self.measurement_data.elapsed_sweeps,
+                                          self._timer_interval_s)
 
-                # Set starting time and start timer (if present)
-                self.__start_time = time.time()
                 self.sigStartTimer.emit()
-
-                # Set measurement paused flag
-                self.__is_paused = False
             else:
                 self.log.warning('Unable to start pulsed measurement. Measurement already running.')
         return
@@ -975,8 +1279,8 @@ class PulsedMeasurementLogic(LogicBase):
         # Get raw data and analyze it a last time just before stopping the measurement.
         try:
             self._pulsed_analysis_loop()
-        except:
-            pass
+        except Exception:
+            self.log.exception('Final analysis pass before stopping measurement failed:')
 
         with self._threadlock:
             if self.module_state() == 'locked':
@@ -987,18 +1291,17 @@ class PulsedMeasurementLogic(LogicBase):
                 # Turn off pulse generator
                 self.pulse_generator_off()
                 # Turn off microwave source
-                if self.__use_ext_microwave:
+                if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_off()
 
                 # stash raw data if requested
                 if stash_raw_data_tag:
-                    self._saved_raw_data[stash_raw_data_tag] = (self.raw_data.copy(),
-                                                                {'elapsed_sweeps': self.__elapsed_sweeps,
-                                                                 'elapsed_time': self.__elapsed_time})
-                self._recalled_raw_data_tag = None
+                          self._data_stash.stash(stash_raw_data_tag, self.measurement_data.raw_data,
+                                                 self.measurement_data.elapsed_sweeps, self.measurement_data.elapsed_time)
+                self._data_stash.clear_active()
 
                 # Set measurement paused flag
-                self.__is_paused = False
+                self.__execution_state.is_paused = False
 
                 self.module_state.unlock()
                 self.sigMeasurementStatusUpdated.emit(False, False)
@@ -1031,12 +1334,11 @@ class PulsedMeasurementLogic(LogicBase):
 
                 self.fast_counter_pause()
                 self.pulse_generator_off()
-                if self.__use_ext_microwave:
+                if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_off()
 
                 # Set measurement paused flag
-                self.__is_paused = True
-                self._time_of_pause = time.time()
+                self.__execution_state.pause()
 
                 self.sigMeasurementStatusUpdated.emit(True, True)
             else:
@@ -1051,7 +1353,7 @@ class PulsedMeasurementLogic(LogicBase):
         """
         with self._threadlock:
             if self.module_state() == 'locked':
-                if self.__use_ext_microwave:
+                if self._settings.microwave_settings.use_ext_microwave:
                     self.microwave_on()
                 self.fast_counter_continue()
                 self.pulse_generator_on()
@@ -1061,8 +1363,7 @@ class PulsedMeasurementLogic(LogicBase):
                     self.sigStartTimer.emit()
 
                 # Set measurement paused flag
-                self.__is_paused = False
-                self.__start_time += time.time() - self._time_of_pause
+                self.__execution_state.unpause()
 
                 self.sigMeasurementStatusUpdated.emit(True, False)
             else:
@@ -1078,22 +1379,30 @@ class PulsedMeasurementLogic(LogicBase):
 
         @param int|float interval: Interval of the timer in s
         """
+        if not isinstance(interval, (int, float)) or isinstance(interval, bool):
+            self.log.error(f'Unable to set timer interval. Expected int or float, got '
+                           f'{type(interval).__name__}.')
+            return
         with self._threadlock:
-            self.__timer_interval = interval
-            if self.__timer_interval > 0:
-                self.__analysis_timer.setInterval(int(1000. * self.__timer_interval))
-                if self.module_state() == 'locked' and not self.__is_paused:
+            self._apply_timer_interval(interval)
+            if self._timer_interval_s > 0:
+                self.__analysis_timer.setInterval(int(1000. * self._timer_interval_s))
+                if self.module_state() == 'locked' and not self.__execution_state.is_paused:
                     self.sigStartTimer.emit()
             else:
                 self.sigStopTimer.emit()
 
-            self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
-                                      self.__timer_interval)
+            self.sigTimerUpdated.emit(self.measurement_data.elapsed_time, self.measurement_data.elapsed_sweeps,
+                                      self._timer_interval_s)
         return
 
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
         """ Set the selected alternative (second) plot method by name ('None'/None disables it). """
+        if not (isinstance(alt_data_type, str) or alt_data_type is None):
+            self.log.error(f'Unable to set alternative data type. Expected str or None, got '
+                           f'{type(alt_data_type).__name__}.')
+            return
         with self._threadlock:
             if alt_data_type != self.alternative_data_type:
                 self.do_fit('No Fit', True)
@@ -1137,7 +1446,7 @@ class PulsedMeasurementLogic(LogicBase):
         @return result_object: the lmfit result object
         """
         container = self.alt_fc if use_alternative_data else self.fc
-        data = self.signal_alt_data if use_alternative_data else self.signal_data
+        data = self.measurement_data.signal_alt_data if use_alternative_data else self.measurement_data.signal_data
         try:
             config, result = container.fit_data(fit_config, data[0], data[1])
             if result:
@@ -1155,89 +1464,82 @@ class PulsedMeasurementLogic(LogicBase):
         return result
 
     def _apply_invoked_settings(self):
-        """
-        """
-        if not isinstance(self._measurement_information, dict) or not self._measurement_information:
+        info = self._loaded_asset.measurement_information if self._loaded_asset is not None else MeasurementInformation()
+        if not isinstance(info, MeasurementInformation) or not info.is_valid:
             self.log.warning('Can\'t invoke measurement settings from sequence information '
-                             'since no measurement_information container is given.')
+                         'since no measurement_information container is given.')
             return
 
         # First try to set parameters that can be changed during a running measurement
-        if 'units' in self._measurement_information:
+        units_labels = {}
+        if info.units is not None:
+            units_labels['units'] = info.units
+        if info.labels is not None:
+            units_labels['labels'] = info.labels
+        if units_labels:
             with self._threadlock:
-                self._data_units = self._measurement_information.get('units')
-                # self.fc.set_units(self._data_units)
-        if 'labels' in self._measurement_information:
-            with self._threadlock:
-                self._data_labels = list(self._measurement_information.get('labels'))
+                self._apply_readout_settings(self._settings.readout_settings.update_from_dict(units_labels))
 
-        # Check if a measurement is running and apply following settings if this is not the case
         if self.module_state() == 'locked':
             return
 
-        if 'number_of_lasers' in self._measurement_information:
-            self._number_of_lasers = int(self._measurement_information.get('number_of_lasers'))
-        else:
-            self.log.error('Unable to invoke setting for "number_of_lasers".\n'
+        required = ('number_of_lasers', 'laser_ignore_list', 'alternating', 'controlled_variable', 'counting_length')
+        for key in required:
+            if getattr(info, key) is None:
+                self.log.error(f'Unable to invoke setting for "{key}".\n'
                            'Measurement information container is incomplete/invalid.')
-            return
+                return
 
-        if 'laser_ignore_list' in self._measurement_information:
-            self._laser_ignore_list = sorted(self._measurement_information.get('laser_ignore_list'))
-        else:
-            self.log.error('Unable to invoke setting for "laser_ignore_list".\n'
-                           'Measurement information container is incomplete/invalid.')
-            return
+        self._apply_readout_settings(
+            self._settings.readout_settings.update_from_dict({
+                'number_of_lasers': int(info.number_of_lasers),
+                'laser_ignore_list': sorted(info.laser_ignore_list),
+                'alternating': bool(info.alternating),
+                'controlled_variable': info.controlled_variable,
+            })
+        )
 
-        if 'alternating' in self._measurement_information:
-            self._alternating = bool(self._measurement_information.get('alternating'))
-        else:
-            self.log.error('Unable to invoke setting for "alternating".\n'
-                           'Measurement information container is incomplete/invalid.')
-            return
-
-        if 'controlled_variable' in self._measurement_information:
-            self._controlled_variable = np.array(
-                self._measurement_information.get('controlled_variable'), dtype=float)
-        else:
-            self.log.error('Unable to invoke setting for "controlled_variable".\n'
-                           'Measurement information container is incomplete/invalid.')
-            return
-
-        if 'counting_length' in self._measurement_information:
-            fast_counter_record_length = self._measurement_information.get('counting_length')
-        else:
-            self.log.error('Unable to invoke setting for "counting_length".\n'
-                           'Measurement information container is incomplete/invalid.')
-            return
-
+        fast_counter_record_length = info.counting_length
         if self._fastcounter().is_gated():
-            self.set_fast_counter_settings(number_of_gates=self._number_of_lasers,
-                                           record_length=fast_counter_record_length)
+            self.set_fast_counter_settings(number_of_gates=self._settings.readout_settings.number_of_lasers,
+                                       record_length=fast_counter_record_length)
         else:
             self.set_fast_counter_settings(record_length=fast_counter_record_length)
         return
 
     def _measurement_settings_sanity_check(self):
-        number_of_analyzed_lasers = self._number_of_lasers - len(self._laser_ignore_list)
-        if len(self._controlled_variable) < 1:
+        settings = self._settings.readout_settings
+        number_of_analyzed_lasers = settings.number_of_lasers - len(settings.laser_ignore_list)
+        if len(settings.controlled_variable) < 1:
             self.log.error('Tried to set empty controlled variables array. This can not work.')
 
-        if self._alternating and (number_of_analyzed_lasers // 2) != len(self._controlled_variable):
+        if settings.alternating and (number_of_analyzed_lasers // 2) != len(settings.controlled_variable):
             self.log.error('Half of the number of laser pulses to analyze ({0}) does not match the '
-                           'number of controlled_variable ticks ({1:d}).'
-                           ''.format(number_of_analyzed_lasers // 2,
-                                     len(self._controlled_variable)))
-        elif not self._alternating and number_of_analyzed_lasers != len(self._controlled_variable):
+                       'number of controlled_variable ticks ({1:d}).'
+                       ''.format(number_of_analyzed_lasers // 2, len(settings.controlled_variable)))
+        elif not settings.alternating and number_of_analyzed_lasers != len(settings.controlled_variable):
             self.log.error('Number of laser pulses to analyze ({0:d}) does not match the number of '
-                           'controlled_variable ticks ({1:d}).'
-                           ''.format(number_of_analyzed_lasers, len(self._controlled_variable)))
+                       'controlled_variable ticks ({1:d}).'
+                       ''.format(number_of_analyzed_lasers, len(settings.controlled_variable)))
 
-        if self._fastcounter().is_gated() and self._number_of_lasers != self.__fast_counter_gates:
+        if self._fastcounter().is_gated() and settings.number_of_lasers != self._settings.fast_counter_settings.number_of_gates:
             self.log.error('Gated fast counter gate number ({0:d}) differs from number of laser pulses ({1:d})'
-                           'configured in measurement settings.'.format(self._number_of_lasers,
-                                                                        self.__fast_counter_gates))
+                       'configured in measurement settings.'.format(settings.number_of_lasers,
+                                                                    self._settings.fast_counter_settings.number_of_gates))
         return
+
+    def _report_analysis_problem(self, message, level='error'):
+        """Report a problem hit during a pulsed-analysis tick."""
+        if message != self.__last_analysis_problem:
+            getattr(self.log, level)(message)
+            self.sigAnalysisProblem.emit(message)
+        self.__last_analysis_problem = message
+
+    def _clear_analysis_problem(self):
+        """Signal that analysis has recovered, if it was previously reported as broken."""
+        if self.__last_analysis_problem is not None:
+            self.sigAnalysisProblem.emit('')
+        self.__last_analysis_problem = None
 
     @QtCore.Slot()
     def _pulsed_analysis_loop(self):
@@ -1245,72 +1547,99 @@ class PulsedMeasurementLogic(LogicBase):
             calculates fluorescence signal and creates plots.
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
-                # Update elapsed time
 
+            try:
                 self._extract_laser_pulses()
-
                 tmp_signal, tmp_error = self._analyze_laser_pulses()
+            except Exception:
+                self.log.exception('Pulsed analysis failed this tick - keeping previous data:')
+                self._report_analysis_problem(
+                    'Pulsed analysis raised an exception - see log for the full traceback.'
+                )
+                return
 
-                # exclude laser pulses to ignore
-                if len(self._laser_ignore_list) > 0:
-                    # Convert relative negative indices into absolute positive indices
-                    while self._laser_ignore_list[0] < 0:
-                        neg_index = self._laser_ignore_list[0]
-                        self._laser_ignore_list[0] = len(tmp_signal) + neg_index
-                        self._laser_ignore_list.sort()
-
-                    tmp_signal = np.delete(tmp_signal, self._laser_ignore_list)
-                    tmp_error = np.delete(tmp_error, self._laser_ignore_list)
-
-                # order data according to alternating flag
-                if self._alternating:
-                    if len(self.signal_data[0]) != len(tmp_signal[::2]):
-                        self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
-                                       'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal[::2])))
-                        return
-                    self.signal_data[1] = tmp_signal[::2]
-                    self.signal_data[2] = tmp_signal[1::2]
-                    self.measurement_error[1] = tmp_error[::2]
-                    self.measurement_error[2] = tmp_error[1::2]
+            # All-zero laser_data means extraction got a flat trace or gave up (several extraction
+            # methods return all-zeros on failure). Check raw_data to tell the two causes apart.
+            if not self.measurement_data.laser_data.any():
+                if not self.measurement_data.raw_data.any():
+                    self._report_analysis_problem(
+                        'No new laser pulses: the fast counter returned all zeros this tick. '
+                        'Check that the laser/trigger sequence is actually running and the '
+                        'counter is wired/gated correctly.',
+                        level='warning',
+                    )
                 else:
-                    if len(self.signal_data[0]) != len(tmp_signal):
-                        self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
-                                       'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal)))
-                        return
-                    self.signal_data[1] = tmp_signal
-                    self.measurement_error[1] = tmp_error
+                    self._report_analysis_problem(
+                        'No new laser pulses: raw counts were received, but extraction could not '
+                        'find a laser pulse edge in the trace. Check the extraction method/'
+                        'parameters against the actual pulse sequence.',
+                        level='warning',
+                    )
+                return
 
-                # Compute alternative data array from signal
-                self._compute_alt_data()
+            # exclude laser pulses to ignore
+            ignore_list = list(self._settings.readout_settings.laser_ignore_list)
+            if ignore_list:
+                ignore_list = sorted(idx if idx >= 0 else len(tmp_signal) + idx for idx in ignore_list)
+                tmp_signal = np.delete(tmp_signal, ignore_list)
+                tmp_error = np.delete(tmp_error, ignore_list)
+
+
+            # order data according to alternating flag
+            if self._settings.readout_settings.alternating:
+                if len(self.measurement_data.signal_data[0]) != len(tmp_signal[::2]):
+                    self._report_analysis_problem(
+                        'Length of controlled variable ({0}) does not match length of number of readout '
+                        'pulses ({1}).'.format(len(self.measurement_data.signal_data[0]), len(tmp_signal[::2]))
+                    )
+                    return
+                self.measurement_data.signal_data[1] = tmp_signal[::2]
+                self.measurement_data.signal_data[2] = tmp_signal[1::2]
+                self.measurement_data.measurement_error[1] = tmp_error[::2]
+                self.measurement_data.measurement_error[2] = tmp_error[1::2]
+            else:
+                if len(self.measurement_data.signal_data[0]) != len(tmp_signal):
+                    self._report_analysis_problem(
+                        'Length of controlled variable ({0}) does not match length of number of readout '
+                        'pulses ({1}).'.format(len(self.measurement_data.signal_data[0]), len(tmp_signal))
+                    )
+                    return
+                self.measurement_data.signal_data[1] = tmp_signal
+                self.measurement_data.measurement_error[1] = tmp_error
+
+            # Compute alternative data array from signal
+            self._compute_alt_data()
+
+            self._clear_analysis_problem()
 
             # emit signals
-            self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
-                                      self.__timer_interval)
+            self.sigTimerUpdated.emit(self.measurement_data.elapsed_time, self.measurement_data.elapsed_sweeps,
+                                      self._timer_interval_s)
             self.sigMeasurementDataUpdated.emit()
             return
 
     def _extract_laser_pulses(self):
         # Get counter raw data (including recalled raw data from previous measurement)
-        fc_data, info_dict = self._get_raw_data()
-        self.raw_data = fc_data
-        self.__elapsed_sweeps = info_dict['elapsed_sweeps']
-        self.__elapsed_time = info_dict['elapsed_time']
+        if self.module_state() == 'locked':
+            fc_data, info_dict = self._get_raw_data()
+            self.measurement_data.raw_data = fc_data
+            self.measurement_data.elapsed_sweeps = info_dict['elapsed_sweeps']
+            self.measurement_data.elapsed_time = info_dict['elapsed_time']
 
         # extract laser pulses from raw data
-        return_dict = self._pulseextractor.extract_laser_pulses(self.raw_data)
-        self.laser_data = return_dict['laser_counts_arr']
+        return_dict = self._pulseextractor.extract_laser_pulses(self.measurement_data.raw_data)
+        self.measurement_data.laser_data = return_dict['laser_counts_arr']
         return
 
     def _analyze_laser_pulses(self):
         # analyze pulses and get data points for signal array. Also check if extraction
         # worked (non-zero array returned).
-        if self.laser_data.any():
+        if self.measurement_data.laser_data.any():
             tmp_signal, tmp_error = self._pulseanalyzer.analyse_laser_pulses(
-                self.laser_data)
+                self.measurement_data.laser_data)
         else:
-            tmp_signal = np.zeros(self.laser_data.shape[0])
-            tmp_error = np.zeros(self.laser_data.shape[0])
+            tmp_signal = np.zeros(self.measurement_data.laser_data.shape[0])
+            tmp_error = np.zeros(self.measurement_data.laser_data.shape[0])
         return tmp_signal, tmp_error
 
     def _get_raw_data(self):
@@ -1336,21 +1665,20 @@ class PulsedMeasurementLogic(LogicBase):
         if isinstance(info_dict, dict) and info_dict.get('elapsed_time') is not None:
             elapsed_time = info_dict['elapsed_time']
         else:
-            elapsed_time = time.time() - self.__start_time
+            elapsed_time = self.__execution_state.get_live_elapsed_time()
 
         # add old raw data from previous measurements if necessary
-        if self._saved_raw_data.get(self._recalled_raw_data_tag) is not None:
-            # self.log.info('Found old saved raw data with tag "{0}".'
-            #               ''.format(self._recalled_raw_data_tag))
-            elapsed_sweeps += self._saved_raw_data[self._recalled_raw_data_tag][1]['elapsed_sweeps']
-            elapsed_time += self._saved_raw_data[self._recalled_raw_data_tag][1]['elapsed_time']
+        stashed_data = self._data_stash.get_active()
+        if stashed_data is not None:
+            elapsed_sweeps += stashed_data['elapsed_sweeps']
+            elapsed_time += stashed_data['elapsed_time']
             if not fc_data.any():
                 self.log.warning('Only zeros received from fast counter!\n'
                                  'Using recalled raw data only.')
-                fc_data = self._saved_raw_data[self._recalled_raw_data_tag][0]
-            elif self._saved_raw_data[self._recalled_raw_data_tag][0].shape == fc_data.shape:
+                fc_data = stashed_data['data']
+            elif stashed_data['data'].shape == fc_data.shape:
                 self.log.debug('Recalled raw data has the same shape as current data.')
-                fc_data = self._saved_raw_data[self._recalled_raw_data_tag][0] + fc_data
+                fc_data = stashed_data['data'] + fc_data
             else:
                 self.log.warning('Recalled raw data has not the same shape as current data.'
                                  '\nDid NOT add recalled raw data to current time trace.')
@@ -1363,67 +1691,157 @@ class PulsedMeasurementLogic(LogicBase):
     def _initialize_data_arrays(self):
         """
         Initializing the signal, error, laser and raw data arrays.
+
+        Builds a fresh PulsedMeasurementData and assigns it to self._pulsed_measurement.data.
         """
-        # Determine signal array dimensions
-        signal_dim = 3 if self._alternating else 2
+        settings = self._settings.readout_settings
+        fc_settings = self._settings.fast_counter_settings
+        signal_dim = 3 if settings.alternating else 2
 
-        self.signal_data = np.zeros((signal_dim, len(self._controlled_variable)), dtype=float)
-        self.signal_data[0] = self._controlled_variable
+        signal_data = np.zeros((signal_dim, len(settings.controlled_variable)), dtype=float)
+        signal_data[0] = settings.controlled_variable
 
-        self.signal_alt_data = np.zeros((signal_dim, len(self._controlled_variable)), dtype=float)
-        self.signal_alt_data[0] = self._controlled_variable
+        signal_alt_data = np.zeros((signal_dim, len(settings.controlled_variable)), dtype=float)
+        signal_alt_data[0] = settings.controlled_variable
 
-        self.measurement_error = np.zeros((signal_dim, len(self._controlled_variable)), dtype=float)
-        self.measurement_error[0] = self._controlled_variable
+        measurement_error = np.zeros((signal_dim, len(settings.controlled_variable)), dtype=float)
+        measurement_error[0] = settings.controlled_variable
 
-        number_of_bins = int(self.__fast_counter_record_length / self.__fast_counter_binwidth)
-        laser_length = number_of_bins if self.__fast_counter_gates > 0 else 500
-        self.laser_data = np.zeros((self._number_of_lasers, laser_length), dtype='int64')
+        number_of_bins = int(fc_settings.record_length / fc_settings.bin_width)
+        laser_length = number_of_bins if fc_settings.number_of_gates > 0 else 500
+        laser_data = np.zeros((settings.number_of_lasers, laser_length), dtype='int64')
 
-        if self.__fast_counter_gates > 0:
-            self.raw_data = np.zeros((self._number_of_lasers, number_of_bins), dtype='int64')
+        if fc_settings.number_of_gates > 0:
+            raw_data = np.zeros((settings.number_of_lasers, number_of_bins), dtype='int64')
         else:
-            self.raw_data = np.zeros(number_of_bins, dtype='int64')
+            raw_data = np.zeros(number_of_bins, dtype='int64')
+
+        self._pulsed_measurement.data = PulsedMeasurementData(
+            signal_data=signal_data,
+            signal_alt_data=signal_alt_data,
+            measurement_error=measurement_error,
+            laser_data=laser_data,
+            raw_data=raw_data,
+        )
 
         self.sigMeasurementDataUpdated.emit()
         return
 
     ############################################################################
-    def _get_raw_metadata(self):
-        return {'bin width (s)'               : self.__fast_counter_binwidth,
-                'record length (s)'           : self.__fast_counter_record_length,
-                'gated counting'              : self.fast_counter_settings['is_gated'],
-                'Number of laser pulses'      : self._number_of_lasers,
-                'alternating'                 : self._alternating,
-                'Controlled variable'         : list(self.signal_data[0]),
-                'Approx. measurement time (s)': self.__elapsed_time,
-                'Measurement sweeps'          : self.__elapsed_sweeps}
+    _RAW_METADATA_OMIT = ()
+    _LASER_METADATA_OMIT = ('measurement_settings.extraction_parameters',)
+    _SIGNAL_METADATA_OMIT = (
+        'measurement_settings.fast_counter_settings',
+        'measurement_settings.extraction_parameters',
+        'measurement_settings.analysis_parameters',
+        'generator_settings.generation_parameters',
+    )
 
-    def _get_laser_metadata(self):
-        return {'bin width (s)'        : self.__fast_counter_binwidth,
-                'record length (s)'    : self.__fast_counter_record_length,
-                'gated counting'       : self.fast_counter_settings['is_gated'],
-                'extraction parameters': self.extraction_settings}
+    def _get_master_settings_metadata(self, generator_settings=None, omit=()):
+        """Builds the 'pulsed measurement settings' dict shared by all three saved-file metadata
+        functions below (_get_raw_metadata/_get_laser_metadata/_get_signal_metadata)
 
-    def _get_signal_metadata(self):
-        metadata = {'Approx. measurement time (s)': self.__elapsed_time,
-                    'Measurement sweeps'          : self.__elapsed_sweeps,
-                    'Number of laser pulses'      : self._number_of_lasers,
-                    'Laser ignore indices'        : self._laser_ignore_list,
-                    'alternating'                 : self._alternating,
-                    'analysis parameters'         : self.analysis_settings,
-                    'extraction parameters'       : self.extraction_settings,
-                    'fast counter settings'       : self.fast_counter_settings,
-                    # todo: save sequence belonging to signal, not last uploaded one
-                    'generation parameters'       : self.sampling_information.get('generation_parameters'),
-                    'generation method parameters': self.generation_method_parameters}
+        Parameters
+        ----------
+        omit : tuple of str
+            Dotted paths to nested containers this file writes out flat at its own top level
+        """
+        return Settings(
+            measurement_settings=self._settings, generator_settings=generator_settings
+        ).to_metadata_dict(omit=omit)
+
+    def _get_loaded_asset_metadata(self, ensembles=None, blocks=None,
+                                   omit_generation_method_parameters=False):
+        """Resolved closure of the currently loaded sequence/ensemble - name/type plus the
+        loaded asset/ensembles/blocks/elements structure, embedded directly into every raw/laser/
+        signal .dat file's metadata rather than requiring a separate '.pulsedmeasurement'
+        snapshot file.
+
+        'pulse objects' always carries the same three keys - 'sequence', 'ensembles', 'blocks' -
+        whichever kind of asset is loaded, so evaluation code reads one fixed shape. The kind is
+        reconstructed rather than stated: an empty 'sequence' means a bare PulseBlockEnsemble was
+        loaded, and it is then the single entry under 'ensembles'.
+
+        Parameters
+        ----------
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved by the caller (see
+            SequenceGeneratorLogic.resolve_asset_closure())
+        blocks : dict
+            Optional, {name: PulseBlock}, same caveat as `ensembles`.
+        omit_generation_method_parameters : bool
+            Optional, drop the loaded asset's own 'generation_method_parameters' because this file
+            already writes it out at its top level - only _get_signal_metadata() does.
+        """
+        if self._loaded_asset is None:
+            return {}
+        objects = PulseObjects(
+            loaded_asset=self._loaded_asset,
+            ensembles=dict(ensembles) if ensembles else {},
+            blocks=dict(blocks) if blocks else {},
+        )
+        return {'loaded asset name': self._loaded_asset.name,
+                'pulse objects': objects.to_metadata_dict(
+                    omit_generation_method_parameters=omit_generation_method_parameters
+                )}
+
+    def _get_raw_metadata(self, generator_settings=None, ensembles=None, blocks=None):
+        fc = self._settings.fast_counter_settings
+        ms = self._settings.readout_settings
+        metadata = {'bin width (s)'               : fc.bin_width,
+            'record length (s)'           : fc.record_length,
+            'gated counting'              : fc.is_gated,
+            'Number of laser pulses'      : ms.number_of_lasers,
+            'alternating'                 : ms.alternating,
+            'Controlled variable'         : list(self.measurement_data.signal_data[0]),
+            'Approx. measurement time (s)': self.measurement_data.elapsed_time,
+            'Measurement sweeps'          : self.measurement_data.elapsed_sweeps,
+            'pulsed measurement settings' : self._get_master_settings_metadata(
+                generator_settings, omit=self._RAW_METADATA_OMIT)}
+        metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
+        return self._finalize_metadata(metadata)
+
+    def _get_laser_metadata(self, generator_settings=None, ensembles=None, blocks=None):
+        fc = self._settings.fast_counter_settings
+        metadata = {'bin width (s)'        : fc.bin_width,
+            'record length (s)'    : fc.record_length,
+            'gated counting'       : fc.is_gated,
+            'extraction parameters': self.extraction_settings,
+            'pulsed measurement settings': self._get_master_settings_metadata(
+                generator_settings, omit=self._LASER_METADATA_OMIT)}
+        metadata.update(self._get_loaded_asset_metadata(ensembles=ensembles, blocks=blocks))
+        return self._finalize_metadata(metadata)
+
+    def _get_signal_metadata(self, generator_settings=None, ensembles=None, blocks=None):
+        ms = self._settings.readout_settings
+        generation_parameters = (
+            generator_settings.generation_parameters.to_dict() if generator_settings is not None else None
+        )
+        metadata = {'Approx. measurement time (s)': self.measurement_data.elapsed_time,
+                'Measurement sweeps'          : self.measurement_data.elapsed_sweeps,
+                'Number of laser pulses'      : ms.number_of_lasers,
+                'Laser ignore indices'        : list(ms.laser_ignore_list),
+                'alternating'                 : ms.alternating,
+                'analysis parameters'         : self.analysis_settings,
+                'extraction parameters'       : self.extraction_settings,
+                'fast counter settings'       : self.fast_counter_settings,
+                'generation parameters'       : generation_parameters,
+                'generation method parameters': self.generation_method_parameters,
+                'pulsed measurement settings' : self._get_master_settings_metadata(
+                    generator_settings, omit=self._SIGNAL_METADATA_OMIT)}
+        metadata.update(self._get_loaded_asset_metadata(
+            ensembles=ensembles, blocks=blocks, omit_generation_method_parameters=True))
         if self._fit_result:
-            export_dict = FitContainer.dict_result(self._fit_result)
-            metadata['fit result'] = export_dict
+            metadata['fit result'] = FitContainer.dict_result(self._fit_result)
         if self._fit_result_alt:
-            export_dict = FitContainer.dict_result(self._fit_result_alt)
-            metadata['fit result alt'] = export_dict
-        return metadata
+            metadata['fit result alt'] = FitContainer.dict_result(self._fit_result_alt)
+        return self._finalize_metadata(metadata)
+
+    @staticmethod
+    def _finalize_metadata(metadata):
+        """Shared tail of _get_raw_metadata()/_get_laser_metadata()/_get_signal_metadata().
+        """
+        return {key: to_plain_metadata(value) for key, value in metadata.items()}
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -1440,33 +1858,53 @@ class PulsedMeasurementLogic(LogicBase):
             file_name_stub, file_extension = file_name.rsplit('.', 1)
             return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
-    def _get_signal_column_headers(self, with_error):
+    def _get_signal_column_headers(self):
         """ Helper method to retrieve formatted column header strings for pulsed measurement data.
 
-        @param bool with_error: Boolean flag indicating if error data should be included
-
-        @return list: List of column header strings
+        Returns
+        -------
+        list
+            List of column header strings.
         """
-        column_headers = [f'{self._data_labels[0]} ({self._data_units[0]})',
-                          f'{self._data_labels[1]} ({self._data_units[1]})']
-        if with_error:
-            column_headers.append(f'{self._data_labels[1]} ({self._data_units[1]})')
+        labels, units = self._settings.readout_settings.labels, self._settings.readout_settings.units
+        column_headers = [f'{labels[0]} ({units[0]})', f'{labels[1]} ({units[1]})']
+        column_headers.append(f'{labels[1]} ({units[1]})')
         return column_headers
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
-                              save_figure=None):
+                              save_figure=None, generator_settings=None, ensembles=None, blocks=None,
+                              save_measurement_snapshot=False):
         """ Prepare data to be saved and create a proper plot of the data
 
-        @param str tag: a name tag which will be included in the filename if file_path is None
-        @param str file_path: optional, custom full file path including file extension to use.
-                              If given, tag is ignored.
-        @param type storage_cls: optional, override for data storage class to use
-        @param bool with_error: select whether errors should be saved/plotted
-        @param bool save_laser_pulses: select whether extracted lasers should be saved
-        @param bool save_pulsed_measurement: select whether final measurement should be saved
-        @param bool save_figure: select whether a thumbnail plot should be saved
-        @param str notes: optional, string that is included in the metadata "as-is" without a field
+        Parameters
+        ----------
+        tag : str
+            A name tag which will be included in the filename if file_path is None.
+        file_path : str
+            Optional, custom full file path including file extension to use.
+            If given, tag is ignored.
+        storage_cls : type
+            Optional, override for data storage class to use.
+        with_error : bool
+            Select whether errors should be plotted.
+        save_laser_pulses : bool
+            Select whether extracted lasers should be saved.
+        save_pulsed_measurement : bool
+            Select whether final measurement should be saved.
+        save_figure : bool
+            Select whether a thumbnail plot should be saved.
+        notes : str
+            Optional, string that is included in the metadata "as-is" without a field.
+        generator_settings : SequenceGeneratorSettings
+            Optional, the SequenceGeneratorLogic settings in effect for this measurement.
+        ensembles : dict
+            Optional, {name: PulseBlockEnsemble} already resolved and copied by the caller
+        blocks : dict
+            Optional, {name: PulseBlock}
+        save_measurement_snapshot : bool
+            Optional, additionally pickle the complete PulsedMeasurement snapshot (settings +
+            data + the loaded sequence/ensemble/ensembles/blocks
         """
         # Use default data storage type if none has been given explicitly
         if storage_cls is None:
@@ -1500,8 +1938,10 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     '_raw_timetrace')
         # Save data to file
         data_storage.save_data(
-            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
-            metadata=self._get_raw_metadata(),
+            self.measurement_data.raw_data.astype('int64')[:, np.newaxis] if self.measurement_data.raw_data.ndim == 1 else self.measurement_data.raw_data.astype('int64'),
+            metadata=self._get_raw_metadata(
+                generator_settings=generator_settings, ensembles=ensembles, blocks=blocks
+            ),
             nametag=nametag,
             filename=save_filename,
             timestamp=timestamp,
@@ -1516,8 +1956,10 @@ class PulsedMeasurementLogic(LogicBase):
             save_filename, nametag = self._get_patched_filename_nametag(file_name,
                                                                         tag,
                                                                         '_laser_pulses')
-            data_storage.save_data(self.laser_data,
-                                   metadata=self._get_laser_metadata(),
+            data_storage.save_data(self.measurement_data.laser_data,
+                                   metadata=self._get_laser_metadata(
+                                       generator_settings=generator_settings, ensembles=ensembles, blocks=blocks
+                                   ),
                                    nametag=nametag,
                                    filename=save_filename,
                                    timestamp=timestamp,
@@ -1532,20 +1974,19 @@ class PulsedMeasurementLogic(LogicBase):
                                                                         tag,
                                                                         '_pulsed_measurement')
 
-            # Format data to save
-            if with_error:
-                data = np.vstack((self.signal_data, self.measurement_error[1:])).transpose()
-            else:
-                data = self.signal_data.transpose()
+            # Format data to save - error columns are always included; with_error only affects the plot.
+            data = np.vstack((self.measurement_data.signal_data, self.measurement_data.measurement_error[1:])).transpose()
 
             save_path, _, _ = data_storage.save_data(
                 data,
-                metadata=self._get_signal_metadata(),
+                metadata=self._get_signal_metadata(
+                    generator_settings=generator_settings, ensembles=ensembles, blocks=blocks
+                ),
                 nametag=nametag,
                 filename=save_filename,
                 timestamp=timestamp,
                 notes=notes,
-                column_headers=self._get_signal_column_headers(with_error)
+                column_headers=self._get_signal_column_headers()
             )
 
             # save thumbnail figure if required
@@ -1554,10 +1995,48 @@ class PulsedMeasurementLogic(LogicBase):
                 fig_path = save_path.rsplit('.', 1)[0]
                 data_storage.save_thumbnail(fig, file_path=fig_path)
 
+        ##########################################
+        # Save full PulsedMeasurement snapshot
+        ##########################################
+        if save_measurement_snapshot:
+            save_filename, nametag = self._get_patched_filename_nametag(file_name,
+                                                                        tag,
+                                                                        '_measurement_snapshot')
+            if save_filename is not None:
+                snapshot_filename = save_filename.rsplit('.', 1)[0] + '.pulsedmeasurement'
+            else:
+                snapshot_filename = get_timestamp_filename(timestamp, nametag) + '.pulsedmeasurement'
+            snapshot_path = os.path.join(data_storage.root_dir, snapshot_filename)
+            create_dir_for_file(snapshot_path)
+            with open(snapshot_path, 'wb') as snapshot_file:
+                pickle.dump(
+                    self.get_pulsed_measurement(
+                        generator_settings=generator_settings, ensembles=ensembles, blocks=blocks
+                    ),
+                    snapshot_file,
+                )
+
+    @staticmethod
+    def load_measurement_snapshot(file_path):
+        """Load a PulsedMeasurement snapshot previously saved via
+        save_measurement_data(save_measurement_snapshot=True).
+
+        Parameters
+        ----------
+        file_path : str
+            Full path to the '.pulsedmeasurement' file to load.
+
+        Returns
+        -------
+        PulsedMeasurement
+            The restored snapshot (settings + data + sequence).
+        """
+        with open(file_path, 'rb') as snapshot_file:
+            return pickle.load(snapshot_file)
+
     def _plot_pulsed_thumbnail(self, with_error=False):
 
         def _plot_fit(axis, use_alternative_data=False):
-
             fit_res = self._fit_result
             if use_alternative_data:
                 fit_res = self._fit_result_alt
@@ -1566,37 +2045,27 @@ class PulsedMeasurementLogic(LogicBase):
 
             label = 'fit'
             if use_alternative_data:
-                label = label='secondary fit'
+                label = 'secondary fit'
 
             x_axis_fit_scaled = fit_x / scaled_float.scale_val
             axis.plot(x_axis_fit_scaled, fit_y,
                      color=colors[2], marker='None', linewidth=1.5,
                      label=label)
 
-            # add then the fit result to the plot:
-
             # Parameters for the text plot:
-            # The position of the text annotation is controlled with the
-            # relative offset in x direction and the relative length factor
-            # rel_len_fac of the longest entry in one column
             rel_offset = 0.02
             rel_len_fac = 0.011
             entries_per_col = 24
 
             result_str = fit_res.result_str
-
-            # do reverse processing to get each entry in a list
             entry_list = result_str.split('\n')
-            # slice the entry_list in entries_per_col
             chunks = [entry_list[x:x + entries_per_col] for x in range(0, len(entry_list), entries_per_col)]
 
             is_first_column = True  # first entry should contain header or \n
 
             for column in chunks:
-
                 max_length = max(column, key=len)  # get the longest entry
                 column_text = ''
-
                 for entry in column:
                     column_text += entry + '\n'
 
@@ -1614,16 +2083,11 @@ class PulsedMeasurementLogic(LogicBase):
                          transform=axis.transAxes,
                          fontsize=12)
 
-                # the rel_offset in position of the text is a linear function
-                # which depends on the longest entry in the column
                 rel_offset += rel_len_fac * len(max_length)
-
                 is_first_column = False
 
         def _is_fit_available(use_alternative_data=False):
-
             fit = self._fit_result if not use_alternative_data else self._fit_result_alt
-
             if not fit:
                 return False
             else:
@@ -1634,59 +2098,58 @@ class PulsedMeasurementLogic(LogicBase):
                 self.log.warning("Latex character '$' in string; expect wrong text rendering."
                                  " Please use rich text html instead.")
             else:
-                # transform to math expression, use non-italic font
                 text_str = r"$\mathrm{" + text_str + "}$"
 
-            # handle subscript
             text_str = text_str.replace("<sub>","_{").replace("</sub>","}")
-            # handle white space
-            text_str = text_str.replace(" ", "\ ")
-
+            text_str = text_str.replace(" ", r"\ ")
             return text_str
 
         # Prepare the figure to save as a "data thumbnail"
         plt.style.use(QudiMatplotlibStyle.style)
 
         # extract the possible colors from the colorscheme:
-        # todo: still needed or set by core?
         prop_cycle = QudiMatplotlibStyle.style['axes.prop_cycle']
-        colors = {}
-        for i, color_setting in enumerate(prop_cycle):
-            colors[i] = color_setting['color']
+        colors = {i: color_setting['color'] for i, color_setting in enumerate(prop_cycle)}
+
+        # ------------------------------------------------------------------------
+        # OPTIMIZATION: Grab local references to avoid making RAM-heavy copies
+        # and to cleanly access our new dataclasses.
+        # ------------------------------------------------------------------------
+        data = self.measurement_data
+        settings = self._settings.readout_settings
+        alt_type = self.alternative_data_type
 
         # scale the x_axis for plotting
-        max_val = np.max(self.signal_data[0])
+        max_val = np.max(data.signal_data[0])
         scaled_float = ScaledFloat(max_val)
         counts_prefix = scaled_float.scale
-        x_axis_scaled = self.signal_data[0] / scaled_float.scale_val
+        x_axis_scaled = data.signal_data[0] / scaled_float.scale_val
 
         # Create the figure object
-        alt_type = self.alternative_data_type
-        alt_active = bool(alt_type) and alt_type != 'None'
-        if alt_active:
+        if alt_type and alt_type != 'None':
             fig, (ax1, ax2) = plt.subplots(2, 1)
         else:
             fig, ax1 = plt.subplots()
 
         if with_error:
-            ax1.errorbar(x=x_axis_scaled, y=self.signal_data[1],
-                         yerr=self.measurement_error[1],
+            ax1.errorbar(x=x_axis_scaled, y=data.signal_data[1],
+                         yerr=data.measurement_error[1],
                          linestyle=':', linewidth=0.5, color=colors[0],
                          ecolor=colors[1], capsize=3, capthick=0.9,
                          elinewidth=1.2, label='data trace 1')
 
-            if self._alternating:
-                ax1.errorbar(x=x_axis_scaled, y=self.signal_data[2],
-                             yerr=self.measurement_error[2], fmt='-D',
+            if settings.alternating:
+                ax1.errorbar(x=x_axis_scaled, y=data.signal_data[2],
+                             yerr=data.measurement_error[2], fmt='-D',
                              linestyle=':', linewidth=0.5, color=colors[3],
                              ecolor=colors[4],  capsize=3, capthick=0.7,
                              elinewidth=1.2, label='data trace 2')
         else:
-            ax1.plot(x_axis_scaled, self.signal_data[1], color=colors[0],
+            ax1.plot(x_axis_scaled, data.signal_data[1], color=colors[0],
                      linestyle=':', linewidth=0.5, label='data trace 1')
 
-            if self._alternating:
-                ax1.plot(x_axis_scaled, self.signal_data[2], '-o',
+            if settings.alternating:
+                ax1.plot(x_axis_scaled, data.signal_data[2], '-o',
                          color=colors[3], linestyle=':', linewidth=0.5,
                          label='data trace 2')
 
@@ -1694,13 +2157,13 @@ class PulsedMeasurementLogic(LogicBase):
             _plot_fit(axis=ax1)
 
         # handle the save of the alternative data plot
-        if alt_active:
+        if alt_type and alt_type != 'None':
 
             # scale the x_axis for plotting
-            max_val = np.max(self.signal_alt_data[0])
+            max_val = np.max(data.signal_alt_data[0])
             scaled_float = ScaledFloat(max_val)
             x_axis_prefix = scaled_float.scale
-            x_axis_ft_scaled = self.signal_alt_data[0] / scaled_float.scale_val
+            x_axis_ft_scaled = data.signal_alt_data[0] / scaled_float.scale_val
 
             # Axis labels are provided by the selected alternative plot method. The x-axis unit is
             # prefixed with the SI scale of the (scaled) x-axis; the y-axis is not scaled.
@@ -1721,11 +2184,11 @@ class PulsedMeasurementLogic(LogicBase):
 
             ft_label = '{0} of data trace 1'.format(alt_type)
 
-            ax2.plot(x_axis_ft_scaled, self.signal_alt_data[1],
+            ax2.plot(x_axis_ft_scaled, data.signal_alt_data[1],
                      linestyle=':', linewidth=0.5, color=colors[0],
                      label=ft_label)
-            if self._alternating and len(self.signal_alt_data) > 2:
-                ax2.plot(x_axis_ft_scaled, self.signal_alt_data[2],
+            if settings.alternating and len(data.signal_alt_data) > 2:
+                ax2.plot(x_axis_ft_scaled, data.signal_alt_data[2],
                          linestyle=':', linewidth=0.5, color=colors[3],
                          label=ft_label.replace('1', '2'))
 
@@ -1740,21 +2203,20 @@ class PulsedMeasurementLogic(LogicBase):
             if _is_fit_available(use_alternative_data=True):
                 _plot_fit(axis=ax2, use_alternative_data=True)
 
-        data_label_tex = [_subscript_html_2_tex(self._data_labels[0]),
-                          _subscript_html_2_tex(self._data_labels[1])]
+        data_label_tex = [_subscript_html_2_tex(settings.labels[0]),
+                          _subscript_html_2_tex(settings.labels[1])]
 
         ax1.set_xlabel(
-            '{0} ({1}{2})'.format(data_label_tex[0], counts_prefix, self._data_units[0]))
-        if self._data_units[1]:
-            ax1.set_ylabel('{0} ({1})'.format(data_label_tex[1], self._data_units[1]))
+            '{0} ({1}{2})'.format(data_label_tex[0], counts_prefix, settings.units[0]))
+        
+        if settings.units[1]:
+            ax1.set_ylabel('{0} ({1})'.format(data_label_tex[1], settings.units[1]))
         else:
             ax1.set_ylabel('{0}'.format(data_label_tex[1]))
 
         fig.tight_layout()
         ax1.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2,
                    mode="expand", borderaxespad=0.)
-        # plt.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2,
-        #            mode="expand", borderaxespad=0.)
 
         return fig
 
@@ -1763,17 +2225,18 @@ class PulsedMeasurementLogic(LogicBase):
         Compute the alternative (second) plot data via the selected alternative plot method. Falls
         back to a flat default plot if no method is selected, it is unavailable, or it fails.
         """
+        md = self.measurement_data
         alt_data = None
         try:
-            alt_data = self._altplotanalyzer.compute_alt_data(self.signal_data)
+            alt_data = self._altplotanalyzer.compute_alt_data(md.signal_data)
         except:
             self.log.exception('Error while computing alternative plot data:')
             alt_data = None
 
         if alt_data is None:
-            self.signal_alt_data = np.zeros(self.signal_data.shape, dtype=float)
-            if self.signal_data.shape[1] > 0:
-                self.signal_alt_data[0] = self.signal_data[0]
+            md.signal_alt_data = np.zeros(md.signal_data.shape, dtype=float)
+            if md.signal_data.shape[1] > 0:
+                md.signal_alt_data[0] = md.signal_data[0]
         else:
-            self.signal_alt_data = alt_data
+            md.signal_alt_data = alt_data
         return
