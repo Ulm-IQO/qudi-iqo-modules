@@ -105,6 +105,7 @@ class PulsedMasterLogic(LogicBase):
     sigGeneratorSettingsChanged = QtCore.Signal(dict)
     sigSamplingSettingsChanged = QtCore.Signal(dict)
     sigGeneratePredefinedSequence = QtCore.Signal(str, dict)
+    sigRefreshPredefinedMethods = QtCore.Signal()
 
     # signals for master module (i.e. GUI) coming from SequenceGeneratorLogic
     sigBlockDictUpdated = QtCore.Signal(dict)
@@ -118,6 +119,7 @@ class PulsedMasterLogic(LogicBase):
     sigGeneratorSettingsUpdated = QtCore.Signal(dict)
     sigSamplingSettingsUpdated = QtCore.Signal(dict)
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
+    sigPredefinedMethodsUpdated = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         """ Create PulsedMasterLogic object with connectors.
@@ -224,6 +226,8 @@ class PulsedMasterLogic(LogicBase):
             self.sequencegeneratorlogic().set_generation_parameters, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigGeneratePredefinedSequence.connect(
             self.sequencegeneratorlogic().generate_predefined_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigRefreshPredefinedMethods.connect(
+            self.sequencegeneratorlogic().refresh_predefined_methods, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Connect signals coming from SequenceGeneratorLogic
         self.sequencegeneratorlogic().sigBlockDictUpdated.connect(
@@ -242,6 +246,8 @@ class PulsedMasterLogic(LogicBase):
             self.sigSamplingSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.connect(
             self.predefined_sequence_generated, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sequencegeneratorlogic().sigPredefinedMethodsUpdated.connect(
+            self.sigPredefinedMethodsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.connect(
             self.sample_ensemble_finished, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleSequenceComplete.connect(
@@ -301,6 +307,7 @@ class PulsedMasterLogic(LogicBase):
         self.sigGeneratorSettingsChanged.disconnect()
         self.sigSamplingSettingsChanged.disconnect()
         self.sigGeneratePredefinedSequence.disconnect()
+        self.sigRefreshPredefinedMethods.disconnect()
         # Disconnect signals coming from SequenceGeneratorLogic
         self.sequencegeneratorlogic().sigBlockDictUpdated.disconnect()
         self.sequencegeneratorlogic().sigEnsembleDictUpdated.disconnect()
@@ -310,6 +317,7 @@ class PulsedMasterLogic(LogicBase):
         self.sequencegeneratorlogic().sigGeneratorSettingsUpdated.disconnect()
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.disconnect()
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.sequencegeneratorlogic().sigPredefinedMethodsUpdated.disconnect()
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.disconnect()
         self.sequencegeneratorlogic().sigSampleSequenceComplete.disconnect()
         self.sequencegeneratorlogic().sigLoadedAssetUpdated.disconnect()
@@ -1017,6 +1025,10 @@ class PulsedMasterLogic(LogicBase):
             self.status_dict['sampload_busy'] = True
         self.sigGeneratePredefinedSequence.emit(generator_method_name, kwarg_dict)
         return
+
+    @QtCore.Slot()
+    def refresh_predefined_methods(self):
+        self.sigRefreshPredefinedMethods.emit()
 
     @QtCore.Slot(object, bool)
     def predefined_sequence_generated(self, asset_name, is_sequence):
