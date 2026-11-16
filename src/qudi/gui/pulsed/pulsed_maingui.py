@@ -1229,6 +1229,21 @@ class PulsedMeasurementGui(GuiBase):
         self._create_pm_global_params()
         self.generation_parameters_updated(self.pulsedmasterlogic().generation_parameters)
 
+        # Remember method parameter values changed by the user to restore them after the rebuild
+        changed_params = dict()
+        for method_name, param_widgets in self._pm.method_param_widgets.items():
+            for param_name, widget in param_widgets.items():
+                if isinstance(widget, QtWidgets.QCheckBox):
+                    value = widget.isChecked()
+                elif isinstance(widget, QtWidgets.QComboBox):
+                    value = widget.currentData()
+                elif isinstance(widget, QtWidgets.QLineEdit):
+                    value = widget.text()
+                else:
+                    value = widget.value()
+                if value != self._pm.method_param_defaults[method_name][param_name]:
+                    changed_params[(method_name, param_name)] = (type(widget), value)
+
         # Remove widgets of the previously available methods
         for method_name in self._pm.gen_buttons:
             for parent, attr, layout in (
@@ -1245,6 +1260,23 @@ class PulsedMeasurementGui(GuiBase):
             self._pm.verticalLayout.takeAt(self._pm.verticalLayout.count() - 1)
 
         self._create_predefined_methods()
+
+        # Restore changed values if the parameter still exists with the same type
+        for (method_name, param_name), (widget_type, value) in changed_params.items():
+            widget = self._pm.method_param_widgets.get(method_name, dict()).get(param_name)
+            if type(widget) is not widget_type:
+                continue
+            if isinstance(widget, QtWidgets.QCheckBox):
+                widget.setChecked(value)
+            elif isinstance(widget, QtWidgets.QComboBox):
+                index = widget.findText(value.name)
+                if index >= 0:
+                    widget.setCurrentIndex(index)
+            elif isinstance(widget, QtWidgets.QLineEdit):
+                widget.setText(value)
+            else:
+                widget.setValue(value)
+
         self._activate_predefined_methods_settings_ui()
         self._pm_cfg.refresh_button.setEnabled(True)
 
@@ -1388,6 +1420,8 @@ class PulsedMeasurementGui(GuiBase):
         self._pm.method_param_widgets = dict()
 
         method_params = self.pulsedmasterlogic().generate_method_params
+        self._pm.method_param_defaults = method_params
+
         for method_name in natural_sort(self.pulsedmasterlogic().generate_methods):
             # Create the widgets for the predefined methods dialogue
             # Create GroupBox for the method to reside in
